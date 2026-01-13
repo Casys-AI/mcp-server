@@ -46,6 +46,10 @@ export { RequestQueue } from "./src/request-queue.ts";
 // Rate limiting
 export { RateLimiter } from "./src/rate-limiter.ts";
 
+// Schema validation
+export { SchemaValidator } from "./src/schema-validator.ts";
+export type { ValidationError, ValidationResult } from "./src/schema-validator.ts";
+
 // Sampling support
 export { SamplingBridge } from "./src/sampling-bridge.ts";
 

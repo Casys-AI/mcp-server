@@ -67,6 +67,12 @@ export interface ConcurrentServerOptions {
    */
   rateLimit?: RateLimitOptions;
 
+  /**
+   * Enable JSON Schema validation for tool arguments (default: false)
+   * When enabled, validates arguments against tool's inputSchema before execution
+   */
+  validateSchema?: boolean;
+
   /** Enable sampling support for agentic tools (default: false) */
   enableSampling?: boolean;
 

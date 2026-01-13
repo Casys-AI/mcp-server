@@ -19,6 +19,7 @@ import {
 import { RequestQueue } from "./request-queue.ts";
 import { SamplingBridge } from "./sampling-bridge.ts";
 import { RateLimiter } from "./rate-limiter.ts";
+import { SchemaValidator } from "./schema-validator.ts";
 import type {
   ConcurrentServerOptions,
   MCPTool,
@@ -62,6 +63,7 @@ export class ConcurrentMCPServer {
   private mcpServer: McpServer;
   private requestQueue: RequestQueue;
   private rateLimiter: RateLimiter | null = null;
+  private schemaValidator: SchemaValidator | null = null;
   private samplingBridge: SamplingBridge | null = null;
   private tools = new Map<string, ToolWithHandler>();
   private options: ConcurrentServerOptions;
@@ -96,6 +98,11 @@ export class ConcurrentMCPServer {
         maxRequests: options.rateLimit.maxRequests,
         windowMs: options.rateLimit.windowMs,
       });
+    }
+
+    // Optional schema validation
+    if (options.validateSchema) {
+      this.schemaValidator = new SchemaValidator();
     }
 
     // Optional sampling support
@@ -146,6 +153,11 @@ export class ConcurrentMCPServer {
           // Wait for slot (default behavior)
           await this.rateLimiter.waitForSlot(key);
         }
+      }
+
+      // Validate arguments if schema validation is enabled
+      if (this.schemaValidator) {
+        this.schemaValidator.validateOrThrow(toolName, args);
       }
 
       // Apply backpressure before execution
@@ -207,6 +219,11 @@ export class ConcurrentMCPServer {
         ...tool,
         handler,
       });
+
+      // Register schema for validation if enabled
+      if (this.schemaValidator) {
+        this.schemaValidator.addSchema(tool.name, tool.inputSchema);
+      }
     }
 
     this.log(`Registered ${tools.length} tools`);
@@ -223,6 +240,11 @@ export class ConcurrentMCPServer {
       ...tool,
       handler,
     });
+
+    // Register schema for validation if enabled
+    if (this.schemaValidator) {
+      this.schemaValidator.addSchema(tool.name, tool.inputSchema);
+    }
 
     this.log(`Registered tool: ${tool.name}`);
   }
@@ -243,11 +265,12 @@ export class ConcurrentMCPServer {
     const rateLimitInfo = this.options.rateLimit
       ? `, rate limit: ${this.options.rateLimit.maxRequests}/${this.options.rateLimit.windowMs}ms`
       : "";
+    const validationInfo = this.options.validateSchema ? ", schema validation: on" : "";
 
     this.log(
       `Server started (max concurrent: ${
         this.options.maxConcurrent ?? 10
-      }, strategy: ${this.options.backpressureStrategy ?? "sleep"}${rateLimitInfo})`,
+      }, strategy: ${this.options.backpressureStrategy ?? "sleep"}${rateLimitInfo}${validationInfo})`,
     );
     this.log(`Tools available: ${this.tools.size}`);
   }
@@ -297,6 +320,13 @@ export class ConcurrentMCPServer {
    */
   getRateLimiter(): RateLimiter | null {
     return this.rateLimiter;
+  }
+
+  /**
+   * Get schema validator instance (for advanced use cases)
+   */
+  getSchemaValidator(): SchemaValidator | null {
+    return this.schemaValidator;
   }
 
   /**

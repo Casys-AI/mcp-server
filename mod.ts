@@ -43,6 +43,9 @@ export { ConcurrentMCPServer } from "./src/concurrent-server.ts";
 // Concurrency primitives
 export { RequestQueue } from "./src/request-queue.ts";
 
+// Rate limiting
+export { RateLimiter } from "./src/rate-limiter.ts";
+
 // Sampling support
 export { SamplingBridge } from "./src/sampling-bridge.ts";
 
@@ -57,4 +60,6 @@ export type {
   QueueMetrics,
   PromiseResolver,
   QueueOptions,
+  RateLimitOptions,
+  RateLimitContext,
 } from "./src/types.ts";

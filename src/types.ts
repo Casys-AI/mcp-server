@@ -8,6 +8,41 @@
  */
 
 /**
+ * Rate limit configuration
+ */
+export interface RateLimitOptions {
+  /** Maximum requests per window */
+  maxRequests: number;
+
+  /** Time window in milliseconds */
+  windowMs: number;
+
+  /**
+   * Function to extract client identifier from request context
+   * Default: uses "default" for all requests (global rate limit)
+   */
+  keyExtractor?: (context: RateLimitContext) => string;
+
+  /**
+   * Behavior when rate limit is exceeded
+   * - 'reject': Return error immediately
+   * - 'wait': Wait for slot with backoff (default)
+   */
+  onLimitExceeded?: 'reject' | 'wait';
+}
+
+/**
+ * Context passed to rate limit key extractor
+ */
+export interface RateLimitContext {
+  /** Tool being called */
+  toolName: string;
+
+  /** Tool arguments */
+  args: Record<string, unknown>;
+}
+
+/**
  * Configuration options for ConcurrentMCPServer
  */
 export interface ConcurrentServerOptions {
@@ -25,6 +60,12 @@ export interface ConcurrentServerOptions {
 
   /** Sleep duration in ms for 'sleep' strategy (default: 10) */
   backpressureSleepMs?: number;
+
+  /**
+   * Rate limiting configuration
+   * If provided, requests will be rate limited per client
+   */
+  rateLimit?: RateLimitOptions;
 
   /** Enable sampling support for agentic tools (default: false) */
   enableSampling?: boolean;

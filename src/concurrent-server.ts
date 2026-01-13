@@ -18,11 +18,13 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { RequestQueue } from "./request-queue.ts";
 import { SamplingBridge } from "./sampling-bridge.ts";
+import { RateLimiter } from "./rate-limiter.ts";
 import type {
   ConcurrentServerOptions,
   MCPTool,
   ToolHandler,
   QueueMetrics,
+  RateLimitContext,
 } from "./types.ts";
 
 /**
@@ -59,6 +61,7 @@ interface ToolWithHandler extends MCPTool {
 export class ConcurrentMCPServer {
   private mcpServer: McpServer;
   private requestQueue: RequestQueue;
+  private rateLimiter: RateLimiter | null = null;
   private samplingBridge: SamplingBridge | null = null;
   private tools = new Map<string, ToolWithHandler>();
   private options: ConcurrentServerOptions;
@@ -87,6 +90,14 @@ export class ConcurrentMCPServer {
       sleepMs: options.backpressureSleepMs ?? 10,
     });
 
+    // Optional rate limiting
+    if (options.rateLimit) {
+      this.rateLimiter = new RateLimiter({
+        maxRequests: options.rateLimit.maxRequests,
+        windowMs: options.rateLimit.windowMs,
+      });
+    }
+
     // Optional sampling support
     if (options.enableSampling && options.samplingClient) {
       this.samplingBridge = new SamplingBridge(options.samplingClient);
@@ -113,13 +124,34 @@ export class ConcurrentMCPServer {
       };
     });
 
-    // tools/call handler (with concurrency control)
+    // tools/call handler (with concurrency control and rate limiting)
     server.setRequestHandler(CallToolRequestSchema, async (request) => {
+      const toolName = request.params.name;
+      const args = request.params.arguments || {};
+
+      // Apply rate limiting if configured
+      if (this.rateLimiter && this.options.rateLimit) {
+        const context: RateLimitContext = { toolName, args };
+        const key = this.options.rateLimit.keyExtractor?.(context) ?? "default";
+
+        if (this.options.rateLimit.onLimitExceeded === "reject") {
+          // Reject immediately if rate limited
+          if (!this.rateLimiter.checkLimit(key)) {
+            const waitTime = this.rateLimiter.getTimeUntilSlot(key);
+            throw new Error(
+              `Rate limit exceeded. Retry after ${Math.ceil(waitTime / 1000)}s`
+            );
+          }
+        } else {
+          // Wait for slot (default behavior)
+          await this.rateLimiter.waitForSlot(key);
+        }
+      }
+
       // Apply backpressure before execution
       await this.requestQueue.acquire();
 
       try {
-        const toolName = request.params.name;
         const tool = this.tools.get(toolName);
 
         if (!tool) {
@@ -127,7 +159,7 @@ export class ConcurrentMCPServer {
         }
 
         // Execute tool handler
-        const result = await tool.handler(request.params.arguments || {});
+        const result = await tool.handler(args);
 
         // Format response according to MCP protocol
         return {
@@ -208,10 +240,14 @@ export class ConcurrentMCPServer {
 
     this.started = true;
 
+    const rateLimitInfo = this.options.rateLimit
+      ? `, rate limit: ${this.options.rateLimit.maxRequests}/${this.options.rateLimit.windowMs}ms`
+      : "";
+
     this.log(
       `Server started (max concurrent: ${
         this.options.maxConcurrent ?? 10
-      }, strategy: ${this.options.backpressureStrategy ?? "sleep"})`,
+      }, strategy: ${this.options.backpressureStrategy ?? "sleep"}${rateLimitInfo})`,
     );
     this.log(`Tools available: ${this.tools.size}`);
   }
@@ -247,6 +283,20 @@ export class ConcurrentMCPServer {
    */
   getMetrics(): QueueMetrics {
     return this.requestQueue.getMetrics();
+  }
+
+  /**
+   * Get rate limiter metrics (if rate limiting is enabled)
+   */
+  getRateLimitMetrics(): { keys: number; totalRequests: number } | null {
+    return this.rateLimiter?.getMetrics() ?? null;
+  }
+
+  /**
+   * Get rate limiter instance (for advanced use cases)
+   */
+  getRateLimiter(): RateLimiter | null {
+    return this.rateLimiter;
   }
 
   /**

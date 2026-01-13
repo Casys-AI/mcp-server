@@ -1,0 +1,23 @@
+{
+  "name": "@casys/mcp-server",
+  "version": "0.1.0",
+  "exports": {
+    ".": "./mod.ts"
+  },
+  "publish": {
+    "include": [
+      "mod.ts",
+      "src/**/*.ts",
+      "README.md",
+      "LICENSE"
+    ],
+    "exclude": [
+      "**/*_test.ts",
+      "**/*.test.ts",
+      "**/*.bench.ts"
+    ]
+  },
+  "imports": {
+    "@modelcontextprotocol/sdk": "npm:@modelcontextprotocol/sdk@^1.11.0"
+  }
+}

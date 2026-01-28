@@ -72,6 +72,9 @@ export type {
   ResourceContent,
   McpUiToolMeta,
   MCPToolMeta,
+  // HTTP Server types
+  HttpServerOptions,
+  HttpServerInstance,
 } from "./src/types.ts";
 
 // MCP Apps constants

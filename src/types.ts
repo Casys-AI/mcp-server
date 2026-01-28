@@ -300,3 +300,38 @@ export interface QueueOptions {
   strategy: 'sleep' | 'queue' | 'reject';
   sleepMs: number;
 }
+
+// ============================================
+// HTTP Server Types
+// ============================================
+
+/**
+ * Options for starting an HTTP server
+ */
+export interface HttpServerOptions {
+  /** Port to listen on */
+  port: number;
+
+  /** Hostname to bind to (default: "0.0.0.0") */
+  hostname?: string;
+
+  /** Enable CORS (default: true) */
+  cors?: boolean;
+
+  /**
+   * Callback when server is ready
+   * @param info - Server address info
+   */
+  onListen?: (info: { hostname: string; port: number }) => void;
+}
+
+/**
+ * HTTP server instance returned by startHttp
+ */
+export interface HttpServerInstance {
+  /** Shutdown the HTTP server */
+  shutdown(): Promise<void>;
+
+  /** Server address info */
+  addr: { hostname: string; port: number };
+}

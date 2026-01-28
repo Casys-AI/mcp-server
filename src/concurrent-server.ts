@@ -16,6 +16,8 @@ import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { Hono } from "hono";
+import { cors } from "jsr:@hono/hono@^4/cors";
 import { RequestQueue } from "./request-queue.ts";
 import { SamplingBridge } from "./sampling-bridge.ts";
 import { RateLimiter } from "./rate-limiter.ts";
@@ -28,6 +30,7 @@ import type {
   RateLimitContext,
   MCPResource,
   ResourceHandler,
+  HttpServerOptions,
 } from "./types.ts";
 import { MCP_APP_MIME_TYPE, MCP_APP_URI_SCHEME } from "./types.ts";
 
@@ -435,10 +438,287 @@ export class ConcurrentMCPServer {
       this.samplingBridge.cancelAll();
     }
 
+    // Stop HTTP server if running
+    if (this.httpServer) {
+      await this.httpServer.shutdown();
+      this.httpServer = null;
+    }
+
     await this.mcpServer.server.close();
     this.started = false;
 
     this.log("Server stopped");
+  }
+
+  // ============================================
+  // HTTP Server Support
+  // ============================================
+
+  private httpServer: Deno.HttpServer | null = null;
+
+  /**
+   * Start the MCP server with HTTP transport (Streamable HTTP compatible)
+   *
+   * This creates an HTTP server that handles MCP JSON-RPC requests.
+   * Supports tools/list, tools/call, resources/list, resources/read.
+   *
+   * @param options - HTTP server options
+   * @returns Server instance with shutdown method
+   *
+   * @example
+   * ```typescript
+   * const server = new ConcurrentMCPServer({ name: "my-server", version: "1.0.0" });
+   * server.registerTools(tools, handlers);
+   * server.registerResource(resource, handler);
+   *
+   * const http = await server.startHttp({ port: 3000 });
+   * // Server running on http://localhost:3000
+   *
+   * // Later: await http.shutdown();
+   * ```
+   */
+  async startHttp(options: HttpServerOptions): Promise<{ shutdown: () => Promise<void>; addr: { hostname: string; port: number } }> {
+    if (this.started) {
+      throw new Error("Server already started");
+    }
+
+    const hostname = options.hostname ?? "0.0.0.0";
+    const enableCors = options.cors ?? true;
+
+    // Create Hono app
+    const app = new Hono();
+
+    // CORS middleware
+    if (enableCors) {
+      app.use("*", cors({
+        origin: "*",
+        allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
+        allowHeaders: ["Content-Type", "Accept", "mcp-session-id", "last-event-id"],
+        exposeHeaders: ["Content-Length", "mcp-session-id"],
+        maxAge: 600,
+      }));
+    }
+
+    // Health check endpoint
+    app.get("/health", (c) => c.json({ status: "ok", server: this.options.name, version: this.options.version }));
+
+    // MCP endpoint - GET returns 405 (Streamable HTTP spec)
+    app.get("/mcp", (c) => c.text("Method Not Allowed", 405));
+    app.get("/", (c) => c.text("Method Not Allowed", 405));
+
+    // MCP endpoint - POST handles JSON-RPC
+    const handleMcpPost = async (c: { req: { json: () => Promise<unknown> }; json: (data: unknown, status?: number) => Response }) => {
+      try {
+        const body = await c.req.json() as { id?: string | number; method?: string; params?: Record<string, unknown> };
+        const { id, method, params } = body;
+
+        // Initialize
+        if (method === "initialize") {
+          return c.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              protocolVersion: "2024-11-05",
+              capabilities: {
+                tools: {},
+                resources: this.resources.size > 0 ? {} : undefined,
+              },
+              serverInfo: {
+                name: this.options.name,
+                version: this.options.version,
+              },
+            },
+          });
+        }
+
+        // Tools list
+        if (method === "tools/list") {
+          return c.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              tools: Array.from(this.tools.values()).map((t) => ({
+                name: t.name,
+                description: t.description,
+                inputSchema: t.inputSchema,
+                _meta: t._meta,
+              })),
+            },
+          });
+        }
+
+        // Tools call
+        if (method === "tools/call" && params?.name) {
+          const toolName = params.name as string;
+          const args = (params.arguments as Record<string, unknown>) || {};
+
+          const tool = this.tools.get(toolName);
+          if (!tool) {
+            return c.json({
+              jsonrpc: "2.0",
+              id,
+              error: { code: -32602, message: `Unknown tool: ${toolName}` },
+            });
+          }
+
+          // Apply rate limiting if configured
+          if (this.rateLimiter && this.options.rateLimit) {
+            const context: RateLimitContext = { toolName, args };
+            const key = this.options.rateLimit.keyExtractor?.(context) ?? "default";
+
+            if (this.options.rateLimit.onLimitExceeded === "reject") {
+              if (!this.rateLimiter.checkLimit(key)) {
+                const waitTime = this.rateLimiter.getTimeUntilSlot(key);
+                return c.json({
+                  jsonrpc: "2.0",
+                  id,
+                  error: { code: -32000, message: `Rate limit exceeded. Retry after ${Math.ceil(waitTime / 1000)}s` },
+                });
+              }
+            } else {
+              await this.rateLimiter.waitForSlot(key);
+            }
+          }
+
+          // Validate arguments if schema validation is enabled
+          if (this.schemaValidator) {
+            try {
+              this.schemaValidator.validateOrThrow(toolName, args);
+            } catch (error) {
+              return c.json({
+                jsonrpc: "2.0",
+                id,
+                error: { code: -32602, message: error instanceof Error ? error.message : "Validation failed" },
+              });
+            }
+          }
+
+          // Apply backpressure
+          await this.requestQueue.acquire();
+
+          try {
+            const result = await tool.handler(args);
+            return c.json({
+              jsonrpc: "2.0",
+              id,
+              result: {
+                content: [{
+                  type: "text",
+                  text: typeof result === "string" ? result : JSON.stringify(result, null, 2),
+                }],
+              },
+            });
+          } catch (error) {
+            this.log(`Error executing tool ${toolName}: ${error instanceof Error ? error.message : String(error)}`);
+            return c.json({
+              jsonrpc: "2.0",
+              id,
+              error: { code: -32603, message: error instanceof Error ? error.message : "Tool execution failed" },
+            });
+          } finally {
+            this.requestQueue.release();
+          }
+        }
+
+        // Resources list
+        if (method === "resources/list") {
+          return c.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              resources: Array.from(this.resources.values()).map((r) => ({
+                uri: r.resource.uri,
+                name: r.resource.name,
+                description: r.resource.description,
+                mimeType: r.resource.mimeType ?? MCP_APP_MIME_TYPE,
+              })),
+            },
+          });
+        }
+
+        // Resources read
+        if (method === "resources/read" && params?.uri) {
+          const uri = params.uri as string;
+          const resourceInfo = this.resources.get(uri);
+
+          if (!resourceInfo) {
+            return c.json({
+              jsonrpc: "2.0",
+              id,
+              error: { code: -32602, message: `Resource not found: ${uri}` },
+            });
+          }
+
+          try {
+            const content = await resourceInfo.handler(new URL(uri));
+            return c.json({
+              jsonrpc: "2.0",
+              id,
+              result: { contents: [content] },
+            });
+          } catch (error) {
+            this.log(`Error reading resource ${uri}: ${error instanceof Error ? error.message : String(error)}`);
+            return c.json({
+              jsonrpc: "2.0",
+              id,
+              error: { code: -32603, message: error instanceof Error ? error.message : "Resource read failed" },
+            });
+          }
+        }
+
+        // Method not found
+        return c.json({
+          jsonrpc: "2.0",
+          id,
+          error: { code: -32601, message: `Method not found: ${method}` },
+        });
+      } catch (error) {
+        this.log(`HTTP request error: ${error instanceof Error ? error.message : String(error)}`);
+        return c.json({
+          jsonrpc: "2.0",
+          id: null,
+          error: { code: -32700, message: "Parse error" },
+        });
+      }
+    };
+
+    // deno-lint-ignore no-explicit-any
+    app.post("/mcp", handleMcpPost as any);
+    // deno-lint-ignore no-explicit-any
+    app.post("/", handleMcpPost as any);
+
+    // Start server
+    this.httpServer = Deno.serve(
+      {
+        port: options.port,
+        hostname,
+        onListen: options.onListen ?? ((info) => {
+          this.log(`HTTP server started on http://${info.hostname}:${info.port}`);
+        }),
+      },
+      app.fetch,
+    );
+
+    this.started = true;
+
+    const rateLimitInfo = this.options.rateLimit
+      ? `, rate limit: ${this.options.rateLimit.maxRequests}/${this.options.rateLimit.windowMs}ms`
+      : "";
+    const validationInfo = this.options.validateSchema ? ", schema validation: on" : "";
+
+    this.log(
+      `Server started HTTP mode (max concurrent: ${
+        this.options.maxConcurrent ?? 10
+      }, strategy: ${this.options.backpressureStrategy ?? "sleep"}${rateLimitInfo}${validationInfo})`,
+    );
+    this.log(`Tools available: ${this.tools.size}, Resources: ${this.resources.size}`);
+
+    return {
+      shutdown: async () => {
+        await this.stop();
+      },
+      addr: { hostname, port: options.port },
+    };
   }
 
   /**

@@ -83,6 +83,123 @@ export interface ConcurrentServerOptions {
   logger?: (msg: string) => void;
 }
 
+// ============================================
+// MCP Apps Types (SEP-1865)
+// ============================================
+
+/**
+ * MCP Apps UI metadata for tools (SEP-1865 + PML extensions)
+ *
+ * @example
+ * ```typescript
+ * const tool: MCPTool = {
+ *   name: "query_table",
+ *   description: "Query database table",
+ *   inputSchema: { ... },
+ *   _meta: {
+ *     ui: {
+ *       resourceUri: "ui://mcp-std/table-viewer",
+ *       emits: ["filter", "select"],
+ *       accepts: ["setData", "highlight"]
+ *     }
+ *   }
+ * };
+ * ```
+ */
+export interface McpUiToolMeta {
+  /**
+   * Resource URI for the UI. MUST use ui:// scheme.
+   * @example "ui://mcp-std/table-viewer"
+   */
+  resourceUri: string;
+
+  /**
+   * Visibility control: who can see/call this tool
+   * - "model": Only the AI model can see/call
+   * - "app": Only the UI app can call (hidden from model)
+   * - Default (both): Visible to model and app
+   */
+  visibility?: Array<"model" | "app">;
+
+  /**
+   * Events this UI can emit (PML extension for sync rules)
+   * Used by PML orchestrator to build cross-UI event routing
+   * @example ["filter", "select", "sort", "paginate"]
+   */
+  emits?: string[];
+
+  /**
+   * Events this UI can accept (PML extension for sync rules)
+   * Used by PML orchestrator to build cross-UI event routing
+   * @example ["setData", "highlight", "scrollTo"]
+   */
+  accepts?: string[];
+}
+
+/** MCP Tool metadata container */
+export interface MCPToolMeta {
+  ui?: McpUiToolMeta;
+}
+
+/**
+ * MCP Resource definition for registration
+ */
+export interface MCPResource {
+  /**
+   * Resource URI. SHOULD use ui:// scheme for MCP Apps.
+   * @example "ui://mcp-std/table-viewer"
+   */
+  uri: string;
+
+  /** Human-readable name */
+  name: string;
+
+  /** Description of the resource */
+  description?: string;
+
+  /** MIME type. Defaults to MCP_APP_MIME_TYPE if not specified */
+  mimeType?: string;
+}
+
+/**
+ * Content returned by a resource handler
+ */
+export interface ResourceContent {
+  /** URI of the resource (should match request) */
+  uri: string;
+  /** MIME type of the content */
+  mimeType: string;
+  /** The actual content (HTML for MCP Apps) */
+  text: string;
+}
+
+/**
+ * Resource handler callback
+ *
+ * @param uri - The requested resource URI as URL object
+ * @returns ResourceContent with uri, mimeType, and text
+ *
+ * @example
+ * ```typescript
+ * const handler: ResourceHandler = async (uri) => ({
+ *   uri: uri.toString(),
+ *   mimeType: MCP_APP_MIME_TYPE,
+ *   text: "<html>...</html>"
+ * });
+ * ```
+ */
+export type ResourceHandler = (uri: URL) => Promise<ResourceContent> | ResourceContent;
+
+/** MCP Apps MIME type constant */
+export const MCP_APP_MIME_TYPE = "text/html;profile=mcp-app" as const;
+
+/** URI scheme for MCP Apps resources */
+export const MCP_APP_URI_SCHEME = "ui:" as const;
+
+// ============================================
+// MCP Tool Types
+// ============================================
+
 /**
  * MCP Tool definition (compatible with MCP protocol)
  */
@@ -95,6 +212,12 @@ export interface MCPTool {
 
   /** JSON Schema for tool input */
   inputSchema: Record<string, unknown>;
+
+  /**
+   * Tool metadata including UI configuration for MCP Apps
+   * @see McpUiToolMeta
+   */
+  _meta?: MCPToolMeta;
 }
 
 /**

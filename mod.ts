@@ -66,4 +66,13 @@ export type {
   QueueOptions,
   RateLimitOptions,
   RateLimitContext,
+  // MCP Apps types (SEP-1865)
+  MCPResource,
+  ResourceHandler,
+  ResourceContent,
+  McpUiToolMeta,
+  MCPToolMeta,
 } from "./src/types.ts";
+
+// MCP Apps constants
+export { MCP_APP_MIME_TYPE, MCP_APP_URI_SCHEME } from "./src/types.ts";

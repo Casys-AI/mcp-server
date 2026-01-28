@@ -1,6 +1,6 @@
 {
   "name": "@casys/mcp-server",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "exports": {
     ".": "./mod.ts"
   },
@@ -18,7 +18,7 @@
     ]
   },
   "imports": {
-    "@modelcontextprotocol/sdk": "npm:@modelcontextprotocol/sdk@^1.11.0",
+    "@modelcontextprotocol/sdk": "npm:@modelcontextprotocol/sdk@^1.15.1",
     "ajv": "npm:ajv@^8.17.1"
   }
 }

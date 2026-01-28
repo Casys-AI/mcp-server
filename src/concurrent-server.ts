@@ -26,13 +26,24 @@ import type {
   ToolHandler,
   QueueMetrics,
   RateLimitContext,
+  MCPResource,
+  ResourceHandler,
 } from "./types.ts";
+import { MCP_APP_MIME_TYPE, MCP_APP_URI_SCHEME } from "./types.ts";
 
 /**
  * Tool definition with handler
  */
 interface ToolWithHandler extends MCPTool {
   handler: ToolHandler;
+}
+
+/**
+ * Internal tracking of registered resources
+ */
+interface RegisteredResourceInfo {
+  resource: MCPResource;
+  handler: ResourceHandler;
 }
 
 /**
@@ -66,6 +77,7 @@ export class ConcurrentMCPServer {
   private schemaValidator: SchemaValidator | null = null;
   private samplingBridge: SamplingBridge | null = null;
   private tools = new Map<string, ToolWithHandler>();
+  private resources = new Map<string, RegisteredResourceInfo>();
   private options: ConcurrentServerOptions;
   private started = false;
 
@@ -127,6 +139,7 @@ export class ConcurrentMCPServer {
           name: t.name,
           description: t.description,
           inputSchema: t.inputSchema,
+          _meta: t._meta, // Always include, even if undefined (MCP Apps discovery)
         })),
       };
     });
@@ -249,6 +262,140 @@ export class ConcurrentMCPServer {
     this.log(`Registered tool: ${tool.name}`);
   }
 
+  // ============================================
+  // Resource Registration (MCP Apps SEP-1865)
+  // ============================================
+
+  /**
+   * Validate resource URI scheme
+   * Logs warning if not using ui:// scheme (MCP Apps standard)
+   */
+  private validateResourceUri(uri: string): void {
+    if (!uri.startsWith(MCP_APP_URI_SCHEME)) {
+      this.log(
+        `[WARN] Resource URI "${uri}" does not use ${MCP_APP_URI_SCHEME} scheme. ` +
+          `MCP Apps standard requires ui:// URIs.`,
+      );
+    }
+  }
+
+  /**
+   * Register a single resource
+   *
+   * @param resource - Resource definition with uri, name, description
+   * @param handler - Callback that returns ResourceContent when resource is read
+   * @throws Error if resource with same URI already registered
+   *
+   * @example
+   * ```typescript
+   * server.registerResource(
+   *   { uri: "ui://my-server/viewer", name: "Viewer", description: "Data viewer" },
+   *   async (uri) => ({
+   *     uri: uri.toString(),
+   *     mimeType: MCP_APP_MIME_TYPE,
+   *     text: "<html>...</html>"
+   *   })
+   * );
+   * ```
+   */
+  registerResource(resource: MCPResource, handler: ResourceHandler): void {
+    // Validate URI scheme
+    this.validateResourceUri(resource.uri);
+
+    // Check for duplicate
+    if (this.resources.has(resource.uri)) {
+      throw new Error(
+        `[ConcurrentMCPServer] Resource already registered: ${resource.uri}`,
+      );
+    }
+
+    // Register with SDK - wraps our handler to SDK format
+    // SDK expects: { contents: ResourceContent[] }
+    // Our handler returns: ResourceContent
+    this.mcpServer.registerResource(
+      resource.name,
+      resource.uri,
+      {
+        description: resource.description,
+        mimeType: resource.mimeType ?? MCP_APP_MIME_TYPE,
+      },
+      async (uri: URL) => {
+        try {
+          const content = await handler(uri);
+          return { contents: [content] };
+        } catch (error) {
+          this.log(
+            `[ERROR] Resource handler failed for ${uri}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+          throw error;
+        }
+      },
+    );
+
+    // Track in our registry
+    this.resources.set(resource.uri, { resource, handler });
+
+    this.log(`Registered resource: ${resource.name} (${resource.uri})`);
+  }
+
+  /**
+   * Register multiple resources
+   *
+   * @param resources - Array of resource definitions
+   * @param handlers - Map of URI to handler function
+   * @throws Error if any resource is missing a handler (fail-fast)
+   */
+  registerResources(
+    resources: MCPResource[],
+    handlers: Map<string, ResourceHandler>,
+  ): void {
+    // Validate all handlers exist BEFORE registering any (fail-fast)
+    const missingHandlers: string[] = [];
+    for (const resource of resources) {
+      if (!handlers.has(resource.uri)) {
+        missingHandlers.push(resource.uri);
+      }
+    }
+
+    if (missingHandlers.length > 0) {
+      throw new Error(
+        `[ConcurrentMCPServer] Missing handlers for resources:\n` +
+          missingHandlers.map((uri) => `  - ${uri}`).join("\n"),
+      );
+    }
+
+    // Validate no duplicates exist BEFORE registering any (atomic behavior)
+    const duplicateUris: string[] = [];
+    for (const resource of resources) {
+      if (this.resources.has(resource.uri)) {
+        duplicateUris.push(resource.uri);
+      }
+    }
+
+    if (duplicateUris.length > 0) {
+      throw new Error(
+        `[ConcurrentMCPServer] Resources already registered:\n` +
+          duplicateUris.map((uri) => `  - ${uri}`).join("\n"),
+      );
+    }
+
+    // All validations passed, register resources
+    for (const resource of resources) {
+      const handler = handlers.get(resource.uri);
+      if (!handler) {
+        // Should never happen after validation, but defensive check
+        throw new Error(
+          `[ConcurrentMCPServer] Handler disappeared for ${resource.uri}`,
+        );
+      }
+      this.registerResource(resource, handler);
+    }
+
+    this.log(`Registered ${resources.length} resources`);
+  }
+
   /**
    * Start the MCP server with stdio transport
    */
@@ -348,6 +495,38 @@ export class ConcurrentMCPServer {
    */
   getToolNames(): string[] {
     return Array.from(this.tools.keys());
+  }
+
+  // ============================================
+  // Resource Introspection (MCP Apps)
+  // ============================================
+
+  /**
+   * Get number of registered resources
+   */
+  getResourceCount(): number {
+    return this.resources.size;
+  }
+
+  /**
+   * Get registered resource URIs
+   */
+  getResourceUris(): string[] {
+    return Array.from(this.resources.keys());
+  }
+
+  /**
+   * Check if a resource is registered
+   */
+  hasResource(uri: string): boolean {
+    return this.resources.has(uri);
+  }
+
+  /**
+   * Get resource info by URI (for testing/debugging)
+   */
+  getResourceInfo(uri: string): MCPResource | undefined {
+    return this.resources.get(uri)?.resource;
   }
 
   /**

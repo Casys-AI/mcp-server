@@ -11,7 +11,7 @@
  * @module lib/server/src/resource-registration_test
  */
 
-import { assertEquals, assertThrows } from "jsr:@std/assert";
+import { assertEquals, assertThrows } from "@std/assert";
 import { ConcurrentMCPServer } from "./concurrent-server.ts";
 import type { MCPResource, ResourceHandler } from "./types.ts";
 import { MCP_APP_MIME_TYPE } from "./types.ts";
@@ -94,7 +94,11 @@ Deno.test("registerResources - throws if duplicate exists (atomic, no partial re
   // Pre-register one resource
   server.registerResource(
     { uri: "ui://test/existing", name: "Existing" },
-    () => ({ uri: "ui://test/existing", mimeType: MCP_APP_MIME_TYPE, text: "" }),
+    () => ({
+      uri: "ui://test/existing",
+      mimeType: MCP_APP_MIME_TYPE,
+      text: "",
+    }),
   );
 
   // Try to batch register including the duplicate
@@ -104,9 +108,22 @@ Deno.test("registerResources - throws if duplicate exists (atomic, no partial re
     { uri: "ui://test/new-b", name: "New B" },
   ];
   const handlers = new Map<string, ResourceHandler>([
-    ["ui://test/new-a", () => ({ uri: "ui://test/new-a", mimeType: MCP_APP_MIME_TYPE, text: "" })],
-    ["ui://test/existing", () => ({ uri: "ui://test/existing", mimeType: MCP_APP_MIME_TYPE, text: "" })],
-    ["ui://test/new-b", () => ({ uri: "ui://test/new-b", mimeType: MCP_APP_MIME_TYPE, text: "" })],
+    [
+      "ui://test/new-a",
+      () => ({ uri: "ui://test/new-a", mimeType: MCP_APP_MIME_TYPE, text: "" }),
+    ],
+    [
+      "ui://test/existing",
+      () => ({
+        uri: "ui://test/existing",
+        mimeType: MCP_APP_MIME_TYPE,
+        text: "",
+      }),
+    ],
+    [
+      "ui://test/new-b",
+      () => ({ uri: "ui://test/new-b", mimeType: MCP_APP_MIME_TYPE, text: "" }),
+    ],
   ]);
 
   assertThrows(
@@ -189,10 +206,10 @@ Deno.test("registerResource - handles URI edge cases (trailing slash, query para
 
   // Test various URI formats
   const uriVariants = [
-    "ui://test/path/",          // trailing slash
-    "ui://test/path?query=1",   // query params
-    "ui://test/path#anchor",    // anchor
-    "ui://test/path%20space",   // encoded space
+    "ui://test/path/", // trailing slash
+    "ui://test/path?query=1", // query params
+    "ui://test/path#anchor", // anchor
+    "ui://test/path%20space", // encoded space
   ];
 
   for (const uri of uriVariants) {

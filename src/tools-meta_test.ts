@@ -9,7 +9,7 @@
  * @module lib/server/src/tools-meta_test
  */
 
-import { assertEquals } from "jsr:@std/assert";
+import { assertEquals } from "@std/assert";
 import { ConcurrentMCPServer } from "./concurrent-server.ts";
 import type { MCPTool } from "./types.ts";
 

@@ -77,10 +77,10 @@ export class SchemaValidator {
 
   constructor() {
     this.ajv = new Ajv({
-      allErrors: true,      // Report all errors, not just first
-      strict: false,        // Allow additional keywords
-      useDefaults: true,    // Apply default values
-      coerceTypes: false,   // Don't coerce types (strict validation)
+      allErrors: true, // Report all errors, not just first
+      strict: false, // Allow additional keywords
+      useDefaults: true, // Apply default values
+      coerceTypes: false, // Don't coerce types (strict validation)
     });
   }
 
@@ -172,7 +172,9 @@ export class SchemaValidator {
           break;
 
         case "enum":
-          message = `Property ${path} must be one of: ${param.allowedValues?.join(", ")}`;
+          message = `Property ${path} must be one of: ${
+            param.allowedValues?.join(", ")
+          }`;
           expected = param.allowedValues?.join(" | ");
           break;
 
@@ -187,12 +189,14 @@ export class SchemaValidator {
           break;
 
         case "minLength":
-          message = `Property ${path} must have at least ${param.limit} characters`;
+          message =
+            `Property ${path} must have at least ${param.limit} characters`;
           expected = `length >= ${param.limit}`;
           break;
 
         case "maxLength":
-          message = `Property ${path} must have at most ${param.limit} characters`;
+          message =
+            `Property ${path} must have at most ${param.limit} characters`;
           expected = `length <= ${param.limit}`;
           break;
 

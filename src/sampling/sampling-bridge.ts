@@ -8,7 +8,12 @@
  * @module lib/server/sampling-bridge
  */
 
-import type { SamplingClient, SamplingParams, SamplingResult, PromiseResolver } from "./types.ts";
+import type {
+  PromiseResolver,
+  SamplingClient,
+  SamplingParams,
+  SamplingResult,
+} from "../types.ts";
 
 /**
  * SamplingBridge manages bidirectional sampling requests
@@ -52,7 +57,7 @@ export class SamplingBridge {
    */
   async requestSampling(
     params: SamplingParams,
-    timeout?: number
+    timeout?: number,
   ): Promise<SamplingResult> {
     const id = this.nextId++;
     const timeoutMs = timeout ?? this.defaultTimeout;
@@ -62,7 +67,9 @@ export class SamplingBridge {
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutId = setTimeout(() => {
         this.pendingRequests.delete(id);
-        reject(new Error(`Sampling request ${id} timed out after ${timeoutMs}ms`));
+        reject(
+          new Error(`Sampling request ${id} timed out after ${timeoutMs}ms`),
+        );
       }, timeoutMs);
     });
 
@@ -76,7 +83,7 @@ export class SamplingBridge {
       // Also race with external response via handleResponse()
       const clientPromise = this.samplingClient.createMessage(params);
       const result = await Promise.race([
-        clientPromise.then(r => {
+        clientPromise.then((r) => {
           // Resolve the pending request tracker as well
           const pending = this.pendingRequests.get(id);
           if (pending) {
@@ -115,7 +122,9 @@ export class SamplingBridge {
     const pending = this.pendingRequests.get(id);
 
     if (!pending) {
-      console.error(`[SamplingBridge] Received response for unknown request: ${id}`);
+      console.error(
+        `[SamplingBridge] Received response for unknown request: ${id}`,
+      );
       return;
     }
 
@@ -133,7 +142,9 @@ export class SamplingBridge {
     const pending = this.pendingRequests.get(id);
 
     if (!pending) {
-      console.error(`[SamplingBridge] Received error for unknown request: ${id}`);
+      console.error(
+        `[SamplingBridge] Received error for unknown request: ${id}`,
+      );
       return;
     }
 
@@ -153,7 +164,9 @@ export class SamplingBridge {
    */
   cancelAll(): void {
     for (const [id, pending] of this.pendingRequests.entries()) {
-      pending.reject(new Error(`Sampling request ${id} cancelled (server shutdown)`));
+      pending.reject(
+        new Error(`Sampling request ${id} cancelled (server shutdown)`),
+      );
     }
     this.pendingRequests.clear();
   }

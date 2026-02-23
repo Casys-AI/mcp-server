@@ -2,7 +2,7 @@
  * Unit tests for SchemaValidator
  */
 
-import { assertEquals, assertThrows } from "jsr:@std/assert";
+import { assertEquals, assertThrows } from "@std/assert";
 import { SchemaValidator } from "./schema-validator.ts";
 
 Deno.test("SchemaValidator - validates correct arguments", () => {

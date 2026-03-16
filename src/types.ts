@@ -7,6 +7,8 @@
  * @module lib/server/types
  */
 
+import type { McpUiToolMeta as McpUiToolMetaBase } from "@casys/mcp-compose/core";
+
 /**
  * Rate limit configuration
  */
@@ -122,6 +124,10 @@ export interface ConcurrentServerOptions {
 /**
  * MCP Apps UI metadata for tools (SEP-1865 + PML extensions)
  *
+ * Extends the base `McpUiToolMeta` from mcp-compose/core with
+ * PML-specific `emits`/`accepts` fields for cross-UI sync rules.
+ * The server DECLARES capabilities; mcp-compose OWNS the contract.
+ *
  * @example
  * ```typescript
  * const tool: MCPTool = {
@@ -138,20 +144,13 @@ export interface ConcurrentServerOptions {
  * };
  * ```
  */
-export interface McpUiToolMeta {
+export interface McpUiToolMeta extends McpUiToolMetaBase {
   /**
    * Resource URI for the UI. MUST use ui:// scheme.
+   * Narrows the optional base field to required for server tools.
    * @example "ui://mcp-std/table-viewer"
    */
   resourceUri: string;
-
-  /**
-   * Visibility control: who can see/call this tool
-   * - "model": Only the AI model can see/call
-   * - "app": Only the UI app can call (hidden from model)
-   * - Default (both): Visible to model and app
-   */
-  visibility?: Array<"model" | "app">;
 
   /**
    * Events this UI can emit (PML extension for sync rules)

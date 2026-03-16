@@ -33,8 +33,8 @@ cp "$ROOT_DIR/mod.ts" "$DIST_DIR/mod.ts"
 find "$DIST_DIR" -name "*_test.ts" -o -name "*.test.ts" -o -name "*.bench.ts" | xargs rm -f
 
 # Replace runtime.ts with runtime.node.ts
-cp "$DIST_DIR/src/runtime.node.ts" "$DIST_DIR/src/runtime.ts"
-rm "$DIST_DIR/src/runtime.node.ts"
+cp "$DIST_DIR/src/runtime/runtime.node.ts" "$DIST_DIR/src/runtime/runtime.ts"
+rm "$DIST_DIR/src/runtime/runtime.node.ts"
 
 # Remap Deno-ecosystem imports to npm equivalents
 # @std/yaml → yaml (npm yaml package has same parse() API)
@@ -47,11 +47,15 @@ find "$DIST_DIR" -name "*.ts" -exec sed -i \
   -e 's/import("\(\.[^"]*\)\.ts")/import("\1.js")/g' \
   {} +
 
+# Read version from deno.json
+VERSION=$(grep '"version"' "$ROOT_DIR/deno.json" | sed 's/.*"version": *"\([^"]*\)".*/\1/')
+echo "[build-node] Version: $VERSION"
+
 # Generate package.json
-cat > "$DIST_DIR/package.json" <<'PKGJSON'
+cat > "$DIST_DIR/package.json" <<PKGJSON
 {
   "name": "@casys/mcp-server",
-  "version": "0.7.0",
+  "version": "$VERSION",
   "description": "Production-ready MCP server framework with concurrency control, auth, and observability",
   "type": "module",
   "main": "mod.ts",
@@ -75,9 +79,16 @@ cat > "$DIST_DIR/package.json" <<'PKGJSON'
   "engines": {
     "node": ">=20.0.0"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Casys-AI/mcp-server"
+  },
   "license": "MIT"
 }
 PKGJSON
+
+# Copy README for npm
+cp "$ROOT_DIR/README.md" "$DIST_DIR/README.md" 2>/dev/null || true
 
 echo "[build-node] Done! Output: $DIST_DIR"
 echo ""

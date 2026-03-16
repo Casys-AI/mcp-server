@@ -82,8 +82,16 @@ export type {
   ToolHandler,
 } from "./src/types.ts";
 
-// MCP Apps constants
+// MCP Apps constants & viewer utilities
 export { MCP_APP_MIME_TYPE } from "./src/types.ts";
+export type {
+  RegisterViewersConfig,
+  RegisterViewersSummary,
+} from "./src/concurrent-server.ts";
+export {
+  resolveViewerDistPath,
+  discoverViewers,
+} from "./src/ui/viewer-utils.ts";
 
 // Middleware pipeline
 export type {

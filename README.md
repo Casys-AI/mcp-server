@@ -1,5 +1,6 @@
 # @casys/mcp-server
 
+[![npm](https://img.shields.io/npm/v/@casys/mcp-server)](https://www.npmjs.com/package/@casys/mcp-server)
 [![JSR](https://jsr.io/badges/@casys/mcp-server)](https://jsr.io/@casys/mcp-server)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -36,11 +37,11 @@ The official SDK gives you the protocol. This framework gives you the production
 ## Install
 
 ```bash
+# npm
+npm install @casys/mcp-server
+
 # Deno
 deno add jsr:@casys/mcp-server
-
-# npm (via JSR)
-npx jsr add @casys/mcp-server
 ```
 
 ---

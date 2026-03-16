@@ -1,6 +1,6 @@
 {
   "name": "@casys/mcp-server",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "license": "MIT",
   "exports": {
     ".": "./mod.ts"
@@ -22,6 +22,7 @@
     "hono/cors": "npm:hono@^4/cors",
     "jose": "npm:jose@^6.0.0",
     "@opentelemetry/api": "npm:@opentelemetry/api@^1.9.0",
-    "@std/yaml": "jsr:@std/yaml@^1"
+    "@std/yaml": "jsr:@std/yaml@^1",
+    "@casys/mcp-compose/core": "../mcp-compose/src/core/mod.ts"
   }
 }

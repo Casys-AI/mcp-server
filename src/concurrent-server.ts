@@ -56,6 +56,8 @@ import type {
   ToolHandler,
 } from "./types.ts";
 import { MCP_APP_MIME_TYPE, MCP_APP_URI_SCHEME } from "./types.ts";
+import { resolveViewerDistPath, discoverViewers } from "./ui/viewer-utils.ts";
+import type { DirEntry, DiscoverViewersFS } from "./ui/viewer-utils.ts";
 import { buildCspHeader, injectCspMetaTag } from "./security/csp.ts";
 import { ServerMetrics } from "./observability/metrics.ts";
 import { endToolCallSpan, startToolCallSpan } from "./observability/otel.ts";
@@ -800,6 +802,75 @@ export class ConcurrentMCPServer {
     }
 
     this.log(`Registered ${resources.length} resources`);
+  }
+
+  /**
+   * Register MCP Apps viewers with automatic dist path resolution.
+   *
+   * Replaces the manual pattern of: enumerate viewers → resolve paths → register resources.
+   * Each viewer gets a `ui://{prefix}/{viewerName}` resource URI.
+   *
+   * Viewers whose dist is not found are skipped with a warning (not an error),
+   * so that the server can start in dev without building UIs first.
+   *
+   * @returns Summary of registered and skipped viewers
+   */
+  registerViewers(config: RegisterViewersConfig): RegisterViewersSummary {
+    if (!config.prefix) {
+      throw new Error("[ConcurrentMCPServer] registerViewers: prefix is required");
+    }
+
+    // Resolve viewer list: explicit or auto-discovered
+    let viewerNames: string[];
+    if (config.viewers) {
+      viewerNames = config.viewers;
+    } else if (config.discover) {
+      viewerNames = discoverViewers(config.discover.uiDir, config.discover);
+    } else {
+      viewerNames = [];
+    }
+
+    const humanNameFn = config.humanName ?? defaultHumanName;
+    const registered: string[] = [];
+    const skipped: string[] = [];
+
+    for (const viewerName of viewerNames) {
+      const distPath = resolveViewerDistPath(config.moduleUrl, viewerName, config.exists);
+
+      if (!distPath) {
+        this.log(
+          `Warning: UI not built for ui://${config.prefix}/${viewerName}. ` +
+            `Run the UI build step first.`,
+        );
+        skipped.push(viewerName);
+        continue;
+      }
+
+      const resourceUri = `ui://${config.prefix}/${viewerName}`;
+      const readFile = config.readFile;
+      const currentDistPath = distPath;
+
+      this.registerResource(
+        {
+          uri: resourceUri,
+          name: humanNameFn(viewerName),
+          description: `MCP App: ${viewerName}`,
+          mimeType: MCP_APP_MIME_TYPE,
+        },
+        async () => {
+          const html = await Promise.resolve(readFile(currentDistPath));
+          return { uri: resourceUri, mimeType: MCP_APP_MIME_TYPE, text: html };
+        },
+      );
+
+      registered.push(viewerName);
+    }
+
+    if (registered.length > 0) {
+      this.log(`Registered ${registered.length} viewer(s): ${registered.join(", ")}`);
+    }
+
+    return { registered, skipped };
   }
 
   /**
@@ -1548,6 +1619,24 @@ export class ConcurrentMCPServer {
           }
         }
 
+        // MCP protocol methods we don't implement — return empty results
+        if (method === "ping") {
+          return c.json({ jsonrpc: "2.0", id, result: {} });
+        }
+        if (method === "prompts/list") {
+          return c.json({ jsonrpc: "2.0", id, result: { prompts: [] } });
+        }
+        if (method === "logging/setLevel") {
+          return c.json({ jsonrpc: "2.0", id, result: {} });
+        }
+        if (method === "completion/complete") {
+          return c.json({
+            jsonrpc: "2.0",
+            id,
+            result: { completion: { values: [] } },
+          });
+        }
+
         // Handle notifications: must have a method and no id (JSON-RPC 2.0 notification)
         if (method && !id) {
           return new Response(null, { status: 202 });
@@ -1896,4 +1985,40 @@ export class ConcurrentMCPServer {
       console.error(`[${this.options.name}] ${msg}`);
     }
   }
+}
+
+// ── registerViewers types ──────────────────────────────────────────
+
+/** Configuration for registerViewers() */
+export interface RegisterViewersConfig {
+  /** URI prefix — viewers get `ui://{prefix}/{viewerName}` */
+  prefix: string;
+  /** import.meta.url of the consumer's server.ts (for resolving dist paths) */
+  moduleUrl: string;
+  /** Check if a filesystem path exists */
+  exists: (path: string) => boolean;
+  /** Read a file and return its content as string */
+  readFile: (path: string) => string | Promise<string>;
+  /** Explicit list of viewer names. If omitted, use `discover`. */
+  viewers?: string[];
+  /** Auto-discover viewers by scanning a directory */
+  discover?: {
+    uiDir: string;
+  } & DiscoverViewersFS;
+  /** Custom function to generate human-readable names. Default: kebab-to-Title. */
+  humanName?: (viewerName: string) => string;
+}
+
+/** Summary returned by registerViewers() */
+export interface RegisterViewersSummary {
+  registered: string[];
+  skipped: string[];
+}
+
+/** Default: "invoice-viewer" → "Invoice Viewer" */
+function defaultHumanName(name: string): string {
+  return name
+    .split("-")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
 }

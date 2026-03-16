@@ -22,7 +22,6 @@
     "hono/cors": "npm:hono@^4/cors",
     "jose": "npm:jose@^6.0.0",
     "@opentelemetry/api": "npm:@opentelemetry/api@^1.9.0",
-    "@std/yaml": "jsr:@std/yaml@^1",
-    "@casys/mcp-compose/core": "../mcp-compose/src/core/mod.ts"
+    "@std/yaml": "jsr:@std/yaml@^1"
   }
 }

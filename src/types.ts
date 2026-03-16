@@ -7,13 +7,7 @@
  * @module lib/server/types
  */
 
-/** Base MCP Apps UI metadata (SEP-1865) — inlined from mcp-compose/core */
-interface McpUiToolMetaBase {
-  /** URI of the UI resource to display. */
-  resourceUri?: string;
-  /** Visibility settings: `"model"` (LLM), `"app"` (user). */
-  visibility?: Array<"model" | "app">;
-}
+import type { McpUiToolMeta as McpUiToolMetaBase } from "@casys/mcp-compose/core";
 
 /**
  * Rate limit configuration

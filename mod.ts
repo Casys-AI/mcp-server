@@ -167,3 +167,7 @@ export type {
   ServeHandle,
   ServeOptions,
 } from "./src/runtime/types.ts";
+
+// Inspector — launch the MCP Inspector for interactive debugging
+export { launchInspector } from "./src/inspector/launcher.ts";
+export type { InspectorOptions } from "./src/inspector/launcher.ts";

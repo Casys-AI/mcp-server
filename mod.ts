@@ -93,19 +93,6 @@ export {
   discoverViewers,
 } from "./src/ui/viewer-utils.ts";
 
-// MCP Compose — UI composition helpers (re-exported from @casys/mcp-compose)
-export { composeEvents, COMPOSE_EVENT_METHOD, uiMeta } from "@casys/mcp-compose/sdk";
-export type {
-  ComposeEventHandler,
-  ComposeEventPayload,
-  ComposeEvents,
-  ComposeSource,
-  ComposeTarget,
-  UiMetaOptions,
-  UiMetaResult,
-  UiMetaUi,
-} from "@casys/mcp-compose/sdk";
-
 // Middleware pipeline
 export type {
   Middleware,

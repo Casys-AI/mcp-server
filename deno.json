@@ -1,6 +1,6 @@
 {
   "name": "@casys/mcp-server",
-  "version": "0.9.2",
+  "version": "0.10.0",
   "license": "MIT",
   "exports": {
     ".": "./mod.ts"
@@ -15,8 +15,10 @@
     "test:http": "deno test --allow-net --allow-read --allow-env --no-check src/http-server_test.ts src/http-security_test.ts"
   },
   "imports": {
-    "@casys/mcp-compose": "jsr:@casys/mcp-compose@^0.1.0",
-    "@modelcontextprotocol/sdk": "npm:@modelcontextprotocol/sdk@^1.15.1",
+    "@casys/mcp-compose": "jsr:@casys/mcp-compose@^0.2.0",
+    "@casys/mcp-compose/sdk": "jsr:@casys/mcp-compose@^0.2.0/sdk",
+    "@casys/mcp-compose/core": "jsr:@casys/mcp-compose@^0.2.0/core",
+    "@modelcontextprotocol/sdk": "npm:@modelcontextprotocol/sdk@^1.27.0",
     "@std/assert": "jsr:@std/assert@^1",
     "ajv": "npm:ajv@^8.17.1",
     "hono": "npm:hono@^4",

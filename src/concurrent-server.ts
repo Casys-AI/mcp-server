@@ -859,7 +859,15 @@ export class ConcurrentMCPServer {
         },
         async () => {
           const html = await Promise.resolve(readFile(currentDistPath));
-          return { uri: resourceUri, mimeType: MCP_APP_MIME_TYPE, text: html };
+          const content: import("./types.ts").ResourceContent = {
+            uri: resourceUri,
+            mimeType: MCP_APP_MIME_TYPE,
+            text: html,
+          };
+          if (config.csp) {
+            (content as unknown as Record<string, unknown>)._meta = { ui: { csp: config.csp } };
+          }
+          return content;
         },
       );
 
@@ -2007,6 +2015,9 @@ export interface RegisterViewersConfig {
   } & DiscoverViewersFS;
   /** Custom function to generate human-readable names. Default: kebab-to-Title. */
   humanName?: (viewerName: string) => string;
+  /** MCP Apps CSP — declares external domains the viewer needs (tiles, APIs, CDNs).
+   *  Uses McpUiCsp from @casys/mcp-compose (resourceDomains, connectDomains). */
+  csp?: { resourceDomains?: string[]; connectDomains?: string[]; frameDomains?: string[] };
 }
 
 /** Summary returned by registerViewers() */

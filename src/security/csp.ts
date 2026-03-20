@@ -13,6 +13,8 @@ export interface CspOptions {
   readonly scriptSources?: readonly string[];
   /** Additional allowed connect sources (e.g. WebSocket endpoints). */
   readonly connectSources?: readonly string[];
+  /** Additional allowed image sources (e.g. tile servers). */
+  readonly imgSources?: readonly string[];
   /** Additional allowed frame ancestors. */
   readonly frameAncestors?: readonly string[];
   /**
@@ -49,7 +51,7 @@ export function buildCspHeader(options: CspOptions = {}): string {
     `default-src 'none'`,
     `script-src ${scriptSrc}`,
     `style-src 'self'${inlineDirective}`,
-    `img-src 'self' data:`,
+    `img-src 'self' data: ${(options.imgSources ?? []).join(" ")}`.trim(),
     `font-src 'self'`,
     `connect-src ${connectSrc}`,
     `frame-ancestors ${frameAncestors}`,

@@ -4,7 +4,8 @@
     "jsr:@std/assert@1": "1.0.19",
     "jsr:@std/internal@^1.0.12": "1.0.12",
     "jsr:@std/yaml@1": "1.0.12",
-    "npm:@modelcontextprotocol/sdk@^1.27.0": "1.27.1_zod@4.3.6",
+    "npm:@modelcontextprotocol/sdk@1.27.0": "1.27.0_zod@4.3.6",
+    "npm:@modelcontextprotocol/sdk@^1.27.0": "1.27.0_zod@4.3.6",
     "npm:@opentelemetry/api@^1.9.0": "1.9.0",
     "npm:ajv@^8.17.1": "8.18.0",
     "npm:hono@4": "4.12.8",
@@ -31,8 +32,8 @@
         "hono"
       ]
     },
-    "@modelcontextprotocol/sdk@1.27.1_zod@4.3.6": {
-      "integrity": "sha512-sr6GbP+4edBwFndLbM60gf07z0FQ79gaExpnsjMGePXqFcSSb7t6iscpjk9DhFhwd+mTEQrzNafGP8/iGGFYaA==",
+    "@modelcontextprotocol/sdk@1.27.0_zod@4.3.6": {
+      "integrity": "sha512-qOdO524oPMkUsOJTrsH9vz/HN3B5pKyW+9zIW51A9kDMVe7ON70drz1ouoyoyOcfzc+oxhkQ6jWmbyKnlWmYqA==",
       "dependencies": [
         "@hono/node-server",
         "ajv",

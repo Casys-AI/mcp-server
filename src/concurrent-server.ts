@@ -53,6 +53,7 @@ import type {
   QueueMetrics,
   ResourceContent,
   ResourceHandler,
+  StructuredToolResult,
   ToolHandler,
 } from "./types.ts";
 import { MCP_APP_MIME_TYPE, MCP_APP_URI_SCHEME } from "./types.ts";
@@ -234,6 +235,7 @@ export class ConcurrentMCPServer {
         capabilities: {
           tools: {},
         },
+        instructions: options.instructions,
       },
     );
 
@@ -336,14 +338,7 @@ export class ConcurrentMCPServer {
 
     // tools/list handler
     server.setRequestHandler(ListToolsRequestSchema, () => {
-      return {
-        tools: Array.from(this.tools.values()).map((t) => ({
-          name: t.name,
-          description: t.description,
-          inputSchema: t.inputSchema,
-          _meta: t._meta, // Always include, even if undefined (MCP Apps discovery)
-        })),
-      };
+      return { tools: this.buildToolListing() };
     });
 
     // tools/call handler (delegates to middleware pipeline)
@@ -351,43 +346,15 @@ export class ConcurrentMCPServer {
       const toolName = request.params.name;
       const args = request.params.arguments || {};
 
+      let result: unknown;
       try {
-        const result = await this.executeToolCall(toolName, args);
-
-        // If handler returns a pre-formatted MCP result (has content array),
-        // pass it through without re-wrapping. This supports proxy/gateway
-        // patterns where the handler builds the complete response.
-        if (this.isPreformattedResult(result)) {
-          return result;
-        }
-
-        // Format response according to MCP protocol
-        const tool = this.tools.get(toolName);
-        const response: {
-          content: Array<{ type: "text"; text: string }>;
-          _meta?: Record<string, unknown>;
-        } = {
-          content: [
-            {
-              type: "text",
-              text: typeof result === "string"
-                ? result
-                : JSON.stringify(result, null, 2),
-            },
-          ],
-        };
-        if (tool?._meta) {
-          response._meta = tool._meta as Record<string, unknown>;
-        }
-        return response;
+        result = await this.executeToolCall(toolName, args);
       } catch (error) {
-        this.log(
-          `Error executing tool ${request.params.name}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-        throw error;
+        return this.handleToolError(error, toolName);
       }
+
+      // Serialization errors are framework bugs, not tool errors — let them propagate
+      return this.buildToolCallResult(toolName, result);
     });
   }
 
@@ -476,6 +443,30 @@ export class ConcurrentMCPServer {
     }
 
     this.log(`Live-registered tool: ${tool.name} (total: ${this.tools.size})`);
+  }
+
+  /**
+   * Register a tool that is only visible to the MCP App (UI layer),
+   * not to the model via tools/list.
+   *
+   * Equivalent to registerTool() with _meta.ui.visibility: ["app"].
+   * The tool is still callable via tools/call if the caller knows its name.
+   *
+   * @param tool - Tool definition
+   * @param handler - Tool handler function
+   */
+  registerAppOnlyTool(tool: MCPTool, handler: ToolHandler): void {
+    const merged: MCPTool = {
+      ...tool,
+      _meta: {
+        ...tool._meta,
+        ui: {
+          ...tool._meta?.ui,
+          visibility: ["app"],
+        },
+      } as MCPTool["_meta"],
+    };
+    this.registerTool(merged, handler);
   }
 
   /**
@@ -1451,6 +1442,7 @@ export class ConcurrentMCPServer {
                   name: this.options.name,
                   version: this.options.version,
                 },
+                ...(this.options.instructions ? { instructions: this.options.instructions } : {}),
               },
             }),
             {
@@ -1488,29 +1480,10 @@ export class ConcurrentMCPServer {
               c.req.raw,
               reqSessionId,
             );
-
-            // Pre-formatted result: pass through as-is
-            if (this.isPreformattedResult(result)) {
-              return c.json({
-                jsonrpc: "2.0",
-                id,
-                result,
-              });
-            }
-
-            const tool = this.tools.get(toolName);
             return c.json({
               jsonrpc: "2.0",
               id,
-              result: {
-                content: [{
-                  type: "text",
-                  text: typeof result === "string"
-                    ? result
-                    : JSON.stringify(result, null, 2),
-                }],
-                ...(tool?._meta && { _meta: tool._meta }),
-              },
+              result: this.buildToolCallResult(toolName, result),
             });
           } catch (error) {
             // Handle AuthError with proper HTTP status codes
@@ -1529,24 +1502,34 @@ export class ConcurrentMCPServer {
               }
             }
 
-            this.log(
-              `Error executing tool ${toolName}: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-            );
-            const errorMessage = error instanceof Error
-              ? error.message
-              : "Tool execution failed";
-            const errorCode = errorMessage.startsWith("Unknown tool")
-              ? -32602
-              : errorMessage.startsWith("Rate limit")
-              ? -32000
-              : -32603;
-            return c.json({
-              jsonrpc: "2.0",
-              id,
-              error: { code: errorCode, message: errorMessage },
-            });
+            // Delegate to centralized error handler
+            try {
+              const isErrorResult = this.handleToolError(error, toolName);
+              return c.json({
+                jsonrpc: "2.0",
+                id,
+                result: isErrorResult,
+              });
+            } catch (rethrown) {
+              this.log(
+                `Error executing tool ${toolName}: ${
+                  rethrown instanceof Error ? rethrown.message : String(rethrown)
+                }`,
+              );
+              const errorMessage = rethrown instanceof Error
+                ? rethrown.message
+                : "Tool execution failed";
+              const errorCode = errorMessage.startsWith("Unknown tool")
+                ? -32602
+                : errorMessage.startsWith("Rate limit")
+                ? -32000
+                : -32603;
+              return c.json({
+                jsonrpc: "2.0",
+                id,
+                error: { code: errorCode, message: errorMessage },
+              });
+            }
           }
         }
 
@@ -1560,14 +1543,7 @@ export class ConcurrentMCPServer {
           return c.json({
             jsonrpc: "2.0",
             id,
-            result: {
-              tools: Array.from(this.tools.values()).map((t) => ({
-                name: t.name,
-                description: t.description,
-                inputSchema: t.inputSchema,
-                _meta: t._meta,
-              })),
-            },
+            result: { tools: this.buildToolListing() },
           });
         }
 
@@ -1981,6 +1957,127 @@ export class ConcurrentMCPServer {
       obj.content[0] !== null &&
       "type" in obj.content[0] &&
       "text" in obj.content[0];
+  }
+
+  /**
+   * Build the tools/list response, filtering out app-only tools
+   * and passing through outputSchema/annotations when defined.
+   */
+  private buildToolListing(): Array<Record<string, unknown>> {
+    return Array.from(this.tools.values())
+      .filter((t) => {
+        const vis = t._meta?.ui?.visibility;
+        if (vis !== undefined && !vis.includes("model")) return false;
+        return true;
+      })
+      .map((t) => {
+        const entry: Record<string, unknown> = {
+          name: t.name,
+          description: t.description,
+          inputSchema: t.inputSchema,
+          _meta: t._meta,
+        };
+        if (t.outputSchema !== undefined) entry.outputSchema = t.outputSchema;
+        if (t.annotations !== undefined) entry.annotations = t.annotations;
+        return entry;
+      });
+  }
+
+  /**
+   * Check if a handler result is a StructuredToolResult
+   * (has content as string + structuredContent as object).
+   */
+  private isStructuredToolResult(
+    result: unknown,
+  ): result is StructuredToolResult {
+    if (!result || typeof result !== "object") return false;
+    const obj = result as Record<string, unknown>;
+    return (
+      typeof obj.content === "string" &&
+      obj.structuredContent !== null &&
+      obj.structuredContent !== undefined &&
+      typeof obj.structuredContent === "object" &&
+      !Array.isArray(obj.structuredContent)
+    );
+  }
+
+  /**
+   * Build a CallToolResult from the handler's return value.
+   * Priority: preformatted > structuredToolResult > plain value.
+   */
+  private buildToolCallResult(
+    toolName: string,
+    result: unknown,
+  ): Record<string, unknown> {
+    // Proxy/gateway pattern — pass through as-is
+    if (this.isPreformattedResult(result)) {
+      return result as Record<string, unknown>;
+    }
+
+    const tool = this.tools.get(toolName);
+
+    // StructuredToolResult: separate content (for LLM) and structuredContent (for viewer)
+    if (this.isStructuredToolResult(result)) {
+      const r: Record<string, unknown> = {
+        content: [{ type: "text", text: result.content }],
+        structuredContent: result.structuredContent,
+      };
+      if (tool?._meta) r._meta = tool._meta;
+      return r;
+    }
+
+    // Plain value: JSON-stringify into content[0].text
+    const r: Record<string, unknown> = {
+      content: [{
+        type: "text",
+        text: typeof result === "string"
+          ? result
+          : JSON.stringify(result, null, 2),
+      }],
+    };
+    if (tool?._meta) r._meta = tool._meta;
+    return r;
+  }
+
+  /**
+   * Handle a tool execution error using the configured toolErrorMapper.
+   * Returns an isError result if the mapper handles it, otherwise rethrows.
+   */
+  private handleToolError(
+    error: unknown,
+    toolName: string,
+  ): Record<string, unknown> {
+    const mapper = this.options.toolErrorMapper;
+    if (mapper) {
+      let msg: string | null;
+      try {
+        msg = mapper(error, toolName);
+      } catch (mapperError) {
+        this.log(
+          `toolErrorMapper threw for tool ${toolName}: ${
+            mapperError instanceof Error ? mapperError.message : String(mapperError)
+          } (original error: ${
+            error instanceof Error ? error.message : String(error)
+          })`,
+        );
+        // Fall through to rethrow original error
+        msg = null;
+      }
+      if (msg !== null) {
+        this.log(`Tool ${toolName} returned business error: ${msg}`);
+        return {
+          content: [{ type: "text", text: msg }],
+          isError: true,
+        };
+      }
+    }
+    // No mapper or mapper returned null → rethrow
+    this.log(
+      `Error executing tool ${toolName}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    throw error;
   }
 
   /**

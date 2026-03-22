@@ -71,6 +71,7 @@ export type {
   MCPTool,
   MCPToolMeta,
   McpUiToolMeta,
+  ToolAnnotations,
   QueueMetrics,
   RateLimitContext,
   RateLimitOptions,
@@ -79,6 +80,8 @@ export type {
   SamplingClient,
   SamplingParams,
   SamplingResult,
+  StructuredToolResult,
+  ToolErrorMapper,
   ToolHandler,
 } from "./src/types.ts";
 

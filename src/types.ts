@@ -78,11 +78,28 @@ export interface ConcurrentServerOptions {
   /** Enable sampling support for agentic tools (default: false) */
   enableSampling?: boolean;
 
+  /**
+   * Instructions for the LLM on how to use this server's tools.
+   * Sent in the MCP initialize response. The LLM sees this before any tool call.
+   */
+  instructions?: string;
+
   /** Sampling client implementation (required if enableSampling is true) */
   samplingClient?: SamplingClient;
 
   /** Custom logger function (default: console.error) */
   logger?: (msg: string) => void;
+
+  /**
+   * Custom error handler for tool execution errors.
+   *
+   * When set, errors thrown by tool handlers are passed to this function.
+   * Return a message string to produce `{ content: [{type:"text", text: msg}], isError: true }`
+   * instead of re-throwing. Return null to rethrow as a JSON-RPC error.
+   *
+   * Default: undefined (all errors are re-thrown, existing behaviour).
+   */
+  toolErrorMapper?: ToolErrorMapper;
 
   /**
    * OAuth2/Bearer authentication configuration.
@@ -239,6 +256,23 @@ export const MCP_APP_URI_SCHEME = "ui:" as const;
 // ============================================
 
 /**
+ * Behavioural hints for model clients (MCP SDK 1.27 ToolAnnotations).
+ * Passed through in tools/list so hosts can adapt their UI accordingly.
+ */
+export interface ToolAnnotations {
+  /** Short human-readable title, may differ from tool name */
+  title?: string;
+  /** If true, tool has no side-effects and is safe to call speculatively */
+  readOnlyHint?: boolean;
+  /** If true, executing may produce irreversible effects */
+  destructiveHint?: boolean;
+  /** If true, repeated calls with same args produce same result */
+  idempotentHint?: boolean;
+  /** If true, tool may interact with entities outside the MCP system */
+  openWorldHint?: boolean;
+}
+
+/**
  * MCP Tool definition (compatible with MCP protocol)
  */
 export interface MCPTool {
@@ -250,6 +284,15 @@ export interface MCPTool {
 
   /** JSON Schema for tool input */
   inputSchema: Record<string, unknown>;
+
+  /**
+   * JSON Schema for the tool's structured output (MCP SDK 1.27).
+   * Passed through in tools/list so hosts can validate tool results.
+   */
+  outputSchema?: Record<string, unknown>;
+
+  /** Behavioural hints passed to model clients */
+  annotations?: ToolAnnotations;
 
   /**
    * Tool metadata including UI configuration for MCP Apps
@@ -288,6 +331,32 @@ export interface MCPTool {
 export type ToolHandler = (
   args: Record<string, unknown>,
 ) => Promise<unknown> | unknown;
+
+/**
+ * Structured tool result: separates the LLM text summary (content)
+ * from the machine-readable payload (structuredContent).
+ *
+ * When a ToolHandler returns this shape, the framework produces a
+ * CallToolResult with both `content` and `structuredContent` set,
+ * keeping heavy data out of the LLM context.
+ */
+export interface StructuredToolResult {
+  /** Human-readable summary shown in content[0].text */
+  content: string;
+  /** Structured data conforming to the tool's outputSchema */
+  structuredContent: Record<string, unknown>;
+}
+
+/**
+ * Maps a thrown error to either a business error result (isError: true)
+ * or signals that the error should be re-thrown as a JSON-RPC error.
+ *
+ * @returns A message string to produce `{ isError: true }`, or null to rethrow.
+ */
+export type ToolErrorMapper = (
+  error: unknown,
+  toolName: string,
+) => string | null;
 
 /**
  * Sampling client interface for bidirectional LLM delegation

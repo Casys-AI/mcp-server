@@ -126,3 +126,186 @@ Deno.test("registerTool - _meta.ui with visibility array", () => {
 
   assertEquals(server.getToolCount(), 1);
 });
+
+// ============================================
+// SDK 1.27 Features: visibility filtering, outputSchema, annotations
+// ============================================
+
+/** Helper to start HTTP server on a free port */
+async function startTestHttp(server: ConcurrentMCPServer) {
+  const listener = Deno.listen({ port: 0 });
+  const port = (listener.addr as Deno.NetAddr).port;
+  listener.close();
+  const http = await server.startHttp({ port, onListen: () => {} });
+  return { http, port };
+}
+
+/** Helper to call tools/list via HTTP */
+async function fetchToolsList(port: number) {
+  const res = await fetch(`http://localhost:${port}/mcp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/list",
+      params: {},
+    }),
+  });
+  return await res.json();
+}
+
+Deno.test("tools/list - excludes app-only tools from listing", async () => {
+  const server = createTestServer();
+
+  server.registerTool(
+    {
+      name: "app_only",
+      description: "App only",
+      inputSchema: { type: "object" },
+      _meta: { ui: { resourceUri: "ui://test/app", visibility: ["app"] } },
+    },
+    () => "result",
+  );
+  server.registerTool(
+    {
+      name: "model_visible",
+      description: "Model visible",
+      inputSchema: { type: "object" },
+      _meta: { ui: { resourceUri: "ui://test/model", visibility: ["model"] } },
+    },
+    () => "result",
+  );
+  server.registerTool(
+    {
+      name: "no_meta",
+      description: "No meta",
+      inputSchema: { type: "object" },
+    },
+    () => "result",
+  );
+
+  // All 3 stored internally
+  assertEquals(server.getToolCount(), 3);
+
+  const { http, port } = await startTestHttp(server);
+  try {
+    const data = await fetchToolsList(port);
+    const names = data.result.tools.map((t: { name: string }) => t.name).sort();
+    assertEquals(names, ["model_visible", "no_meta"]);
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("tools/list - includes tools with visibility ['model', 'app']", async () => {
+  const server = createTestServer();
+  server.registerTool(
+    {
+      name: "both",
+      description: "Both",
+      inputSchema: { type: "object" },
+      _meta: { ui: { resourceUri: "ui://test/both", visibility: ["model", "app"] } },
+    },
+    () => "result",
+  );
+
+  const { http, port } = await startTestHttp(server);
+  try {
+    const data = await fetchToolsList(port);
+    assertEquals(data.result.tools.length, 1);
+    assertEquals(data.result.tools[0].name, "both");
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("registerAppOnlyTool - stores tool but excludes from listing", async () => {
+  const server = createTestServer();
+  server.registerAppOnlyTool(
+    {
+      name: "refresh",
+      description: "Refresh viewer",
+      inputSchema: { type: "object" },
+    },
+    () => "refreshed",
+  );
+
+  assertEquals(server.getToolCount(), 1);
+
+  const { http, port } = await startTestHttp(server);
+  try {
+    const data = await fetchToolsList(port);
+    assertEquals(data.result.tools.length, 0);
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("tools/list - outputSchema passed through", async () => {
+  const server = createTestServer();
+  const outputSchema = {
+    type: "object",
+    properties: { sum: { type: "number" } },
+  };
+  server.registerTool(
+    {
+      name: "add",
+      description: "Add numbers",
+      inputSchema: { type: "object" },
+      outputSchema,
+    },
+    () => ({ sum: 5 }),
+  );
+
+  const { http, port } = await startTestHttp(server);
+  try {
+    const data = await fetchToolsList(port);
+    assertEquals(data.result.tools[0].outputSchema, outputSchema);
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("tools/list - annotations passed through", async () => {
+  const server = createTestServer();
+  const annotations = { readOnlyHint: true, title: "Get Data" };
+  server.registerTool(
+    {
+      name: "get_data",
+      description: "Get data",
+      inputSchema: { type: "object" },
+      annotations,
+    },
+    () => ({}),
+  );
+
+  const { http, port } = await startTestHttp(server);
+  try {
+    const data = await fetchToolsList(port);
+    assertEquals(data.result.tools[0].annotations, annotations);
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("tools/list - outputSchema and annotations omitted when not set", async () => {
+  const server = createTestServer();
+  server.registerTool(
+    {
+      name: "basic",
+      description: "Basic tool",
+      inputSchema: { type: "object" },
+    },
+    () => "result",
+  );
+
+  const { http, port } = await startTestHttp(server);
+  try {
+    const data = await fetchToolsList(port);
+    assertEquals(data.result.tools[0].outputSchema, undefined);
+    assertEquals(data.result.tools[0].annotations, undefined);
+  } finally {
+    await http.shutdown();
+  }
+});

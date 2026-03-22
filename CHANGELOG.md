@@ -19,6 +19,45 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
 - **`tools/list` refactored** — both STDIO and HTTP paths now use shared `buildToolListing()` method (deduplication).
 - **`tools/call` refactored** — both STDIO and HTTP paths now use shared `buildToolCallResult()` and `handleToolError()` methods. Serialization errors are no longer routed through `toolErrorMapper`.
 
+## [0.11.0] - 2026-03-20
+
+### Added
+
+- **`registerViewers()` CSP option** — `csp` field on `RegisterViewersConfig` declares external domains the viewer needs (tiles, APIs, CDNs). Injects `_meta.ui.csp` into resource content.
+- **Re-export compose SDK helpers** — `composeEvents`, `uiMeta`, and related types re-exported from `mod.ts` via `@casys/mcp-compose`.
+
+### Changed
+
+- **Bump `@casys/mcp-compose` ^0.2.0 → ^0.3.0**.
+
+## [0.10.0] - 2026-03-20
+
+### Changed
+
+- **Bump MCP SDK ^1.15 → ^1.27** — unlocks `structuredContent`, `outputSchema`, `annotations`, `isError` at the protocol level.
+- **Bump `@casys/mcp-compose` → ^0.2.0** — adds sub-path exports (`/sdk`, `/core`).
+- **`McpUiToolMeta` imported from mcp-compose** — replaced inlined base type with `import type { McpUiToolMeta } from "@casys/mcp-compose/core"`. No API change.
+
+## [0.9.2] - 2026-03-17
+
+### Added
+
+- **MCP Inspector launcher** — `launchInspector()` starts an interactive MCP Inspector session for debugging. Exported from `mod.ts` with `InspectorOptions` type.
+
+## [0.9.1] - 2026-03-17
+
+### Changed
+
+- **Import `McpUiToolMetaBase` from `@casys/mcp-compose/core`** — replaced inlined visibility/resourceUri type with proper dependency import.
+
+## [0.9.0] - 2026-03-17
+
+### Added
+
+- **Client-side OAuth2 flow** — `CallbackServer` (localhost redirect capture), `OAuthClientProviderImpl`, `connect()` helper for MCP client auth. Token stores: `FileTokenStore` (persistent, 0o600 permissions) and `MemoryTokenStore` (ephemeral).
+- **MCP Apps viewer utilities** — `resolveViewerDistPath()` and `discoverViewers()` for auto-discovering built UI viewers. `registerViewers()` method on `ConcurrentMCPServer` for bulk resource registration.
+- **New exports** — `RegisterViewersConfig`, `RegisterViewersSummary`, `resolveViewerDistPath`, `discoverViewers` from `mod.ts`.
+
 ## [0.8.0] - 2026-02-12
 
 ### Added

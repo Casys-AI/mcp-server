@@ -2,6 +2,23 @@
 
 All notable changes to `@casys/mcp-server` will be documented in this file.
 
+## [0.12.0] - 2026-03-22
+
+### Added
+
+- **`structuredContent` support** — tool handlers can return `{ content: "summary", structuredContent: { ...data } }` to separate LLM context (text summary) from viewer payload (structured data). Reduces LLM token usage for data-heavy tools.
+- **`outputSchema` on tools** — optional JSON Schema for tool output, passed through in `tools/list`. Enables host-side validation of tool results.
+- **`annotations` on tools** — behavioural hints (`title`, `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`) passed through in `tools/list`.
+- **Tool visibility filtering** — tools with `_meta.ui.visibility: ["app"]` are excluded from `tools/list` (hidden from LLM) but remain callable via `tools/call`. Cleans up LLM tool list from UI-only actions (refresh, pagination, etc.).
+- **`registerAppOnlyTool()` helper** — shortcut to register app-only tools with `visibility: ["app"]` auto-injected.
+- **`toolErrorMapper` option** — centralized error-to-`isError` mapping. Business errors produce `{ isError: true }` results; system errors rethrow as JSON-RPC errors. Configurable via `ConcurrentServerOptions.toolErrorMapper`.
+- **New types** — `ToolAnnotations`, `StructuredToolResult`, `ToolErrorMapper` exported from `mod.ts`.
+
+### Changed
+
+- **`tools/list` refactored** — both STDIO and HTTP paths now use shared `buildToolListing()` method (deduplication).
+- **`tools/call` refactored** — both STDIO and HTTP paths now use shared `buildToolCallResult()` and `handleToolError()` methods. Serialization errors are no longer routed through `toolErrorMapper`.
+
 ## [0.8.0] - 2026-02-12
 
 ### Added

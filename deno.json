@@ -1,0 +1,40 @@
+{
+  "name": "@casys/mcp-bridge",
+  "version": "0.2.0",
+  "license": "MIT",
+  "exports": "./src/mod.ts",
+  "publish": {
+    "include": [
+      "src/**/*.ts",
+      "src/client/bridge.js",
+      "README.md",
+      "LICENSE"
+    ],
+    "exclude": [
+      "**/*_test.ts",
+      "**/*.test.ts",
+      "**/*.bench.ts"
+    ]
+  },
+  "tasks": {
+    "test": "deno test --allow-net --allow-read tests/",
+    "check": "deno check src/mod.ts",
+    "lint": "deno lint",
+    "build:npm": "deno run -A scripts/build-npm.ts",
+    "demo": "deno run --allow-net --allow-read --allow-env examples/demo-time/start.ts"
+  },
+  "imports": {
+    "@std/assert": "jsr:@std/assert@^1",
+    "@deno/dnt": "jsr:@deno/dnt@^0.41"
+  },
+  "lint": {
+    "exclude": [
+      "src/client/",
+      "examples/",
+      "scripts/"
+    ]
+  },
+  "compilerOptions": {
+    "strict": true
+  }
+}

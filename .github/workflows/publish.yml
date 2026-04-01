@@ -38,6 +38,26 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+  publish-npm-compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Build and publish @casys/mcp-compose to npm
+        run: |
+          cd packages/compose
+          deno run -A scripts/build-npm.ts
+          cd dist-node
+          npm publish --access public || echo "Version already published, skipping"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
   publish-npm-bridge:
     runs-on: ubuntu-latest
     steps:

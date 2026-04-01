@@ -15,9 +15,6 @@
     "test:http": "deno test --allow-net --allow-read --allow-env --no-check src/http-server_test.ts src/http-security_test.ts"
   },
   "imports": {
-    "@casys/mcp-compose": "jsr:@casys/mcp-compose@^0.3.0",
-    "@casys/mcp-compose/sdk": "jsr:@casys/mcp-compose@^0.3.0/sdk",
-    "@casys/mcp-compose/core": "jsr:@casys/mcp-compose@^0.3.0/core",
     "@modelcontextprotocol/sdk": "npm:@modelcontextprotocol/sdk@^1.27.0",
     "@std/assert": "jsr:@std/assert@^1",
     "ajv": "npm:ajv@^8.17.1",

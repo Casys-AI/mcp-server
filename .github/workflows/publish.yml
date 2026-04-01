@@ -1,0 +1,59 @@
+name: Publish
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  publish-jsr:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      - name: Publish all packages to JSR
+        run: npx jsr publish
+        # Publishes all workspace members whose version isn't already on JSR.
+        # Already-published versions are skipped automatically.
+
+  publish-npm-server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Build and publish @casys/mcp-server to npm
+        run: |
+          cd packages/server
+          bash scripts/build-node.sh
+          cd dist-node
+          npm install
+          npm publish --access public || echo "Version already published, skipping"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-npm-bridge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Build and publish @casys/mcp-bridge to npm
+        run: |
+          cd packages/bridge
+          deno run -A scripts/build-npm.ts
+          cd dist-node
+          npm publish --access public || echo "Version already published, skipping"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

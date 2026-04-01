@@ -1,26 +1,30 @@
 # Casys MCP Platform
 
+[![JSR](https://jsr.io/badges/@casys/mcp-server)](https://jsr.io/@casys/mcp-server)
+[![npm](https://img.shields.io/npm/v/@casys/mcp-server)](https://www.npmjs.com/package/@casys/mcp-server)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Monorepo for Casys MCP (Model Context Protocol) packages.
+**Everything you need to build, compose, and deploy production MCP servers.**
 
-## Packages
-
-| Package | Status | JSR | npm | Description |
-|---------|--------|-----|-----|-------------|
-| [`@casys/mcp-server`](packages/server/) | **Production** | [![JSR](https://jsr.io/badges/@casys/mcp-server)](https://jsr.io/@casys/mcp-server) | [![npm](https://img.shields.io/npm/v/@casys/mcp-server)](https://www.npmjs.com/package/@casys/mcp-server) | Production-grade MCP server framework — middleware, auth, concurrency, observability |
-| [`@casys/mcp-compose`](packages/compose/) | Prototype | [![JSR](https://jsr.io/badges/@casys/mcp-compose)](https://jsr.io/@casys/mcp-compose) | — | Compose and synchronize multiple MCP Apps UIs into composite dashboards |
-| [`@casys/mcp-bridge`](packages/bridge/) | Prototype | [![JSR](https://jsr.io/badges/@casys/mcp-bridge)](https://jsr.io/@casys/mcp-bridge) | [![npm](https://img.shields.io/npm/v/@casys/mcp-bridge)](https://www.npmjs.com/package/@casys/mcp-bridge) | Bridge MCP Apps UIs to messaging platforms (Telegram Mini Apps, LINE LIFF) |
-
-## @casys/mcp-server
-
-The main package — **"Hono for MCP"**. A production-grade framework for building MCP servers in TypeScript, built on the official [@modelcontextprotocol/sdk](https://github.com/modelcontextprotocol/sdk).
+The official SDK gives you the protocol. Casys MCP Platform gives you the production stack: composable middleware, OAuth2 auth, concurrency control, observability, interactive UIs, and multi-server composition — all in TypeScript.
 
 ```
 rate-limit → auth → custom middleware → scope-check → validation → backpressure → handler
 ```
 
-### Install
+---
+
+## Packages
+
+| Package | Status | Description |
+|---------|--------|-------------|
+| [`@casys/mcp-server`](packages/server/) | **Production** | The framework. Middleware, auth, dual transport, observability. |
+| [`@casys/mcp-compose`](packages/compose/) | Experimental | Multi-server UI composition — sync and orchestrate MCP Apps into dashboards. |
+| [`@casys/mcp-bridge`](packages/bridge/) | Experimental | Deliver MCP Apps UIs through Telegram Mini Apps, LINE LIFF, and other messaging platforms. |
+
+---
+
+## Quick Start
 
 ```bash
 # npm
@@ -30,7 +34,7 @@ npm install @casys/mcp-server
 deno add jsr:@casys/mcp-server
 ```
 
-### Quick Start
+### STDIO Server
 
 ```typescript
 import { ConcurrentMCPServer } from "@casys/mcp-server";
@@ -53,29 +57,92 @@ server.registerTool(
 await server.start();
 ```
 
-### Key Features
+### HTTP Server with Auth
 
-- **Composable middleware** — onion model (like Hono/Koa)
-- **OAuth2 / JWT auth** — 4 OIDC presets (Google, Auth0, GitHub Actions, generic)
-- **Dual transport** — STDIO + HTTP (Streamable HTTP + SSE)
-- **Concurrency control** — 3 backpressure strategies (sleep/queue/reject)
-- **Rate limiting** — sliding window, per-client
-- **Schema validation** — JSON Schema via ajv
-- **OpenTelemetry tracing** — automatic spans per tool call
-- **Prometheus metrics** — `/metrics` endpoint
-- **MCP Apps** — interactive UI resources via `ui://`
+```typescript
+import { ConcurrentMCPServer, createAuth0AuthProvider } from "@casys/mcp-server";
 
-See the [full documentation](packages/server/README.md) for HTTP auth setup, YAML config, observability, and API reference.
+const server = new ConcurrentMCPServer({
+  name: "my-api",
+  version: "1.0.0",
+  maxConcurrent: 10,
+  backpressureStrategy: "queue",
+  validateSchema: true,
+  rateLimit: { maxRequests: 100, windowMs: 60_000 },
+  auth: {
+    provider: createAuth0AuthProvider({
+      domain: "my-tenant.auth0.com",
+      audience: "https://my-mcp.example.com",
+      resource: "https://my-mcp.example.com",
+    }),
+  },
+});
+
+await server.startHttp({ port: 3000 });
+```
+
+---
+
+## Why Casys MCP Platform?
+
+|                         | Official SDK | @casys/mcp-server |
+| ----------------------- | :----------: | :---: |
+| MCP protocol compliance | Yes | Yes |
+| Composable middleware    | — | Onion model (like Hono/Koa) |
+| OAuth2 / JWT auth       | — | 4 OIDC presets + YAML config |
+| Concurrency control     | — | 3 backpressure strategies |
+| Rate limiting           | — | Sliding window, per-client |
+| Schema validation       | — | JSON Schema (ajv) |
+| Streamable HTTP + SSE   | Manual | Built-in session management |
+| OpenTelemetry tracing   | — | Automatic spans per tool call |
+| Prometheus metrics      | — | `/metrics` endpoint |
+| MCP Apps (UI resources) | Manual | `registerResource()` + `ui://` |
+| Multi-server composition | — | `@casys/mcp-compose` |
+
+---
+
+## Platform Overview
+
+### @casys/mcp-server — The Framework
+
+The core of the platform. Build MCP servers with the same developer experience as Hono or Koa — register tools, plug in middleware, start serving.
+
+**Highlights:**
+- **Middleware pipeline** — rate-limit, auth, validation, backpressure, all composable
+- **4 OAuth2 presets** — Google, Auth0, GitHub Actions, generic OIDC
+- **Dual transport** — STDIO for local/CLI, HTTP (Streamable HTTP + SSE) for remote
+- **Observability** — OpenTelemetry spans + Prometheus metrics out of the box
+- **MCP Apps** — serve interactive UIs as MCP resources
+
+[Full documentation and API reference](packages/server/README.md)
+
+### @casys/mcp-compose — Multi-Server Composition
+
+> *Experimental — API may change.*
+
+Orchestrate multiple MCP Apps UIs into composite dashboards. Define layouts, sync rules between panels, and let the composition engine handle the event routing.
+
+[Documentation](packages/compose/README.md)
+
+### @casys/mcp-bridge — Messaging Platform Bridge
+
+> *Experimental — API may change.*
+
+Deliver MCP Apps interactive UIs through messaging platforms. Currently supports Telegram Mini Apps and LINE LIFF with platform-specific authentication and lifecycle handling.
+
+[Documentation](packages/bridge/README.md)
+
+---
 
 ## Development
 
-This is a Deno workspace. Cross-package imports resolve automatically.
+Deno workspace — cross-package imports resolve automatically.
 
 ```bash
-# Run tests for a specific package
-cd packages/server && deno task test
-cd packages/compose && deno task test
-cd packages/bridge && deno task test
+# Tests
+cd packages/server && deno task test     # 270 tests
+cd packages/compose && deno task test    # 219 tests
+cd packages/bridge && deno task test     # 120 tests
 ```
 
 ## License

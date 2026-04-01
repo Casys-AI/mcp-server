@@ -1,0 +1,17 @@
+{
+  "name": "stub-detail",
+  "description": "Stub: item detail view",
+  "transport": {
+    "type": "stdio",
+    "command": "deno",
+    "args": ["run", "--allow-all", "stubs/stub-detail/server.ts", "--http"]
+  },
+  "tools": [
+    {
+      "name": "show_item",
+      "description": "Show details for an item",
+      "accepts": ["item.show"],
+      "resourceUri": "ui://stub-detail/item-detail"
+    }
+  ]
+}

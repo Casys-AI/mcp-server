@@ -1,0 +1,19 @@
+{
+  "name": "stub-list",
+  "description": "Stub: clickable item list with selection events",
+  "transport": {
+    "type": "stdio",
+    "command": "deno",
+    "args": ["run", "--allow-all", "stubs/stub-list/server.ts", "--http"]
+  },
+  "requiredEnv": ["STUB_API_KEY"],
+  "tools": [
+    {
+      "name": "list_items",
+      "description": "List items with optional category filter",
+      "emits": ["item.selected"],
+      "accepts": ["filter.apply"],
+      "resourceUri": "ui://stub-list/item-list"
+    }
+  ]
+}

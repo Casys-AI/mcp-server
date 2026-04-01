@@ -1,0 +1,15 @@
+name: Filter-Chart Dashboard
+sources:
+  - manifest: stub-filter
+    calls:
+      - tool: show_filters
+  - manifest: stub-chart
+    calls:
+      - tool: render_chart
+orchestration:
+  layout: split
+  sync:
+    - from: "stub-filter:show_filters"
+      event: "filter.changed"
+      to: "stub-chart:render_chart"
+      action: "data.update"

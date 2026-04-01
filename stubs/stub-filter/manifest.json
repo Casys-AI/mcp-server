@@ -1,0 +1,17 @@
+{
+  "name": "stub-filter",
+  "description": "Stub: filter controls panel",
+  "transport": {
+    "type": "stdio",
+    "command": "deno",
+    "args": ["run", "--allow-all", "stubs/stub-filter/server.ts", "--http"]
+  },
+  "tools": [
+    {
+      "name": "show_filters",
+      "description": "Show filter controls",
+      "emits": ["filter.changed"],
+      "resourceUri": "ui://stub-filter/filter-panel"
+    }
+  ]
+}

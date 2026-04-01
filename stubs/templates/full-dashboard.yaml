@@ -1,0 +1,40 @@
+name: Full Stub Dashboard
+sources:
+  - id: filter
+    manifest: stub-filter
+    calls:
+      - tool: show_filters
+  - id: list
+    manifest: stub-list
+    calls:
+      - tool: list_items
+  - id: detail
+    manifest: stub-detail
+    calls:
+      - tool: show_item
+        args: { itemId: "ITEM-001" }
+  - id: chart
+    manifest: stub-chart
+    calls:
+      - tool: render_chart
+orchestration:
+  layout:
+    areas:
+      - [filter, list, detail]
+      - [filter, chart, chart]
+    columns: [1, 2, 2]
+    rows: [3, 1]
+    gap: normal
+  sync:
+    - from: "stub-filter:show_filters"
+      event: "filter.changed"
+      to: "stub-list:list_items"
+      action: "filter.apply"
+    - from: "stub-list:list_items"
+      event: "item.selected"
+      to: "stub-detail:show_item"
+      action: "item.show"
+    - from: "stub-filter:show_filters"
+      event: "filter.changed"
+      to: "stub-chart:render_chart"
+      action: "data.update"

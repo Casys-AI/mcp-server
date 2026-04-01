@@ -1,0 +1,17 @@
+{
+  "name": "stub-chart",
+  "description": "Stub: simple bar chart",
+  "transport": {
+    "type": "stdio",
+    "command": "deno",
+    "args": ["run", "--allow-all", "stubs/stub-chart/server.ts", "--http"]
+  },
+  "tools": [
+    {
+      "name": "render_chart",
+      "description": "Render a bar chart with mock data",
+      "accepts": ["data.update"],
+      "resourceUri": "ui://stub-chart/bar-chart"
+    }
+  ]
+}

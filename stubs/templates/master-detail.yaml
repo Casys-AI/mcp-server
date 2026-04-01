@@ -1,0 +1,16 @@
+name: Master-Detail Dashboard
+sources:
+  - manifest: stub-list
+    calls:
+      - tool: list_items
+  - manifest: stub-detail
+    calls:
+      - tool: show_item
+        args: { itemId: "ITEM-001" }
+orchestration:
+  layout: split
+  sync:
+    - from: "stub-list:list_items"
+      event: "item.selected"
+      to: "stub-detail:show_item"
+      action: "item.show"

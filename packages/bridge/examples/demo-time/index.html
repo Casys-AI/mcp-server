@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <title>MCP Apps Bridge - Time Demo</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #ffffff;
+      --fg: #1a1a1a;
+      --card-bg: #f5f5f5;
+      --border: #e0e0e0;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --muted: #6b7280;
+      --success: #16a34a;
+      --error: #dc2626;
+      --radius: 12px;
+    }
+
+    .dark {
+      --bg: #1a1a1a;
+      --fg: #f0f0f0;
+      --card-bg: #2a2a2a;
+      --border: #3a3a3a;
+      --accent: #60a5fa;
+      --accent-hover: #93c5fd;
+      --muted: #9ca3af;
+      --success: #4ade80;
+      --error: #f87171;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      min-height: 100vh;
+      padding: 16px;
+      transition: background-color 0.3s, color 0.3s;
+    }
+
+    .container {
+      max-width: 400px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.875rem;
+      margin-bottom: 24px;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+
+    .card-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .time-display {
+      font-size: 2rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.2;
+    }
+
+    .date-display {
+      font-size: 0.9rem;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 12px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--error);
+      flex-shrink: 0;
+    }
+
+    .status-dot.connected {
+      background: var(--success);
+    }
+
+    button {
+      display: block;
+      width: 100%;
+      padding: 14px;
+      font-size: 1rem;
+      font-weight: 600;
+      border: none;
+      border-radius: var(--radius);
+      cursor: pointer;
+      background: var(--accent);
+      color: #fff;
+      transition: background-color 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    button:hover { background: var(--accent-hover); }
+    button:active { transform: scale(0.98); }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .info-item .info-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin-bottom: 2px;
+    }
+
+    .info-item .info-value {
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+
+    .log {
+      margin-top: 16px;
+      font-size: 0.75rem;
+      font-family: "SF Mono", "Fira Code", monospace;
+      color: var(--muted);
+      max-height: 120px;
+      overflow-y: auto;
+      line-height: 1.6;
+    }
+
+    .log-entry.error { color: var(--error); }
+    .log-entry.success { color: var(--success); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>MCP Time Demo</h1>
+    <p class="subtitle">MCP Apps Bridge + Telegram Mini App</p>
+
+    <div class="card">
+      <div class="card-label">Server Time</div>
+      <div class="time-display" id="time">--:--:--</div>
+      <div class="date-display" id="date">Waiting for response...</div>
+      <div class="status-row">
+        <div class="status-dot" id="status-dot"></div>
+        <span id="status-text">Connecting...</span>
+      </div>
+    </div>
+
+    <button id="refresh-btn" disabled>Get Server Time</button>
+
+    <div class="card" style="margin-top: 16px;">
+      <div class="card-label">Host Context</div>
+      <div class="info-grid">
+        <div class="info-item">
+          <div class="info-label">Theme</div>
+          <div class="info-value" id="ctx-theme">--</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">Platform</div>
+          <div class="info-value" id="ctx-platform">--</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">Protocol</div>
+          <div class="info-value" id="ctx-protocol">--</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">Bridge</div>
+          <div class="info-value" id="ctx-bridge">--</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="log" id="log"></div>
+  </div>
+
+  <script>
+    // ---------------------------------------------------------------------------
+    // Minimal MCP App class (simulates @modelcontextprotocol/ext-apps)
+    // ---------------------------------------------------------------------------
+
+    var McpApp = (function () {
+      var nextId = 1;
+      var initialized = false;
+      var hostContext = null;
+      var pendingCallbacks = {};
+
+      function sendRequest(method, params) {
+        var id = nextId++;
+        return new Promise(function (resolve, reject) {
+          pendingCallbacks[id] = { resolve: resolve, reject: reject };
+          // MCP Apps SDK sends via postMessage to parent
+          window.parent.postMessage({
+            jsonrpc: "2.0",
+            id: id,
+            method: method,
+            params: params || {},
+          }, "*");
+        });
+      }
+
+      function handleMessage(event) {
+        var data = event.data;
+        if (!data || data.jsonrpc !== "2.0") return;
+
+        // Response to a pending request
+        if ("id" in data && (data.result !== undefined || data.error !== undefined)) {
+          var cb = pendingCallbacks[data.id];
+          if (cb) {
+            delete pendingCallbacks[data.id];
+            if (data.error) {
+              cb.reject(data.error);
+            } else {
+              cb.resolve(data.result);
+            }
+          }
+          return;
+        }
+
+        // Notification from host
+        if (data.method) {
+          window.dispatchEvent(new CustomEvent("mcp-notification", {
+            detail: data,
+          }));
+        }
+      }
+
+      window.addEventListener("message", handleMessage);
+
+      return {
+        initialize: function () {
+          return sendRequest("ui/initialize", {
+            protocolVersion: "2025-11-25",
+            clientInfo: { name: "demo-time", version: "1.0.0" },
+          }).then(function (result) {
+            initialized = true;
+            hostContext = result.hostContext || result;
+            return result;
+          });
+        },
+
+        callTool: function (name, args) {
+          return sendRequest("tools/call", { name: name, arguments: args });
+        },
+
+        getHostContext: function () {
+          return hostContext;
+        },
+
+        isInitialized: function () {
+          return initialized;
+        },
+      };
+    })();
+
+    // ---------------------------------------------------------------------------
+    // UI Logic
+    // ---------------------------------------------------------------------------
+
+    var timeEl = document.getElementById("time");
+    var dateEl = document.getElementById("date");
+    var statusDot = document.getElementById("status-dot");
+    var statusText = document.getElementById("status-text");
+    var refreshBtn = document.getElementById("refresh-btn");
+    var logEl = document.getElementById("log");
+    var ctxTheme = document.getElementById("ctx-theme");
+    var ctxPlatform = document.getElementById("ctx-platform");
+    var ctxProtocol = document.getElementById("ctx-protocol");
+    var ctxBridge = document.getElementById("ctx-bridge");
+
+    function addLog(text, type) {
+      var entry = document.createElement("div");
+      entry.className = "log-entry" + (type ? " " + type : "");
+      entry.textContent = new Date().toLocaleTimeString() + " " + text;
+      logEl.insertBefore(entry, logEl.firstChild);
+      // Keep max 20 entries
+      while (logEl.children.length > 20) {
+        logEl.removeChild(logEl.lastChild);
+      }
+    }
+
+    function setConnected(connected) {
+      if (connected) {
+        statusDot.classList.add("connected");
+        statusText.textContent = "Connected";
+        refreshBtn.disabled = false;
+      } else {
+        statusDot.classList.remove("connected");
+        statusText.textContent = "Disconnected";
+        refreshBtn.disabled = true;
+      }
+    }
+
+    function updateHostContext(result) {
+      var ctx = result.hostContext || result;
+      ctxTheme.textContent = ctx.theme || "--";
+      ctxPlatform.textContent = ctx.platform || "web";
+      ctxProtocol.textContent = result.protocolVersion || "--";
+      ctxBridge.textContent = result.hostInfo
+        ? result.hostInfo.name + " " + result.hostInfo.version
+        : "--";
+
+      // Apply theme
+      if (ctx.theme === "dark") {
+        document.body.classList.add("dark");
+      } else {
+        document.body.classList.remove("dark");
+      }
+
+      // Apply Telegram CSS variables if provided
+      if (ctx.styles && ctx.styles.variables) {
+        var keys = Object.keys(ctx.styles.variables);
+        for (var i = 0; i < keys.length; i++) {
+          document.documentElement.style.setProperty(keys[i], ctx.styles.variables[keys[i]]);
+        }
+      }
+    }
+
+    function fetchTime() {
+      refreshBtn.disabled = true;
+      addLog("Calling tools/call get_time...");
+
+      McpApp.callTool("get_time", {})
+        .then(function (result) {
+          var content = result.content || [];
+          var text = "";
+          for (var i = 0; i < content.length; i++) {
+            if (content[i].type === "text") text = content[i].text;
+          }
+
+          if (text) {
+            try {
+              var parsed = JSON.parse(text);
+              timeEl.textContent = parsed.time || text;
+              dateEl.textContent = parsed.date || "";
+              addLog("Got time: " + (parsed.time || text), "success");
+            } catch (_e) {
+              timeEl.textContent = text;
+              dateEl.textContent = "";
+              addLog("Got time: " + text, "success");
+            }
+          } else {
+            addLog("Empty response from get_time", "error");
+          }
+        })
+        .catch(function (err) {
+          var msg = err.message || JSON.stringify(err);
+          addLog("Error: " + msg, "error");
+        })
+        .finally(function () {
+          refreshBtn.disabled = false;
+        });
+    }
+
+    refreshBtn.addEventListener("click", fetchTime);
+
+    // Listen for theme changes from bridge
+    window.addEventListener("mcp-notification", function (event) {
+      var data = event.detail;
+      if (data.method === "ui/notifications/host-context-changed") {
+        addLog("Theme changed: " + JSON.stringify(data.params));
+        if (data.params.theme) {
+          if (data.params.theme === "dark") {
+            document.body.classList.add("dark");
+          } else {
+            document.body.classList.remove("dark");
+          }
+          ctxTheme.textContent = data.params.theme;
+        }
+      }
+    });
+
+    // Wait for bridge to be ready, then initialize
+    window.addEventListener("mcp-bridge-ready", function () {
+      addLog("Bridge connected", "success");
+      setConnected(true);
+
+      McpApp.initialize()
+        .then(function (result) {
+          addLog("Initialized", "success");
+          updateHostContext(result);
+          // Auto-fetch time on init
+          fetchTime();
+        })
+        .catch(function (err) {
+          addLog("Init error: " + (err.message || JSON.stringify(err)), "error");
+        });
+    });
+
+    addLog("Waiting for bridge...");
+  </script>
+</body>
+</html>

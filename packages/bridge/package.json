@@ -1,0 +1,29 @@
+{
+  "name": "@casys/mcp-bridge",
+  "version": "0.2.0",
+  "description": "Bridge MCP Apps (interactive UI via MCP protocol) to messaging platforms (Telegram Mini Apps, LINE LIFF)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test dist/tests/"
+  },
+  "keywords": [
+    "mcp",
+    "telegram",
+    "line",
+    "mini-apps",
+    "bridge"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  }
+}

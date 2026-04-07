@@ -10,6 +10,9 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
 - **`AuthInfo.tenantId`** — new optional field populated by the multi-tenant middleware. Tool handlers should read this instead of raw JWT claims. `authInfo` is re-frozen after injection.
 - **`MultiTenantMiddlewareOptions.onRejection`** — async audit hook awaited before the 401 is thrown. Rejection reasons are server-side only; the client always sees a generic `invalid_token` error. Hook exceptions are caught and logged to stderr — they can never change client-visible behaviour or become an oracle for attackers.
 - **Empty-`tenantId` guard** — `{ ok: true, tenantId: "" }` is rejected as if it were a resolver failure, preventing truthy-guard bypasses in downstream handlers.
+- **`ConcurrentMCPServer.getFetchHandler()`** — returns a Web Standard fetch handler without binding a port. Use this to mount the MCP HTTP layer inside another framework (Fresh, Hono, Express, Cloudflare Workers, etc.) without giving up port ownership to `startHttp`. Auth, multi-tenant middleware, scope checks, rate limiting, sessions, and SSE all run identically. Designed for the multi-tenant SaaS pattern of caching one server-per-tenant and dispatching from the host framework's routing layer.
+- **`HttpServerOptions.embedded` + `embeddedHandlerCallback`** — internal mechanism powering `getFetchHandler`. Most consumers should use `getFetchHandler` directly rather than setting these.
+- **`FetchHandler` type re-exported from `./types.ts`** — was already exported from the runtime port at top-level, now also re-exported alongside `HttpServerOptions` for ergonomic single-import use.
 - **New types** — `TenantResolver`, `TenantResolution`, `MultiTenantMiddlewareOptions` exported from `mod.ts`.
 
 Non-breaking: existing single-tenant servers require no changes.

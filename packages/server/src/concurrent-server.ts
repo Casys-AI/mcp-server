@@ -14,8 +14,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CallToolRequestSchema,
-  ListToolsRequestSchema,
   ListResourcesRequestSchema,
+  ListToolsRequestSchema,
   ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { Hono } from "hono";
@@ -46,6 +46,7 @@ import { createAuthProviderFromConfig, loadAuthConfig } from "./auth/config.ts";
 import type { AuthProvider } from "./auth/provider.ts";
 import type {
   ConcurrentServerOptions,
+  FetchHandler,
   HttpRateLimitContext,
   HttpServerOptions,
   MCPResource,
@@ -57,7 +58,7 @@ import type {
   ToolHandler,
 } from "./types.ts";
 import { MCP_APP_MIME_TYPE, MCP_APP_URI_SCHEME } from "./types.ts";
-import { resolveViewerDistPath, discoverViewers } from "./ui/viewer-utils.ts";
+import { discoverViewers, resolveViewerDistPath } from "./ui/viewer-utils.ts";
 import type { DirEntry, DiscoverViewersFS } from "./ui/viewer-utils.ts";
 import { buildCspHeader, injectCspMetaTag } from "./security/csp.ts";
 import { ServerMetrics } from "./observability/metrics.ts";
@@ -481,7 +482,9 @@ export class ConcurrentMCPServer {
   unregisterTool(toolName: string): boolean {
     const deleted = this.tools.delete(toolName);
     if (deleted) {
-      this.log(`Unregistered tool: ${toolName} (remaining: ${this.tools.size})`);
+      this.log(
+        `Unregistered tool: ${toolName} (remaining: ${this.tools.size})`,
+      );
     }
     return deleted;
   }
@@ -808,7 +811,9 @@ export class ConcurrentMCPServer {
    */
   registerViewers(config: RegisterViewersConfig): RegisterViewersSummary {
     if (!config.prefix) {
-      throw new Error("[ConcurrentMCPServer] registerViewers: prefix is required");
+      throw new Error(
+        "[ConcurrentMCPServer] registerViewers: prefix is required",
+      );
     }
 
     // Resolve viewer list: explicit or auto-discovered
@@ -826,7 +831,11 @@ export class ConcurrentMCPServer {
     const skipped: string[] = [];
 
     for (const viewerName of viewerNames) {
-      const distPath = resolveViewerDistPath(config.moduleUrl, viewerName, config.exists);
+      const distPath = resolveViewerDistPath(
+        config.moduleUrl,
+        viewerName,
+        config.exists,
+      );
 
       if (!distPath) {
         this.log(
@@ -856,7 +865,9 @@ export class ConcurrentMCPServer {
             text: html,
           };
           if (config.csp) {
-            (content as unknown as Record<string, unknown>)._meta = { ui: { csp: config.csp } };
+            (content as unknown as Record<string, unknown>)._meta = {
+              ui: { csp: config.csp },
+            };
           }
           return content;
         },
@@ -866,7 +877,9 @@ export class ConcurrentMCPServer {
     }
 
     if (registered.length > 0) {
-      this.log(`Registered ${registered.length} viewer(s): ${registered.join(", ")}`);
+      this.log(
+        `Registered ${registered.length} viewer(s): ${registered.join(", ")}`,
+      );
     }
 
     return { registered, skipped };
@@ -1442,7 +1455,9 @@ export class ConcurrentMCPServer {
                   name: this.options.name,
                   version: this.options.version,
                 },
-                ...(this.options.instructions ? { instructions: this.options.instructions } : {}),
+                ...(this.options.instructions
+                  ? { instructions: this.options.instructions }
+                  : {}),
               },
             }),
             {
@@ -1513,7 +1528,9 @@ export class ConcurrentMCPServer {
             } catch (rethrown) {
               this.log(
                 `Error executing tool ${toolName}: ${
-                  rethrown instanceof Error ? rethrown.message : String(rethrown)
+                  rethrown instanceof Error
+                    ? rethrown.message
+                    : String(rethrown)
                 }`,
               );
               const errorMessage = rethrown instanceof Error
@@ -1663,6 +1680,37 @@ export class ConcurrentMCPServer {
     // deno-lint-ignore no-explicit-any
     app.post("/", handleMcpPost as any);
 
+    // Embedded mode: skip serve(), surface the Hono fetch handler to the
+    // caller and let them mount it inside their own framework (Fresh, Hono,
+    // Express, etc.). The session cleanup timer + post-init still runs so
+    // SSE clients and sessions are managed identically to the serve() path.
+    if (options.embedded) {
+      if (!options.embeddedHandlerCallback) {
+        throw new Error(
+          "[ConcurrentMCPServer] embedded=true requires embeddedHandlerCallback",
+        );
+      }
+      // deno-lint-ignore no-explicit-any
+      options.embeddedHandlerCallback(app.fetch as any);
+      this.started = true;
+      this.sessionCleanupTimer = setInterval(
+        () => this.cleanupSessions(),
+        ConcurrentMCPServer.SESSION_CLEANUP_INTERVAL_MS,
+      );
+      unrefTimer(this.sessionCleanupTimer as unknown as number);
+      this.log(
+        `HTTP handler ready (embedded mode — no port bound, max concurrent: ${
+          this.options.maxConcurrent ?? 10
+        })`,
+      );
+      return {
+        shutdown: async () => {
+          await this.stop();
+        },
+        addr: { hostname: "embedded", port: 0 },
+      };
+    }
+
     // Start server
     this.httpServer = serve(
       {
@@ -1712,6 +1760,67 @@ export class ConcurrentMCPServer {
       },
       addr: { hostname, port: options.port },
     };
+  }
+
+  /**
+   * Build the HTTP middleware stack and return its fetch handler without
+   * binding a port. Use this when you want to mount the MCP HTTP layer
+   * inside another HTTP framework (Fresh, Hono, Express, Cloudflare Workers,
+   * etc.) instead of giving up port ownership to {@link startHttp}.
+   *
+   * The returned handler accepts a Web Standard {@link Request} and returns
+   * a Web Standard {@link Response}. It exposes the same routes as
+   * {@link startHttp}: `POST /mcp`, `GET /mcp` (SSE), `GET /health`,
+   * `GET /metrics`, and `GET /.well-known/oauth-protected-resource`.
+   *
+   * Auth, multi-tenant middleware, scope checks, and rate limiting are all
+   * applied identically. The session cleanup timer and OTel hooks are
+   * started, so the server is fully live after this returns — just without
+   * its own listening socket.
+   *
+   * Multi-tenant SaaS pattern: cache one `ConcurrentMCPServer` per tenant
+   * and call `getFetchHandler()` once per server, then dispatch each
+   * inbound request to the right cached handler from your framework's
+   * routing layer.
+   *
+   * @example
+   * ```typescript
+   * // In a Fresh route at routes/mcp/[...path].tsx
+   * const server = new ConcurrentMCPServer({ name: "my-mcp", version: "1.0.0" });
+   * server.registerTools(tools, handlers);
+   * const handler = await server.getFetchHandler({
+   *   requireAuth: true,
+   *   auth: { provider: myAuthProvider },
+   * });
+   * // Later, in your route handler:
+   * return await handler(ctx.req);
+   * ```
+   *
+   * @param options - Same as {@link startHttp}, minus `port`/`hostname`/`onListen`.
+   * @returns A Web Standard fetch handler.
+   */
+  async getFetchHandler(
+    options: Omit<HttpServerOptions, "port" | "hostname" | "onListen"> = {},
+  ): Promise<FetchHandler> {
+    let captured: FetchHandler | null = null;
+    await this.startHttp({
+      // port/hostname are unused in embedded mode but the type requires them.
+      // Pass sentinel values that would never bind even if used.
+      port: 0,
+      ...options,
+      embedded: true,
+      embeddedHandlerCallback: (handler) => {
+        captured = handler;
+      },
+    });
+    if (!captured) {
+      // Defensive: startHttp should always invoke the callback synchronously
+      // before returning. If it didn't, something is structurally wrong.
+      throw new Error(
+        "[ConcurrentMCPServer] getFetchHandler: embedded callback was not invoked",
+      );
+    }
+    return captured;
   }
 
   /**
@@ -1948,7 +2057,12 @@ export class ConcurrentMCPServer {
    * without re-wrapping. This supports proxy/gateway patterns.
    */
   // deno-lint-ignore no-explicit-any
-  private isPreformattedResult(result: unknown): result is { content: Array<{ type: string; text: string }>; _meta?: Record<string, unknown> } {
+  private isPreformattedResult(
+    result: unknown,
+  ): result is {
+    content: Array<{ type: string; text: string }>;
+    _meta?: Record<string, unknown>;
+  } {
     if (!result || typeof result !== "object") return false;
     const obj = result as Record<string, unknown>;
     return Array.isArray(obj.content) &&
@@ -2055,7 +2169,9 @@ export class ConcurrentMCPServer {
       } catch (mapperError) {
         this.log(
           `toolErrorMapper threw for tool ${toolName}: ${
-            mapperError instanceof Error ? mapperError.message : String(mapperError)
+            mapperError instanceof Error
+              ? mapperError.message
+              : String(mapperError)
           } (original error: ${
             error instanceof Error ? error.message : String(error)
           })`,
@@ -2114,7 +2230,11 @@ export interface RegisterViewersConfig {
   humanName?: (viewerName: string) => string;
   /** MCP Apps CSP — declares external domains the viewer needs (tiles, APIs, CDNs).
    *  Uses McpUiCsp from @casys/mcp-compose (resourceDomains, connectDomains). */
-  csp?: { resourceDomains?: string[]; connectDomains?: string[]; frameDomains?: string[] };
+  csp?: {
+    resourceDomains?: string[];
+    connectDomains?: string[];
+    frameDomains?: string[];
+  };
 }
 
 /** Summary returned by registerViewers() */

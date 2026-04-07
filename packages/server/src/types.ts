@@ -485,8 +485,15 @@ export interface HttpRateLimitOptions {
 /**
  * Options for starting an HTTP server
  */
+// Re-exported from the runtime port so consumers can import the canonical
+// fetch handler type from the same module as HttpServerOptions.
+export type { FetchHandler } from "./runtime/types.ts";
+import type { FetchHandler } from "./runtime/types.ts";
+
 export interface HttpServerOptions {
-  /** Port to listen on */
+  /**
+   * Port to listen on. Ignored when {@link embedded} is `true`.
+   */
   port: number;
 
   /** Hostname to bind to (default: "0.0.0.0") */
@@ -532,6 +539,27 @@ export interface HttpServerOptions {
    * @param info - Server address info
    */
   onListen?: (info: { hostname: string; port: number }) => void;
+
+  /**
+   * Embedded mode: skip binding a port and instead surface the Hono fetch
+   * handler via the {@link embeddedHandlerCallback} option. Used by
+   * {@link ConcurrentMCPServer.getFetchHandler} so consumers (Fresh, Hono,
+   * Express, etc.) can mount the MCP HTTP stack inside their own server
+   * without giving up port ownership.
+   *
+   * When `true`, `port`, `hostname`, and `onListen` are ignored.
+   */
+  embedded?: boolean;
+
+  /**
+   * Receives the Hono fetch handler when running in embedded mode.
+   * Required when {@link embedded} is `true`. Called exactly once,
+   * synchronously, before `startHttp` returns.
+   *
+   * Most consumers should use {@link ConcurrentMCPServer.getFetchHandler}
+   * instead of setting this directly.
+   */
+  embeddedHandlerCallback?: (handler: FetchHandler) => void;
 }
 
 /**

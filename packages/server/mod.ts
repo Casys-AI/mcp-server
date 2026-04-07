@@ -71,7 +71,6 @@ export type {
   MCPTool,
   MCPToolMeta,
   McpUiToolMeta,
-  ToolAnnotations,
   QueueMetrics,
   RateLimitContext,
   RateLimitOptions,
@@ -81,6 +80,7 @@ export type {
   SamplingParams,
   SamplingResult,
   StructuredToolResult,
+  ToolAnnotations,
   ToolErrorMapper,
   ToolHandler,
 } from "./src/types.ts";
@@ -92,12 +92,16 @@ export type {
   RegisterViewersSummary,
 } from "./src/concurrent-server.ts";
 export {
-  resolveViewerDistPath,
   discoverViewers,
+  resolveViewerDistPath,
 } from "./src/ui/viewer-utils.ts";
 
 // MCP Compose — UI composition helpers (re-exported from @casys/mcp-compose)
-export { composeEvents, COMPOSE_EVENT_METHOD, uiMeta } from "@casys/mcp-compose/sdk";
+export {
+  COMPOSE_EVENT_METHOD,
+  composeEvents,
+  uiMeta,
+} from "@casys/mcp-compose/sdk";
 export type {
   ComposeEventHandler,
   ComposeEventPayload,

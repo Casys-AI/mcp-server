@@ -42,6 +42,28 @@
 // Main server class
 export { ConcurrentMCPServer } from "./src/concurrent-server.ts";
 
+/**
+ * Recommended alias for {@link ConcurrentMCPServer}, mirroring the Hono
+ * idiom (`new Hono()` → `new McpApp()`). Same class, just a clearer name —
+ * "Concurrent" described a trivial feature, "McpApp" captures the actual
+ * value: a middleware-first framework on top of the MCP SDK.
+ *
+ * Both names point to the same class. `instanceof` checks pass on either,
+ * and migration requires only swapping the import. The internal class name
+ * (`ConcurrentMCPServer`) is preserved for stack-trace continuity and will
+ * be renamed in a future major version.
+ *
+ * @example
+ * ```typescript
+ * import { McpApp } from "@casys/mcp-server";
+ *
+ * const app = new McpApp({ name: "my-server", version: "1.0.0" });
+ * app.registerTool(toolDef, handler);
+ * await app.startHttp({ port: 3000 });
+ * ```
+ */
+export { ConcurrentMCPServer as McpApp } from "./src/concurrent-server.ts";
+
 // Concurrency primitives
 export { RequestQueue } from "./src/concurrency/request-queue.ts";
 

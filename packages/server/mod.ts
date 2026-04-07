@@ -138,6 +138,14 @@ export type {
   ProtectedResourceMetadata,
 } from "./src/auth/mod.ts";
 
+// Auth - Multi-tenant resolution
+export { createMultiTenantMiddleware } from "./src/auth/mod.ts";
+export type {
+  MultiTenantMiddlewareOptions,
+  TenantResolution,
+  TenantResolver,
+} from "./src/auth/mod.ts";
+
 // Auth - JWT Provider + Presets
 export { JwtAuthProvider } from "./src/auth/mod.ts";
 export type { JwtAuthProviderOptions } from "./src/auth/mod.ts";

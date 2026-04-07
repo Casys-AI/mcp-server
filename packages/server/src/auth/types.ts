@@ -26,6 +26,17 @@ export interface AuthInfo {
 
   /** Token expiration timestamp (Unix epoch seconds) */
   expiresAt?: number;
+
+  /**
+   * Tenant identifier for multi-tenant servers.
+   *
+   * Populated by `createMultiTenantMiddleware` when a `TenantResolver`
+   * is configured. Undefined on single-tenant servers.
+   *
+   * Tool handlers in multi-tenant servers should read this (never trust
+   * raw JWT claims directly) to scope data access to the current tenant.
+   */
+  tenantId?: string;
 }
 
 /**

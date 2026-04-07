@@ -2,6 +2,18 @@
 
 All notable changes to `@casys/mcp-server` will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- **`createMultiTenantMiddleware()`** — tenant resolution middleware sitting after the auth middleware. Delegates tenant identification to a user-provided `TenantResolver`, injects the resolved `tenantId` into `ctx.authInfo`, and rejects mismatches with a generic `invalid_token` error. Passthrough on STDIO; fails fast with a config error if `ctx.authInfo` is missing on HTTP.
+- **`AuthInfo.tenantId`** — new optional field populated by the multi-tenant middleware. Tool handlers should read this instead of raw JWT claims. `authInfo` is re-frozen after injection.
+- **`MultiTenantMiddlewareOptions.onRejection`** — async audit hook awaited before the 401 is thrown. Rejection reasons are server-side only; the client always sees a generic `invalid_token` error. Hook exceptions are caught and logged to stderr — they can never change client-visible behaviour or become an oracle for attackers.
+- **Empty-`tenantId` guard** — `{ ok: true, tenantId: "" }` is rejected as if it were a resolver failure, preventing truthy-guard bypasses in downstream handlers.
+- **New types** — `TenantResolver`, `TenantResolution`, `MultiTenantMiddlewareOptions` exported from `mod.ts`.
+
+Non-breaking: existing single-tenant servers require no changes.
+
 ## [0.12.0] - 2026-03-22
 
 ### Added

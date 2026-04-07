@@ -26,6 +26,14 @@ export {
 // Scope enforcement
 export { createScopeMiddleware } from "./scope-middleware.ts";
 
+// Multi-tenant resolution (tenant enforcement on top of auth)
+export { createMultiTenantMiddleware } from "./multi-tenant-middleware.ts";
+export type {
+  MultiTenantMiddlewareOptions,
+  TenantResolution,
+  TenantResolver,
+} from "./multi-tenant-middleware.ts";
+
 // JWT Provider
 export { JwtAuthProvider } from "./jwt-provider.ts";
 export type { JwtAuthProviderOptions } from "./jwt-provider.ts";

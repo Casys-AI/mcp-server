@@ -141,8 +141,7 @@ export function generateEventBusScript(descriptor: CompositeUiDescriptor): strin
             },
             hostContext: {
               theme: document.body.classList.contains('dark') ? 'dark' : 'light',
-              displayMode: 'inline',
-              sharedContext
+              displayMode: 'inline'
             }
           }
         }, '*');

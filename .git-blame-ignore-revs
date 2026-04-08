@@ -1,0 +1,14 @@
+# Commits to ignore when running `git blame`.
+#
+# Add a commit SHA on its own line. Any commit listed here will be skipped
+# by `git blame`, so blame attribution flows through to the previous
+# meaningful change instead of stopping at a pure-formatting commit.
+#
+# To enable globally for your local clone:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# GitHub honors this file automatically in its blame UI.
+
+# style: apply deno fmt across monorepo (2026-04-08)
+# Pure line wrapping after the McpApp rename — no logic changes.
+7fd287b84798ade1b76f2e463ef8043a0d037c19

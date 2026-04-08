@@ -331,6 +331,58 @@ server.registerResource(
 );
 ```
 
+#### Capability negotiation (clients that don't support MCP Apps)
+
+Not every MCP client renders UI resources. Clients that do advertise the
+[MCP Apps extension](https://github.com/modelcontextprotocol/ext-apps) in their
+capabilities (per the SDK 1.29 `extensions` field). Read it from a tool handler
+to decide between rich UI and a text-only fallback:
+
+```typescript
+import { MCP_APP_MIME_TYPE, McpApp } from "@casys/mcp-server";
+
+const app = new McpApp({ name: "weather-server", version: "1.0.0" });
+
+app.registerTool(
+  {
+    name: "get-weather",
+    description: "Get the weather forecast for a city",
+    inputSchema: {
+      type: "object",
+      properties: { city: { type: "string" } },
+      required: ["city"],
+    },
+  },
+  async ({ city }) => {
+    const forecast = await fetchForecast(city);
+    const cap = app.getClientMcpAppsCapability();
+
+    if (cap?.mimeTypes?.includes(MCP_APP_MIME_TYPE)) {
+      // Rich UI: small text summary + interactive resource
+      return {
+        content: [{ type: "text", text: `Forecast for ${city} loaded` }],
+        _meta: { ui: { resourceUri: `ui://weather/${city}` } },
+      };
+    }
+
+    // Text-only fallback for clients that can't render the UI
+    return {
+      content: [{ type: "text", text: formatForecastAsText(forecast) }],
+    };
+  },
+);
+```
+
+`getClientMcpAppsCapability()` returns `undefined` before the client has
+completed its initialize handshake, when the client doesn't advertise MCP Apps
+support, or when the advertised capability is malformed. The standalone
+`getMcpAppsCapability(clientCapabilities)` function is also exported for use
+against arbitrary capability objects.
+
+The constants `MCP_APPS_EXTENSION_ID` (`"io.modelcontextprotocol/ui"`) and
+`MCP_APPS_PROTOCOL_VERSION` (`"2026-01-26"`) are exported for agents that need
+to introspect the protocol target directly.
+
 ---
 
 ## API Reference

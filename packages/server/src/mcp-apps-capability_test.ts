@@ -17,6 +17,7 @@ import {
   MCP_APPS_EXTENSION_ID,
   MCP_APPS_PROTOCOL_VERSION,
 } from "./types.ts";
+import { McpApp } from "./mcp-app.ts";
 
 Deno.test("MCP_APPS_EXTENSION_ID matches the well-known spec value", () => {
   assertStrictEquals(MCP_APPS_EXTENSION_ID, "io.modelcontextprotocol/ui");
@@ -128,4 +129,20 @@ Deno.test("getMcpAppsCapability — output is deterministic for same input", () 
   const a = getMcpAppsCapability(input);
   const b = getMcpAppsCapability(input);
   assertEquals(a, b);
+});
+
+// ============================================================================
+// McpApp instance method — wiring test
+// ============================================================================
+//
+// We don't simulate a full MCP initialize handshake here (heavy setup for
+// little marginal value). Instead we verify the boundary that matters most:
+// before any client has connected, the method returns undefined and does not
+// throw. This catches the most likely future regression — the SDK renaming
+// or removing `getClientCapabilities()` on its Server class.
+
+Deno.test("McpApp.getClientMcpAppsCapability — returns undefined before any client initialize", () => {
+  const app = new McpApp({ name: "test", version: "1.0.0" });
+  const cap = app.getClientMcpAppsCapability();
+  assertStrictEquals(cap, undefined);
 });

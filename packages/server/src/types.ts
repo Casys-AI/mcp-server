@@ -308,6 +308,13 @@ export interface McpAppsClientCapability {
  * predictable contract that never crashes downstream consumers on
  * untrusted client data.
  *
+ * **Validation scope:** this function only validates the *type* of
+ * `mimeTypes` entries (must be string). It does NOT validate that the
+ * strings look like valid mime types (e.g. empty strings or garbage
+ * content pass through). Consumers should compare against known
+ * constants like {@link MCP_APP_MIME_TYPE} via `.includes()` rather
+ * than treating the array as a generic allowlist.
+ *
  * @param clientCapabilities - The `ClientCapabilities` object from the
  *   MCP SDK initialize handshake. May be `null` or `undefined` if the
  *   client never sent capabilities.

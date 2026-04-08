@@ -1779,8 +1779,17 @@ export class McpApp {
   /**
    * Build the HTTP middleware stack and return its fetch handler without
    * binding a port. Use this when you want to mount the MCP HTTP layer
-   * inside another HTTP framework (Fresh, Hono, Express, Cloudflare Workers,
-   * etc.) instead of giving up port ownership to {@link startHttp}.
+   * inside another HTTP framework on Deno (Fresh, Hono, `Deno.serve`) or
+   * Node (Express, Hono-on-Node) instead of giving up port ownership to
+   * {@link startHttp}.
+   *
+   * **Runtime targets:** `@casys/mcp-server` is Deno-first — the canonical
+   * deployment path is Deno 2.x on Deno Deploy or self-hosted Deno, with
+   * a Node 20+ distribution via `scripts/build-node.sh` as a secondary
+   * target. Cloudflare Workers, workerd, and browser runtimes are not
+   * supported — if you target those, use
+   * [`@modelcontextprotocol/server`](https://www.npmjs.com/package/@modelcontextprotocol/server)
+   * directly instead.
    *
    * The returned handler accepts a Web Standard {@link Request} and returns
    * a Web Standard {@link Response}. It exposes the same routes as

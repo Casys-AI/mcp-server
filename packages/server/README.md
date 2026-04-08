@@ -41,12 +41,34 @@ stack.
 ## Install
 
 ```bash
-# npm
-npm install @casys/mcp-server
-
-# Deno
+# Deno (primary target — JSR)
 deno add jsr:@casys/mcp-server
+
+# Node (secondary — npm, via build-node compilation)
+npm install @casys/mcp-server
 ```
+
+## Runtime targets
+
+`@casys/mcp-server` is **Deno-first**. The canonical deployment path is Deno 2.x
+running on [Deno Deploy](https://deno.com/deploy) or self-hosted Deno, with a
+Node 20+ distribution as a secondary target via `scripts/build-node.sh` (which
+swaps the HTTP runtime adapter and remaps `@std/*` imports to their npm
+equivalents).
+
+| Runtime                                       |      Status      |
+| --------------------------------------------- | :--------------: |
+| **Deno 2.x** (Deno Deploy, self-hosted)       |    ✅ Primary    |
+| **Node.js 20+** (Express, Hono-on-Node, bare) |   ✅ Secondary   |
+| **Cloudflare Workers / workerd**              | ❌ Not supported |
+| **Browser / WebContainer**                    | ❌ Not supported |
+
+If you need to target Cloudflare Workers or the browser, use
+[`@modelcontextprotocol/server`](https://www.npmjs.com/package/@modelcontextprotocol/server)
+directly with its workerd / browser shims — that package focuses on the protocol
+and runtime portability, while `@casys/mcp-server` focuses on the production
+stack (auth, middleware, observability, multi-tenant, MCP Apps helpers) for Deno
+deployments.
 
 ---
 

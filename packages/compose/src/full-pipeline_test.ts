@@ -74,7 +74,9 @@ Deno.test("full pipeline - collector to rendered HTML", () => {
   assertStringIncludes(html, '"from":0');
   assertStringIncludes(html, '"to":1');
   assertStringIncludes(html, "ui/initialize");
-  assertStringIncludes(html, "ui/update-model-context");
+  // Cross-UI sync routes through ui/compose/event (the legacy
+  // ui/update-model-context sync path was dropped in 0.4.0).
+  assertStringIncludes(html, "ui/compose/event");
 });
 
 // =============================================================================

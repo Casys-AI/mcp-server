@@ -4,11 +4,17 @@
  * Generates JavaScript that implements:
  * - JSON-RPC 2.0 message handling via postMessage
  * - `ui/initialize` handshake (MCP Apps protocol)
- * - `ui/compose/event` dedicated cross-UI event routing
- * - `ui/update-model-context` routing per sync rules (legacy)
- * - `ui/notifications/tool-result` forwarding
- * - `ui/message` logging channel
- * - Broadcast support via `to: "*"`
+ * - `ui/message` logging channel (MCP Apps protocol)
+ * - `ui/compose/event` dedicated cross-UI event routing (compose extension)
+ * - Broadcast support via `to: "*"` on sync rules
+ *
+ * Compose acts as a lightweight host for embedded MCP Apps, implementing
+ * a small subset of the host side of the ext-apps spec. The
+ * `ui/compose/event` extension fills the View↔View gap the spec doesn't
+ * cover (embedded apps inside a composite dashboard talking to each
+ * other via sync rules). Other spec messages (open-link, download-file,
+ * request-display-mode, size-changed, host-context-changed) are not yet
+ * implemented — planned for a future release.
  *
  * @module renderer/js/event-bus
  */
@@ -98,18 +104,6 @@ export function generateEventBusScript(descriptor: CompositeUiDescriptor): strin
       }, '*');
     }
 
-    // Send tool result to an iframe (MCP Apps protocol, legacy)
-    function sendToolResult(iframe, data) {
-      iframe.contentWindow?.postMessage({
-        jsonrpc: '2.0',
-        method: 'ui/notifications/tool-result',
-        params: {
-          content: [{ type: 'text', text: JSON.stringify(data) }],
-          isError: false
-        }
-      }, '*');
-    }
-
     // Listen for messages from child UIs
     window.addEventListener('message', (e) => {
       const msg = e.data;
@@ -134,9 +128,7 @@ export function generateEventBusScript(descriptor: CompositeUiDescriptor): strin
             protocolVersion: '2026-01-26',
             hostInfo: { name: 'mcp-compose', version: '${COMPOSE_VERSION}' },
             hostCapabilities: {
-              openLinks: {},
               logging: {},
-              updateModelContext: { text: {} },
               message: { text: {} }
             },
             hostContext: {
@@ -170,29 +162,6 @@ export function generateEventBusScript(descriptor: CompositeUiDescriptor): strin
 
         routeEvent(sourceSlot, eventType, (rule, target) => {
           sendComposeEvent(target, rule.action, msg.params.data, sourceSlot);
-        });
-
-        ack(e.source, msg.id);
-        return;
-      }
-
-      // Handle ui/update-model-context - route per sync rules (legacy)
-      if (msg.method === 'ui/update-model-context') {
-        const contextData = msg.params?.structuredContent || msg.params?.content;
-
-        if (!msg.params) {
-          console.warn('[mcp-compose] ui/update-model-context missing params:', msg);
-        }
-
-        const eventType = contextData?.event || 'update';
-
-        routeEvent(sourceSlot, eventType, (rule, target) => {
-          sendToolResult(target, {
-            action: rule.action,
-            data: contextData,
-            sourceSlot,
-            sharedContext
-          });
         });
 
         ack(e.source, msg.id);

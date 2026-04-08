@@ -81,11 +81,20 @@ src/
 The rendered HTML includes a JavaScript event bus that implements:
 
 - JSON-RPC 2.0 messages via postMessage
-- `ui/initialize` handshake
-- `ui/compose/event` — dedicated cross-UI event routing (mcp-compose protocol)
-- `ui/update-model-context` for sync rule routing (legacy)
-- `ui/notifications/tool-result` for forwarding to targets
-- Broadcast support via `to: "*"`
+- `ui/initialize` handshake (MCP Apps spec — compose acts as host)
+- `ui/message` logging channel (MCP Apps spec — logs to console)
+- `ui/compose/event` — dedicated cross-UI event routing (compose extension, fills the View↔View gap
+  the MCP Apps spec does not cover)
+- Broadcast support via `to: "*"` on sync rules
+
+Compose advertises `hostCapabilities: { logging, message }` on initialize. Other MCP Apps host
+capabilities (`openLinks`, `downloadFile`, `updateModelContext`, `serverTools`, `serverResources`)
+are NOT advertised because compose does not implement their handlers. Future releases may add
+`openLinks`, `size-changed`, `request-display-mode`, and `host-context-changed`; those will be
+advertised only when their handlers land.
+
+The legacy `ui/update-model-context` sync routing path was removed in v0.4.0. Cross-UI sync must go
+through `ui/compose/event` exclusively.
 
 ## Quality Bar
 

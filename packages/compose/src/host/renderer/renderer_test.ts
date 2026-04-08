@@ -207,7 +207,7 @@ Deno.test("renderComposite - event bus handles ui/initialize", () => {
   assertStringIncludes(html, "hostContext");
 });
 
-Deno.test("renderComposite - event bus handles ui/update-model-context", () => {
+Deno.test("renderComposite - event bus routes ui/compose/event via sync rules", () => {
   const descriptor = buildCompositeUi(
     [{ source: "a", resourceUri: "ui://a", slot: 0 }],
     { layout: "stack" },
@@ -215,21 +215,13 @@ Deno.test("renderComposite - event bus handles ui/update-model-context", () => {
 
   const html = renderComposite(descriptor);
 
-  assertStringIncludes(html, "ui/update-model-context");
+  // The cross-UI event routing is now the sole sync mechanism — no more
+  // legacy ui/update-model-context fallback, no more ui/notifications/tool-result
+  // forwarding (those were removed in the 0.4.0 cleanup).
+  assertStringIncludes(html, "COMPOSE_METHOD");
+  assertStringIncludes(html, "ui/compose/event");
   assertStringIncludes(html, "syncRules");
-  assertStringIncludes(html, "sendToolResult");
-});
-
-Deno.test("renderComposite - event bus sends via ui/notifications/tool-result", () => {
-  const descriptor = buildCompositeUi(
-    [{ source: "a", resourceUri: "ui://a", slot: 0 }],
-    { layout: "stack" },
-  );
-
-  const html = renderComposite(descriptor);
-
-  assertStringIncludes(html, "ui/notifications/tool-result");
-  assertStringIncludes(html, "postMessage");
+  assertStringIncludes(html, "sendComposeEvent");
 });
 
 Deno.test("renderComposite - event bus handles broadcast to='*'", () => {
@@ -251,7 +243,7 @@ Deno.test("renderComposite - event bus handles broadcast to='*'", () => {
   assertStringIncludes(html, "filter(([s]) => s !== sourceSlot)");
 });
 
-Deno.test("renderComposite - event bus includes console.warn for malformed messages", () => {
+Deno.test("renderComposite - event bus warns on malformed + unknown messages", () => {
   const descriptor = buildCompositeUi(
     [{ source: "a", resourceUri: "ui://a", slot: 0 }],
     { layout: "stack" },
@@ -261,7 +253,10 @@ Deno.test("renderComposite - event bus includes console.warn for malformed messa
 
   assertStringIncludes(html, "console.warn");
   assertStringIncludes(html, "Malformed JSON-RPC");
-  assertStringIncludes(html, "ui/update-model-context missing params");
+  // ui/compose/event rejects missing event name with a warn
+  assertStringIncludes(html, "ui/compose/event missing or invalid event name");
+  // Any other method the event bus doesn't understand warns
+  assertStringIncludes(html, "Unknown method");
 });
 
 // =============================================================================
@@ -303,7 +298,7 @@ Deno.test("renderComposite - includes sharedContext in event bus", () => {
   assertStringIncludes(html, '"workflowId":"wf-test"');
 });
 
-Deno.test("renderComposite - forwards sharedContext in tool results", () => {
+Deno.test("renderComposite - forwards sharedContext in compose events", () => {
   const descriptor = buildCompositeUi(
     [{ source: "a", resourceUri: "ui://a", slot: 0 }],
     {
@@ -314,8 +309,10 @@ Deno.test("renderComposite - forwards sharedContext in tool results", () => {
 
   const html = renderComposite(descriptor);
 
+  // sharedContext is embedded in the ui/compose/event payload forwarded
+  // to targets via sendComposeEvent (not in a legacy sendToolResult).
   assertStringIncludes(html, "sharedContext");
-  assertStringIncludes(html, "sendToolResult(target, {");
+  assertStringIncludes(html, "sendComposeEvent");
 });
 
 // =============================================================================

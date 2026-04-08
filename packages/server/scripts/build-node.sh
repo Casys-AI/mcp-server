@@ -47,9 +47,16 @@ find "$DIST_DIR" -name "*.ts" -exec sed -i \
   -e 's/import("\(\.[^"]*\)\.ts")/import("\1.js")/g' \
   {} +
 
-# Read version from deno.json
+# Read versions from deno.json (single source of truth — keep specs aligned).
 VERSION=$(grep '"version"' "$ROOT_DIR/deno.json" | sed 's/.*"version": *"\([^"]*\)".*/\1/')
+SDK_VERSION=$(grep '"@modelcontextprotocol/sdk"' "$ROOT_DIR/deno.json" | sed 's|.*sdk@\([^"]*\)".*|\1|')
 echo "[build-node] Version: $VERSION"
+echo "[build-node] MCP SDK version: $SDK_VERSION"
+
+if [ -z "$SDK_VERSION" ]; then
+  echo "[build-node] ERROR: failed to parse @modelcontextprotocol/sdk version from deno.json" >&2
+  exit 1
+fi
 
 # Generate package.json
 cat > "$DIST_DIR/package.json" <<PKGJSON
@@ -65,7 +72,7 @@ cat > "$DIST_DIR/package.json" <<PKGJSON
     "test": "tsx --test src/**/*_test.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.15.1",
+    "@modelcontextprotocol/sdk": "$SDK_VERSION",
     "hono": "^4.0.0",
     "ajv": "^8.17.1",
     "jose": "^6.0.0",

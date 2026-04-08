@@ -4,6 +4,53 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **MCP Apps capability negotiation** — new helpers and constants to read the
+  MCP Apps extension capability advertised by clients (per the
+  `@modelcontextprotocol/ext-apps` spec dated 2026-01-26 and the SDK 1.29
+  `extensions` field on `ClientCapabilities`).
+  - `MCP_APPS_EXTENSION_ID = "io.modelcontextprotocol/ui"` — well-known
+    extension key.
+  - `MCP_APPS_PROTOCOL_VERSION = "2026-01-26"` — dated spec this package
+    targets. Bump in lockstep when adopting newer dated specs.
+  - `getMcpAppsCapability(clientCapabilities)` — best-effort, defensive reader.
+    Returns `McpAppsClientCapability | undefined`. Tolerates `null`/`undefined`
+    input, missing `extensions` field, malformed extension values, and silently
+    filters non-string `mimeTypes` entries.
+  - `McpApp.getClientMcpAppsCapability()` — instance method that wires the above
+    against the connected client. Use it from a tool handler to decide between
+    returning a `_meta.ui` resource or a text-only fallback.
+  - `McpAppsClientCapability` interface (currently `{ mimeTypes?: string[] }`,
+    extensible to match future spec additions).
+  - 13 boundary tests in `mcp-apps-capability_test.ts` cover happy paths,
+    null/undefined inputs, missing extensions, non-object extension values,
+    malformed `mimeTypes`, and determinism.
+
+### Changed
+
+- **Bumped `@modelcontextprotocol/sdk` from `^1.27.0` → `^1.29.0`** in both
+  `packages/server` and `packages/compose`. SDK 1.28 brought
+  `scopes_supported`-from-resource-metadata default behavior and
+  `client_secret_basic` defaulting — both verified harmless against our
+  `JwtAuthProvider` (we already emit `scopes_supported` server-side) and
+  `client-auth/provider.ts` (we already override `token_endpoint_auth_method` to
+  `"none"` for our public PKCE client). SDK 1.29 brings the
+  `extensions`-on-`ClientCapabilities` feature that powers MCP Apps capability
+  negotiation, plus an npm audit fix and several minor schema fixes (`size` on
+  `ResourceSchema`, missing types exports, Windows stdio hide, infinite-TTL
+  guard).
+
+### Fixed
+
+- **`scripts/build-node.sh` SDK version drift** — the generated
+  `dist-node/package.json` for npm consumers hardcoded
+  `@modelcontextprotocol/sdk: ^1.15.1`, far behind the `^1.29.0` used at build
+  time. The script now reads the version from `deno.json` (single source of
+  truth) and fails fast with a clear error if parsing fails. This was a latent
+  bug since the package's first npm release — npm consumers may have been
+  resolving an SDK floor too old to support features the code uses.
+
 ## [0.13.0] - 2026-04-08
 
 ### Added
@@ -43,23 +90,24 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
 
 ### Changed
 
-- **`ConcurrentMCPServer` → `McpApp`** — **non-breaking**. The framework's
-  main class has been renamed and its source file moved from
+- **`ConcurrentMCPServer` → `McpApp`** — **non-breaking**. The framework's main
+  class has been renamed and its source file moved from
   `src/concurrent-server.ts` to `src/mcp-app.ts` (git-tracked rename, history
-  preserved). `McpApp` is now the canonical name everywhere — class body,
-  error messages, JSDoc, internal modules, tests, README, and the compose
-  stubs. The options type follows: `ConcurrentServerOptions → McpAppOptions`.
-  Existing code keeps working unchanged thanks to the deprecated re-exports
-  in `mod.ts` (see Deprecated below) — `import { ConcurrentMCPServer } from
-  "@casys/mcp-server"` still resolves to the same constructor at runtime,
-  `ConcurrentMCPServer === McpApp` is true, and `instanceof` checks pass in
-  both directions. Migration is a one-line import swap when consumers are
-  ready. Rationale: "Concurrent" described a trivial implementation detail
-  (any HTTP server is concurrent), while `McpApp` captures the actual value
-  of the lib — a middleware-first framework on top of the MCP SDK, mirroring
-  the Hono idiom (`new Hono()` → `new McpApp()`). `McpServer` was off the
-  table because it would collide with the SDK's own `McpServer` class which
-  we wrap.
+  preserved). `McpApp` is now the canonical name everywhere — class body, error
+  messages, JSDoc, internal modules, tests, README, and the compose stubs. The
+  options type follows: `ConcurrentServerOptions → McpAppOptions`. Existing code
+  keeps working unchanged thanks to the deprecated re-exports in `mod.ts` (see
+  Deprecated below) —
+  `import { ConcurrentMCPServer } from
+  "@casys/mcp-server"` still resolves to
+  the same constructor at runtime, `ConcurrentMCPServer === McpApp` is true, and
+  `instanceof` checks pass in both directions. Migration is a one-line import
+  swap when consumers are ready. Rationale: "Concurrent" described a trivial
+  implementation detail (any HTTP server is concurrent), while `McpApp` captures
+  the actual value of the lib — a middleware-first framework on top of the MCP
+  SDK, mirroring the Hono idiom (`new Hono()` → `new McpApp()`). `McpServer` was
+  off the table because it would collide with the SDK's own `McpServer` class
+  which we wrap.
 
 ### Deprecated
 
@@ -76,14 +124,13 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
 - **`setRequestHandler` callbacks now have explicit type annotations** — the
   `tools/call` and `resources/read` handlers in `McpApp` (formerly
   `ConcurrentMCPServer`) relied on TypeScript inference for their `request`
-  parameter. The MCP SDK exports the Zod-inferred types
-  (`CallToolRequest`, `ReadResourceRequest`) from `@modelcontextprotocol/sdk/types.js`
-  but the callback sites used neither imports nor annotations. Consumers who
-  pulled the package via a local-path workspace and built with strict
-  `noImplicitAny` were tripping on the inference gap. Both callbacks now
-  import and annotate the request types explicitly, surfacing full type info
-  at the call site and catching SDK shape drift early. Runtime behaviour
-  unchanged.
+  parameter. The MCP SDK exports the Zod-inferred types (`CallToolRequest`,
+  `ReadResourceRequest`) from `@modelcontextprotocol/sdk/types.js` but the
+  callback sites used neither imports nor annotations. Consumers who pulled the
+  package via a local-path workspace and built with strict `noImplicitAny` were
+  tripping on the inference gap. Both callbacks now import and annotate the
+  request types explicitly, surfacing full type info at the call site and
+  catching SDK shape drift early. Runtime behaviour unchanged.
 
 ## [0.12.0] - 2026-03-22
 

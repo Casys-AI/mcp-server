@@ -10,6 +10,21 @@
 
 import { build, emptyDir } from "@deno/dnt";
 
+// Read version from deno.json — single source of truth. Parsing JSON instead
+// of importing with `with { type: "json" }` keeps the script portable and
+// independent of import-attribute support across Deno versions.
+const denoJsonText = await Deno.readTextFile(
+  new URL("../deno.json", import.meta.url),
+);
+const denoJson = JSON.parse(denoJsonText) as { version?: string };
+const VERSION = denoJson.version;
+if (!VERSION) {
+  throw new Error(
+    "[build-npm] failed to read version from packages/compose/deno.json",
+  );
+}
+console.log(`[build-npm] Version: ${VERSION}`);
+
 await emptyDir("./dist-node");
 
 await build({
@@ -27,7 +42,7 @@ await build({
   },
   package: {
     name: "@casys/mcp-compose",
-    version: "0.3.0",
+    version: VERSION,
     description: "Compose and synchronize multiple MCP Apps UIs into composite dashboards",
     license: "MIT",
     repository: {

@@ -15,6 +15,7 @@
 
 import type { CompositeUiDescriptor } from "../../../core/types/descriptor.ts";
 import { COMPOSE_EVENT_METHOD } from "../../../sdk/compose-events.ts";
+import { COMPOSE_VERSION } from "../../../version.ts";
 
 /**
  * Generate the event bus JavaScript for a composite UI.
@@ -131,7 +132,7 @@ export function generateEventBusScript(descriptor: CompositeUiDescriptor): strin
           id: msg.id,
           result: {
             protocolVersion: '2026-01-26',
-            hostInfo: { name: 'mcp-compose', version: '0.1.0' },
+            hostInfo: { name: 'mcp-compose', version: '${COMPOSE_VERSION}' },
             hostCapabilities: {
               openLinks: {},
               logging: {},

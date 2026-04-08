@@ -251,6 +251,110 @@ export const MCP_APP_MIME_TYPE = "text/html;profile=mcp-app" as const;
 /** URI scheme for MCP Apps resources */
 export const MCP_APP_URI_SCHEME = "ui:" as const;
 
+/**
+ * Well-known extension identifier for the MCP Apps protocol.
+ *
+ * Clients advertise MCP Apps support by including this key in
+ * `clientCapabilities.extensions` (per the MCP SDK 1.29 extensions
+ * feature). Servers read it via {@link getMcpAppsCapability} to decide
+ * whether to register UI-rendering tools or fall back to text-only.
+ *
+ * @see {@link https://github.com/modelcontextprotocol/ext-apps | MCP Apps spec}
+ */
+export const MCP_APPS_EXTENSION_ID = "io.modelcontextprotocol/ui" as const;
+
+/**
+ * MCP Apps protocol spec version this package targets.
+ *
+ * Matches the dated spec at
+ * https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx
+ *
+ * Bump this constant in the same commit that adopts a newer dated spec.
+ */
+export const MCP_APPS_PROTOCOL_VERSION = "2026-01-26" as const;
+
+/**
+ * MCP Apps capability advertised by a client.
+ *
+ * Returned by {@link getMcpAppsCapability} after reading
+ * `clientCapabilities.extensions[MCP_APPS_EXTENSION_ID]`.
+ *
+ * The capability object is intentionally minimal — the spec keeps it
+ * extensible by adding fields rather than removing them, so consumers
+ * MUST tolerate unknown fields.
+ */
+export interface McpAppsClientCapability {
+  /**
+   * MIME types the client can render as MCP Apps.
+   *
+   * Typically includes `"text/html;profile=mcp-app"`. An empty or
+   * absent array means the client advertised support but listed no
+   * concrete mime types — defensively assume nothing.
+   */
+  mimeTypes?: string[];
+}
+
+/**
+ * Read the MCP Apps capability from a client's advertised capabilities.
+ *
+ * Best-effort, defensive reader. Returns `undefined` for any of:
+ * - `null` / `undefined` input
+ * - `clientCapabilities` without an `extensions` field
+ * - `extensions` without the {@link MCP_APPS_EXTENSION_ID} key
+ * - extension value that is not a plain object (string, number, null, ...)
+ *
+ * Malformed `mimeTypes` (wrong type, non-string entries) are silently
+ * filtered rather than thrown — agents reading this function need a
+ * predictable contract that never crashes downstream consumers on
+ * untrusted client data.
+ *
+ * @param clientCapabilities - The `ClientCapabilities` object from the
+ *   MCP SDK initialize handshake. May be `null` or `undefined` if the
+ *   client never sent capabilities.
+ * @returns The MCP Apps capability if the client advertised support,
+ *   otherwise `undefined`.
+ *
+ * @example
+ * ```typescript
+ * const cap = getMcpAppsCapability(client.getClientCapabilities());
+ * if (cap?.mimeTypes?.includes(MCP_APP_MIME_TYPE)) {
+ *   // register UI-rendering tools
+ * } else {
+ *   // register text-only fallback tools
+ * }
+ * ```
+ */
+export function getMcpAppsCapability(
+  clientCapabilities:
+    | (Record<string, unknown> & { extensions?: Record<string, unknown> })
+    | null
+    | undefined,
+): McpAppsClientCapability | undefined {
+  if (clientCapabilities === null || clientCapabilities === undefined) {
+    return undefined;
+  }
+  const extensions = clientCapabilities.extensions;
+  if (extensions === null || typeof extensions !== "object") {
+    return undefined;
+  }
+  const raw = extensions[MCP_APPS_EXTENSION_ID];
+  if (raw === null || typeof raw !== "object") {
+    return undefined;
+  }
+  // We have a capability object — extract known fields defensively.
+  const result: McpAppsClientCapability = {};
+  const rawMimeTypes = (raw as Record<string, unknown>).mimeTypes;
+  if (Array.isArray(rawMimeTypes)) {
+    const validMimeTypes = rawMimeTypes.filter(
+      (m): m is string => typeof m === "string",
+    );
+    if (validMimeTypes.length > 0) {
+      result.mimeTypes = validMimeTypes;
+    }
+  }
+  return result;
+}
+
 // ============================================
 // MCP Tool Types
 // ============================================

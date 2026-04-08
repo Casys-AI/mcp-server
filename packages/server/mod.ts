@@ -102,7 +102,16 @@ export type {
 export type { McpAppOptions as ConcurrentServerOptions } from "./src/types.ts";
 
 // MCP Apps constants & viewer utilities
-export { MCP_APP_MIME_TYPE } from "./src/types.ts";
+export {
+  MCP_APP_MIME_TYPE,
+  MCP_APPS_EXTENSION_ID,
+  MCP_APPS_PROTOCOL_VERSION,
+} from "./src/types.ts";
+
+// MCP Apps capability negotiation (per ext-apps spec 2026-01-26 + SDK 1.29 extensions)
+export { getMcpAppsCapability } from "./src/types.ts";
+export type { McpAppsClientCapability } from "./src/types.ts";
+
 export type {
   RegisterViewersConfig,
   RegisterViewersSummary,

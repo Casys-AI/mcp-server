@@ -51,6 +51,7 @@ import type {
   HttpRateLimitContext,
   HttpServerOptions,
   McpAppOptions,
+  McpAppsClientCapability,
   MCPResource,
   MCPTool,
   QueueMetrics,
@@ -59,7 +60,11 @@ import type {
   StructuredToolResult,
   ToolHandler,
 } from "./types.ts";
-import { MCP_APP_MIME_TYPE, MCP_APP_URI_SCHEME } from "./types.ts";
+import {
+  getMcpAppsCapability,
+  MCP_APP_MIME_TYPE,
+  MCP_APP_URI_SCHEME,
+} from "./types.ts";
 import { discoverViewers, resolveViewerDistPath } from "./ui/viewer-utils.ts";
 import type { DirEntry, DiscoverViewersFS } from "./ui/viewer-utils.ts";
 import { buildCspHeader, injectCspMetaTag } from "./security/csp.ts";
@@ -1906,6 +1911,43 @@ export class McpApp {
    */
   getSamplingBridge(): SamplingBridge | null {
     return this.samplingBridge;
+  }
+
+  /**
+   * Read the MCP Apps capability advertised by the connected client.
+   *
+   * Returns the capability object (possibly empty `{}`) when the client
+   * advertised support for MCP Apps via its `extensions` capability,
+   * or `undefined` when:
+   * - the client did not send capabilities yet (called before initialize)
+   * - the client did not advertise the MCP Apps extension at all
+   * - the client sent a malformed extension value
+   *
+   * Use this from a tool handler to decide whether to return a UI
+   * resource (`_meta.ui`) or a text-only fallback. Hosts that don't
+   * support MCP Apps will silently drop the `_meta.ui` field, but
+   * checking explicitly lets you serve a richer text response when
+   * the UI path isn't available.
+   *
+   * @returns MCP Apps capability or `undefined` if not supported.
+   *
+   * @example
+   * ```typescript
+   * const cap = app.getClientMcpAppsCapability();
+   * if (cap?.mimeTypes?.includes(MCP_APP_MIME_TYPE)) {
+   *   return {
+   *     content: [{ type: "text", text: summary }],
+   *     _meta: { ui: { resourceUri: "ui://my-app/dashboard" } },
+   *   };
+   * }
+   * return { content: [{ type: "text", text: detailedTextFallback }] };
+   * ```
+   *
+   * @see {@link getMcpAppsCapability} for the standalone reader
+   * @see {@link MCP_APPS_EXTENSION_ID} for the extension key
+   */
+  getClientMcpAppsCapability(): McpAppsClientCapability | undefined {
+    return getMcpAppsCapability(this.mcpServer.server.getClientCapabilities());
   }
 
   /**

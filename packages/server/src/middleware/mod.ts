@@ -1,5 +1,5 @@
 /**
- * Middleware module for ConcurrentMCPServer.
+ * Middleware module for McpApp.
  *
  * @module lib/server/middleware
  */

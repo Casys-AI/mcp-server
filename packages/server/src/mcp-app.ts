@@ -1,13 +1,13 @@
 /**
- * Concurrent MCP Server Framework
+ * McpApp — Hono-style framework for MCP servers
  *
  * High-performance MCP server with built-in concurrency control,
  * backpressure, and optional sampling support.
  *
  * Wraps the official @modelcontextprotocol/sdk with production-ready
- * concurrency features.
+ * middleware, auth, and observability features.
  *
- * @module lib/server/concurrent-server
+ * @module lib/server/mcp-app
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -47,10 +47,10 @@ import { createScopeMiddleware } from "./auth/scope-middleware.ts";
 import { createAuthProviderFromConfig, loadAuthConfig } from "./auth/config.ts";
 import type { AuthProvider } from "./auth/provider.ts";
 import type {
-  ConcurrentServerOptions,
   FetchHandler,
   HttpRateLimitContext,
   HttpServerOptions,
+  McpAppOptions,
   MCPResource,
   MCPTool,
   QueueMetrics,
@@ -160,7 +160,7 @@ async function readBodyWithLimit(
 }
 
 /**
- * ConcurrentMCPServer provides a high-performance MCP server
+ * McpApp provides a high-performance MCP server
  *
  * Features:
  * - Wraps official @modelcontextprotocol/sdk
@@ -172,7 +172,7 @@ async function readBodyWithLimit(
  *
  * @example
  * ```typescript
- * const server = new ConcurrentMCPServer({
+ * const server = new McpApp({
  *   name: "my-server",
  *   version: "1.0.0",
  *   maxConcurrent: 5,
@@ -183,7 +183,7 @@ async function readBodyWithLimit(
  * await server.start();
  * ```
  */
-export class ConcurrentMCPServer {
+export class McpApp {
   private mcpServer: McpServer;
   private requestQueue: RequestQueue;
   private rateLimiter: RateLimiter | null = null;
@@ -191,7 +191,7 @@ export class ConcurrentMCPServer {
   private samplingBridge: SamplingBridge | null = null;
   private tools = new Map<string, ToolWithHandler>();
   private resources = new Map<string, RegisteredResourceInfo>();
-  private options: ConcurrentServerOptions;
+  private options: McpAppOptions;
   private started = false;
   private resourceHandlersInstalled = false;
 
@@ -225,7 +225,7 @@ export class ConcurrentMCPServer {
     windowMs: 60_000,
   });
 
-  constructor(options: ConcurrentServerOptions) {
+  constructor(options: McpAppOptions) {
     this.options = options;
 
     // Create SDK MCP server
@@ -380,7 +380,7 @@ export class ConcurrentMCPServer {
   ): void {
     if (this.started) {
       throw new Error(
-        "[ConcurrentMCPServer] Cannot register tools after server started. " +
+        "[McpApp] Cannot register tools after server started. " +
           "Call registerTools() before start() or startHttp().",
       );
     }
@@ -413,7 +413,7 @@ export class ConcurrentMCPServer {
   registerTool(tool: MCPTool, handler: ToolHandler): void {
     if (this.started) {
       throw new Error(
-        "[ConcurrentMCPServer] Cannot register tools after server started. " +
+        "[McpApp] Cannot register tools after server started. " +
           "Call registerTool() before start() or startHttp().",
       );
     }
@@ -525,7 +525,7 @@ export class ConcurrentMCPServer {
   use(middleware: Middleware): this {
     if (this.started) {
       throw new Error(
-        "[ConcurrentMCPServer] Cannot add middleware after server started. " +
+        "[McpApp] Cannot add middleware after server started. " +
           "Call use() before start() or startHttp().",
       );
     }
@@ -605,7 +605,7 @@ export class ConcurrentMCPServer {
   ): Promise<MiddlewareResult> {
     if (!this.middlewareRunner) {
       throw new Error(
-        "[ConcurrentMCPServer] Pipeline not built. Call start() or startHttp() first.",
+        "[McpApp] Pipeline not built. Call start() or startHttp() first.",
       );
     }
 
@@ -710,7 +710,7 @@ export class ConcurrentMCPServer {
     // Check for duplicate
     if (this.resources.has(resource.uri)) {
       throw new Error(
-        `[ConcurrentMCPServer] Resource already registered: ${resource.uri}`,
+        `[McpApp] Resource already registered: ${resource.uri}`,
       );
     }
 
@@ -772,7 +772,7 @@ export class ConcurrentMCPServer {
 
     if (missingHandlers.length > 0) {
       throw new Error(
-        `[ConcurrentMCPServer] Missing handlers for resources:\n` +
+        `[McpApp] Missing handlers for resources:\n` +
           missingHandlers.map((uri) => `  - ${uri}`).join("\n"),
       );
     }
@@ -787,7 +787,7 @@ export class ConcurrentMCPServer {
 
     if (duplicateUris.length > 0) {
       throw new Error(
-        `[ConcurrentMCPServer] Resources already registered:\n` +
+        `[McpApp] Resources already registered:\n` +
           duplicateUris.map((uri) => `  - ${uri}`).join("\n"),
       );
     }
@@ -798,7 +798,7 @@ export class ConcurrentMCPServer {
       if (!handler) {
         // Should never happen after validation, but defensive check
         throw new Error(
-          `[ConcurrentMCPServer] Handler disappeared for ${resource.uri}`,
+          `[McpApp] Handler disappeared for ${resource.uri}`,
         );
       }
       this.registerResource(resource, handler);
@@ -821,7 +821,7 @@ export class ConcurrentMCPServer {
   registerViewers(config: RegisterViewersConfig): RegisterViewersSummary {
     if (!config.prefix) {
       throw new Error(
-        "[ConcurrentMCPServer] registerViewers: prefix is required",
+        "[McpApp] registerViewers: prefix is required",
       );
     }
 
@@ -933,8 +933,8 @@ export class ConcurrentMCPServer {
    */
   private cleanupSessions(): void {
     const now = Date.now();
-    const ttlWithGrace = ConcurrentMCPServer.SESSION_TTL_MS +
-      ConcurrentMCPServer.SESSION_GRACE_PERIOD_MS;
+    const ttlWithGrace = McpApp.SESSION_TTL_MS +
+      McpApp.SESSION_GRACE_PERIOD_MS;
     let cleaned = 0;
     for (const [sessionId, session] of this.sessions) {
       if (now - session.lastActivity > ttlWithGrace) {
@@ -1020,7 +1020,7 @@ export class ConcurrentMCPServer {
    *
    * @example
    * ```typescript
-   * const server = new ConcurrentMCPServer({ name: "my-server", version: "1.0.0" });
+   * const server = new McpApp({ name: "my-server", version: "1.0.0" });
    * server.registerTools(tools, handlers);
    * server.registerResource(resource, handler);
    *
@@ -1060,7 +1060,7 @@ export class ConcurrentMCPServer {
     const requireAuth = options.requireAuth ?? false;
     if (requireAuth && !this.authProvider) {
       throw new Error(
-        "[ConcurrentMCPServer] HTTP auth is required (requireAuth=true) but no auth provider is configured.",
+        "[McpApp] HTTP auth is required (requireAuth=true) but no auth provider is configured.",
       );
     }
     if (!this.authProvider && !requireAuth) {
@@ -1433,9 +1433,9 @@ export class ConcurrentMCPServer {
           }
 
           // Guard against session exhaustion
-          if (this.sessions.size >= ConcurrentMCPServer.MAX_SESSIONS) {
+          if (this.sessions.size >= McpApp.MAX_SESSIONS) {
             this.cleanupSessions();
-            if (this.sessions.size >= ConcurrentMCPServer.MAX_SESSIONS) {
+            if (this.sessions.size >= McpApp.MAX_SESSIONS) {
               return c.json({
                 jsonrpc: "2.0",
                 id,
@@ -1696,7 +1696,7 @@ export class ConcurrentMCPServer {
     if (options.embedded) {
       if (!options.embeddedHandlerCallback) {
         throw new Error(
-          "[ConcurrentMCPServer] embedded=true requires embeddedHandlerCallback",
+          "[McpApp] embedded=true requires embeddedHandlerCallback",
         );
       }
       // deno-lint-ignore no-explicit-any
@@ -1704,7 +1704,7 @@ export class ConcurrentMCPServer {
       this.started = true;
       this.sessionCleanupTimer = setInterval(
         () => this.cleanupSessions(),
-        ConcurrentMCPServer.SESSION_CLEANUP_INTERVAL_MS,
+        McpApp.SESSION_CLEANUP_INTERVAL_MS,
       );
       unrefTimer(this.sessionCleanupTimer as unknown as number);
       this.log(
@@ -1740,7 +1740,7 @@ export class ConcurrentMCPServer {
     // Start session cleanup timer (prevents unbounded memory growth)
     this.sessionCleanupTimer = setInterval(
       () => this.cleanupSessions(),
-      ConcurrentMCPServer.SESSION_CLEANUP_INTERVAL_MS,
+      McpApp.SESSION_CLEANUP_INTERVAL_MS,
     );
     // Don't block Deno from exiting because of cleanup timer
     unrefTimer(this.sessionCleanupTimer as unknown as number);
@@ -1787,7 +1787,7 @@ export class ConcurrentMCPServer {
    * started, so the server is fully live after this returns — just without
    * its own listening socket.
    *
-   * Multi-tenant SaaS pattern: cache one `ConcurrentMCPServer` per tenant
+   * Multi-tenant SaaS pattern: cache one `McpApp` per tenant
    * and call `getFetchHandler()` once per server, then dispatch each
    * inbound request to the right cached handler from your framework's
    * routing layer.
@@ -1795,7 +1795,7 @@ export class ConcurrentMCPServer {
    * @example
    * ```typescript
    * // In a Fresh route at routes/mcp/[...path].tsx
-   * const server = new ConcurrentMCPServer({ name: "my-mcp", version: "1.0.0" });
+   * const server = new McpApp({ name: "my-mcp", version: "1.0.0" });
    * server.registerTools(tools, handlers);
    * const handler = await server.getFetchHandler({
    *   requireAuth: true,
@@ -1826,7 +1826,7 @@ export class ConcurrentMCPServer {
       // Defensive: startHttp should always invoke the callback synchronously
       // before returning. If it didn't, something is structurally wrong.
       throw new Error(
-        "[ConcurrentMCPServer] getFetchHandler: embedded callback was not invoked",
+        "[McpApp] getFetchHandler: embedded callback was not invoked",
       );
     }
     return captured;

@@ -1,5 +1,5 @@
 /**
- * Auth module for ConcurrentMCPServer.
+ * Auth module for McpApp.
  *
  * @module lib/server/auth
  */

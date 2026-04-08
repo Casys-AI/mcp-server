@@ -45,9 +45,9 @@ export interface RateLimitContext {
 }
 
 /**
- * Configuration options for ConcurrentMCPServer
+ * Configuration options for McpApp
  */
-export interface ConcurrentServerOptions {
+export interface McpAppOptions {
   /** Server name (shown in MCP protocol) */
   name: string;
 
@@ -543,7 +543,7 @@ export interface HttpServerOptions {
   /**
    * Embedded mode: skip binding a port and instead surface the Hono fetch
    * handler via the {@link embeddedHandlerCallback} option. Used by
-   * {@link ConcurrentMCPServer.getFetchHandler} so consumers (Fresh, Hono,
+   * {@link McpApp.getFetchHandler} so consumers (Fresh, Hono,
    * Express, etc.) can mount the MCP HTTP stack inside their own server
    * without giving up port ownership.
    *
@@ -556,7 +556,7 @@ export interface HttpServerOptions {
    * Required when {@link embedded} is `true`. Called exactly once,
    * synchronously, before `startHttp` returns.
    *
-   * Most consumers should use {@link ConcurrentMCPServer.getFetchHandler}
+   * Most consumers should use {@link McpApp.getFetchHandler}
    * instead of setting this directly.
    */
   embeddedHandlerCallback?: (handler: FetchHandler) => void;

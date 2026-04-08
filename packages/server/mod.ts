@@ -1,33 +1,32 @@
 /**
- * MCP Concurrent Server Framework
+ * @casys/mcp-server — Hono-style framework for MCP servers
  *
- * Production-ready MCP server framework with built-in concurrency control,
- * backpressure strategies, and optional sampling support.
+ * Production-ready MCP server framework with built-in middleware pipeline,
+ * auth, concurrency control, backpressure, and observability.
  *
- * Built on top of the official @modelcontextprotocol/sdk with added
- * production features for reliability and performance.
+ * Built on top of the official @modelcontextprotocol/sdk.
  *
  * @example
  * ```typescript
- * import { ConcurrentMCPServer } from "@casys/mcp-server";
+ * import { McpApp } from "@casys/mcp-server";
  *
- * const server = new ConcurrentMCPServer({
+ * const app = new McpApp({
  *   name: "my-server",
  *   version: "1.0.0",
  *   maxConcurrent: 10,
  *   backpressureStrategy: 'queue'
  * });
  *
- * server.registerTool(
+ * app.registerTool(
  *   { name: "greet", description: "Greet someone", inputSchema: { type: "object" } },
  *   (args) => `Hello, ${args.name}!`,
  * );
  *
  * // STDIO transport
- * await server.start();
+ * await app.start();
  *
  * // — or — HTTP transport with security-first defaults
- * const http = await server.startHttp({
+ * const http = await app.startHttp({
  *   port: 3000,
  *   maxBodyBytes: 1_048_576,                    // 1 MB (default)
  *   corsOrigins: ["https://app.example.com"],   // allowlist
@@ -39,30 +38,18 @@
  * @module @casys/mcp-server
  */
 
-// Main server class
-export { ConcurrentMCPServer } from "./src/concurrent-server.ts";
+// Main server class — canonical name
+export { McpApp } from "./src/mcp-app.ts";
 
 /**
- * Recommended alias for {@link ConcurrentMCPServer}, mirroring the Hono
- * idiom (`new Hono()` → `new McpApp()`). Same class, just a clearer name —
- * "Concurrent" described a trivial feature, "McpApp" captures the actual
- * value: a middleware-first framework on top of the MCP SDK.
+ * @deprecated Use {@link McpApp} instead. `ConcurrentMCPServer` is kept as
+ * a re-export for backwards compatibility and will be removed in v1.0.
  *
- * Both names point to the same class. `instanceof` checks pass on either,
- * and migration requires only swapping the import. The internal class name
- * (`ConcurrentMCPServer`) is preserved for stack-trace continuity and will
- * be renamed in a future major version.
- *
- * @example
- * ```typescript
- * import { McpApp } from "@casys/mcp-server";
- *
- * const app = new McpApp({ name: "my-server", version: "1.0.0" });
- * app.registerTool(toolDef, handler);
- * await app.startHttp({ port: 3000 });
- * ```
+ * Both names point to the exact same class — `McpApp === ConcurrentMCPServer`
+ * is true at runtime, and `instanceof` checks pass in both directions.
+ * Migration is a one-line import swap.
  */
-export { ConcurrentMCPServer as McpApp } from "./src/concurrent-server.ts";
+export { McpApp as ConcurrentMCPServer } from "./src/mcp-app.ts";
 
 // Concurrency primitives
 export { RequestQueue } from "./src/concurrency/request-queue.ts";
@@ -82,12 +69,12 @@ export { SamplingBridge } from "./src/sampling/sampling-bridge.ts";
 
 // Type exports
 export type {
-  ConcurrentServerOptions,
   HttpRateLimitContext,
   HttpRateLimitOptions,
   HttpServerInstance,
   // HTTP Server types
   HttpServerOptions,
+  McpAppOptions,
   // MCP Apps types (SEP-1865)
   MCPResource,
   MCPTool,
@@ -107,12 +94,19 @@ export type {
   ToolHandler,
 } from "./src/types.ts";
 
+/**
+ * @deprecated Use {@link McpAppOptions} instead. `ConcurrentServerOptions`
+ * is kept as a re-export for backwards compatibility and will be removed
+ * in v1.0.
+ */
+export type { McpAppOptions as ConcurrentServerOptions } from "./src/types.ts";
+
 // MCP Apps constants & viewer utilities
 export { MCP_APP_MIME_TYPE } from "./src/types.ts";
 export type {
   RegisterViewersConfig,
   RegisterViewersSummary,
-} from "./src/concurrent-server.ts";
+} from "./src/mcp-app.ts";
 export {
   discoverViewers,
   resolveViewerDistPath,

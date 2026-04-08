@@ -1,5 +1,5 @@
 /**
- * Middleware pipeline types for ConcurrentMCPServer.
+ * Middleware pipeline types for McpApp.
  *
  * Provides an onion-model middleware system (similar to Koa/Hono)
  * where each middleware wraps the next, enabling before/after logic.

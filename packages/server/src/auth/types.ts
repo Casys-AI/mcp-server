@@ -1,5 +1,5 @@
 /**
- * Authentication types for ConcurrentMCPServer.
+ * Authentication types for McpApp.
  *
  * Types follow RFC 9728 (OAuth Protected Resource Metadata)
  * and MCP Auth spec (draft 2025-11-25).

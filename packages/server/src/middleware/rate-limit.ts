@@ -1,7 +1,7 @@
 /**
  * Rate limiting middleware.
  *
- * Extracted from ConcurrentMCPServer's inline rate limit logic.
+ * Extracted from McpApp's inline rate limit logic.
  *
  * @module lib/server/middleware/rate-limit
  */

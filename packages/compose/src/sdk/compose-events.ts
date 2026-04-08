@@ -153,9 +153,7 @@ export function composeEvents(
       : undefined);
 
   const _source: ComposeSource | undefined = source ??
-    ("addEventListener" in globalThis
-      ? globalThis as unknown as ComposeSource
-      : undefined);
+    ("addEventListener" in globalThis ? globalThis as unknown as ComposeSource : undefined);
 
   // Message listener for incoming compose events
   const onMessage = (e: MessageEvent) => {

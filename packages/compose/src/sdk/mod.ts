@@ -17,7 +17,7 @@ export type {
   CompositionValidationResult,
 } from "./composition-validator.ts";
 
-export { composeEvents, COMPOSE_EVENT_METHOD } from "./compose-events.ts";
+export { COMPOSE_EVENT_METHOD, composeEvents } from "./compose-events.ts";
 export type {
   ComposeEventHandler,
   ComposeEventPayload,

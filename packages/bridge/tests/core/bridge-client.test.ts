@@ -1,8 +1,17 @@
 import { assertEquals } from "@std/assert";
 import { BridgeClient } from "../../src/core/bridge-client.ts";
 import type { PlatformAdapter } from "../../src/core/adapter.ts";
-import type { BridgeTransport, TransportMessageHandler, TransportStateHandler } from "../../src/core/transport.ts";
-import type { ContainerDimensions, HostContext, LifecycleEvent, McpAppsMessage } from "../../src/core/types.ts";
+import type {
+  BridgeTransport,
+  TransportMessageHandler,
+  TransportStateHandler,
+} from "../../src/core/transport.ts";
+import type {
+  ContainerDimensions,
+  HostContext,
+  LifecycleEvent,
+  McpAppsMessage,
+} from "../../src/core/types.ts";
 
 // ---------------------------------------------------------------------------
 // Mock transport (in-memory, no real WebSocket)
@@ -55,7 +64,10 @@ class MockTransport implements BridgeTransport {
 // Mock platform adapter
 // ---------------------------------------------------------------------------
 
-function createMockPlatform(): PlatformAdapter & { lifecycleHandlers: Array<(e: LifecycleEvent) => void>; openedLinks: string[] } {
+function createMockPlatform(): PlatformAdapter & {
+  lifecycleHandlers: Array<(e: LifecycleEvent) => void>;
+  openedLinks: string[];
+} {
   const lifecycleHandlers: Array<(e: LifecycleEvent) => void> = [];
   const openedLinks: string[] = [];
 

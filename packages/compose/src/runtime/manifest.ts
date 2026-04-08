@@ -99,7 +99,9 @@ export function parseManifest(json: string, filePath?: string): McpManifest {
   } catch (e) {
     throw {
       code: RuntimeErrorCode.MANIFEST_PARSE_ERROR,
-      message: `Invalid JSON${filePath ? ` in ${filePath}` : ""}: ${e instanceof Error ? e.message : String(e)}`,
+      message: `Invalid JSON${filePath ? ` in ${filePath}` : ""}: ${
+        e instanceof Error ? e.message : String(e)
+      }`,
     } satisfies RuntimeError;
   }
 
@@ -107,7 +109,9 @@ export function parseManifest(json: string, filePath?: string): McpManifest {
   if (!validation.valid) {
     throw {
       code: RuntimeErrorCode.MANIFEST_PARSE_ERROR,
-      message: `Invalid manifest${filePath ? ` in ${filePath}` : ""}: ${validation.errors.join("; ")}`,
+      message: `Invalid manifest${filePath ? ` in ${filePath}` : ""}: ${
+        validation.errors.join("; ")
+      }`,
     } satisfies RuntimeError;
   }
 

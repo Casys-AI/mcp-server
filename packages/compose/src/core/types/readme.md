@@ -14,5 +14,5 @@ Shared type definitions for the mcp-compose composition pipeline.
 
 ## Design
 
-Types are transport-agnostic and reusable across all core slices. No business logic
-lives here — only shapes and stable identifiers.
+Types are transport-agnostic and reusable across all core slices. No business logic lives here —
+only shapes and stable identifiers.

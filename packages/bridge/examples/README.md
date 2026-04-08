@@ -2,9 +2,11 @@
 
 ## demo-time
 
-A minimal end-to-end demo showing the MCP Apps Bridge in action with a Telegram Mini App.
+A minimal end-to-end demo showing the MCP Apps Bridge in action with a Telegram
+Mini App.
 
 The demo consists of:
+
 - A simple HTML page that displays the server time
 - A resource server that handles `tools/call` requests for a `get_time` tool
 - The `bridge.js` client script (injected automatically by the resource server)
@@ -18,7 +20,8 @@ cd lib/mcp-bridge
 TELEGRAM_BOT_TOKEN=123456:ABC-DEF deno run --allow-net --allow-read --allow-env examples/demo-time/start.ts
 ```
 
-The server starts on port 4000 and is intended to be opened from Telegram, because the WebSocket session is authenticated with Telegram `initData`.
+The server starts on port 4000 and is intended to be opened from Telegram,
+because the WebSocket session is authenticated with Telegram `initData`.
 
 **2. Expose via ngrok** (for Telegram testing)
 
@@ -38,7 +41,8 @@ Copy the HTTPS URL (e.g. `https://abc123.ngrok-free.app`).
 
 **4. Open the Mini App**
 
-Open your bot on Telegram mobile, tap the Menu Button at the bottom. The Mini App loads, connects to the bridge, and displays the server time.
+Open your bot on Telegram mobile, tap the Menu Button at the bottom. The Mini
+App loads, connects to the bridge, and displays the server time.
 
 ### What Happens
 

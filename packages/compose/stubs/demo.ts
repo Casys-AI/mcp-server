@@ -69,7 +69,9 @@ if (result.warnings.length > 0) {
   console.warn("Warnings:", result.warnings.join("; "));
 }
 
-console.log(`Dashboard: ${result.descriptor.children.length} UIs, ${result.descriptor.sync.length} sync rules`);
+console.log(
+  `Dashboard: ${result.descriptor.children.length} UIs, ${result.descriptor.sync.length} sync rules`,
+);
 
 // Serve dashboard
 const handle = await serveDashboard(result.html, { open: true });

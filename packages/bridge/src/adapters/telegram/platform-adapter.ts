@@ -8,7 +8,10 @@
  * This runs client-side inside the Telegram Mini App WebView.
  */
 
-import type { LifecycleEventHandler, PlatformAdapter } from "../../core/adapter.ts";
+import type {
+  LifecycleEventHandler,
+  PlatformAdapter,
+} from "../../core/adapter.ts";
 import type {
   ContainerDimensions,
   HostContext,
@@ -97,7 +100,9 @@ export class TelegramPlatformAdapter implements PlatformAdapter {
 
   getAuthData(): Record<string, unknown> {
     if (!this.tg) {
-      throw new Error("[TelegramPlatformAdapter] Not initialized. Call initialize() first.");
+      throw new Error(
+        "[TelegramPlatformAdapter] Not initialized. Call initialize() first.",
+      );
     }
     return {
       initData: this.tg.initData,

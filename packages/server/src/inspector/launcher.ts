@@ -54,8 +54,12 @@ export async function launchInspector(
     CLIENT_PORT: String(port),
   };
 
-  console.error(`[mcp-inspector] Starting inspector on http://localhost:${port}`);
-  console.error(`[mcp-inspector] Server: ${serverCommand} ${filteredArgs.join(" ")}`);
+  console.error(
+    `[mcp-inspector] Starting inspector on http://localhost:${port}`,
+  );
+  console.error(
+    `[mcp-inspector] Server: ${serverCommand} ${filteredArgs.join(" ")}`,
+  );
 
   // Use npx to run the inspector
   const command = new Deno.Command("npx", {

@@ -21,13 +21,15 @@ export function injectBridgeScript(html: string, scriptUrl: string): string {
   // Prefer injection before </head>
   const headCloseIdx = html.indexOf("</head>");
   if (headCloseIdx >= 0) {
-    return html.slice(0, headCloseIdx) + scriptTag + "\n" + html.slice(headCloseIdx);
+    return html.slice(0, headCloseIdx) + scriptTag + "\n" +
+      html.slice(headCloseIdx);
   }
 
   // Fallback: before </body>
   const bodyCloseIdx = html.indexOf("</body>");
   if (bodyCloseIdx >= 0) {
-    return html.slice(0, bodyCloseIdx) + scriptTag + "\n" + html.slice(bodyCloseIdx);
+    return html.slice(0, bodyCloseIdx) + scriptTag + "\n" +
+      html.slice(bodyCloseIdx);
   }
 
   // Last resort: append

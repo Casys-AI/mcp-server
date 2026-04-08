@@ -50,7 +50,9 @@ Deno.test("TelegramAdapter - double init throws", async () => {
 // Mock Telegram.WebApp SDK
 // ---------------------------------------------------------------------------
 
-function createMockTelegramWebApp(): TelegramWebApp & { eventHandlers: Map<string, Set<() => void>> } {
+function createMockTelegramWebApp(): TelegramWebApp & {
+  eventHandlers: Map<string, Set<() => void>>;
+} {
   const eventHandlers = new Map<string, Set<() => void>>();
 
   return {
@@ -143,7 +145,10 @@ Deno.test("TelegramPlatformAdapter - initialize returns HostContext", async () =
     assertEquals(typeof ctx.timeZone, "string");
 
     // Styles should map Telegram theme params to CSS variables
-    assertEquals(ctx.styles?.variables?.["--color-background-primary"], "#1c1c1e");
+    assertEquals(
+      ctx.styles?.variables?.["--color-background-primary"],
+      "#1c1c1e",
+    );
     assertEquals(ctx.styles?.variables?.["--color-text-primary"], "#ffffff");
     assertEquals(ctx.styles?.variables?.["--color-ring-primary"], "#2481cc");
 
@@ -259,7 +264,9 @@ Deno.test("TelegramPlatformAdapter - destroy cleans up event listeners", async (
 Deno.test("TelegramPlatformAdapter - openLink calls Telegram.WebApp.openLink", async () => {
   const { tg, cleanup } = installMockTelegram();
   const openedUrls: string[] = [];
-  tg.openLink = (url: string) => { openedUrls.push(url); };
+  tg.openLink = (url: string) => {
+    openedUrls.push(url);
+  };
 
   try {
     const adapter = new TelegramPlatformAdapter();

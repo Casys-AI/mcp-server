@@ -1,5 +1,8 @@
 import { assertEquals, assertThrows } from "@std/assert";
-import { parseResourceUri, resolveToHttp } from "../../src/core/resource-resolver.ts";
+import {
+  parseResourceUri,
+  resolveToHttp,
+} from "../../src/core/resource-resolver.ts";
 
 Deno.test("parseResourceUri - basic URI", () => {
   const uri = parseResourceUri("ui://my-app/index.html");
@@ -39,7 +42,10 @@ Deno.test("parseResourceUri - throws on empty server", () => {
 });
 
 Deno.test("resolveToHttp - basic resolution", () => {
-  const url = resolveToHttp("ui://my-app/index.html", "https://res.example.com");
+  const url = resolveToHttp(
+    "ui://my-app/index.html",
+    "https://res.example.com",
+  );
   assertEquals(url, "https://res.example.com/app/my-app/index.html");
 });
 

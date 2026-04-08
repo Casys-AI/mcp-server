@@ -13,6 +13,6 @@ Second stage (alongside composer): orchestration rules in, resolved rules + vali
 
 ## Design
 
-Resolution is best-effort: orphan rules are skipped with structured diagnostics.
-Validation is strict: it reports all issues without side effects.
-The broadcast marker `"*"` is preserved as-is (not resolved to a slot).
+Resolution is best-effort: orphan rules are skipped with structured diagnostics. Validation is
+strict: it reports all issues without side effects. The broadcast marker `"*"` is preserved as-is
+(not resolved to a slot).

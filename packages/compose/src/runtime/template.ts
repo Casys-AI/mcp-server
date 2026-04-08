@@ -58,7 +58,9 @@ export function validateTemplate(
       for (let j = 0; j < source.calls.length; j++) {
         if (!toolNames.has(source.calls[j].tool)) {
           errors.push(
-            `sources[${i}].calls[${j}].tool "${source.calls[j].tool}" not found in manifest "${source.manifest}"`,
+            `sources[${i}].calls[${j}].tool "${
+              source.calls[j].tool
+            }" not found in manifest "${source.manifest}"`,
           );
         }
       }
@@ -104,7 +106,9 @@ export function parseTemplate(yaml: string, filePath?: string): DashboardTemplat
   } catch (e) {
     throw {
       code: RuntimeErrorCode.TEMPLATE_PARSE_ERROR,
-      message: `Invalid YAML${filePath ? ` in ${filePath}` : ""}: ${e instanceof Error ? e.message : String(e)}`,
+      message: `Invalid YAML${filePath ? ` in ${filePath}` : ""}: ${
+        e instanceof Error ? e.message : String(e)
+      }`,
     } satisfies RuntimeError;
   }
 

@@ -1,7 +1,6 @@
 # ADR 0001: Orchestration Authoring Boundary
 
-Date: 2026-03-10
-Status: Accepted
+Date: 2026-03-10 Status: Accepted
 
 ## Context
 
@@ -81,9 +80,9 @@ Assessment:
 
 Choose option 3.
 
-`mcp-compose` stays primitive-only.
-Intent-first, template-driven, or end-user-friendly orchestration authoring belongs in a higher
-layer that compiles down to explicit `mcp-compose` inputs.
+`mcp-compose` stays primitive-only. Intent-first, template-driven, or end-user-friendly
+orchestration authoring belongs in a higher layer that compiles down to explicit `mcp-compose`
+inputs.
 
 ## Consequences
 

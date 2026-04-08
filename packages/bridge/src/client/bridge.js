@@ -38,7 +38,10 @@
 
   function log() {
     if (DEBUG) {
-      console.log.apply(console, ["[bridge.js]"].concat(Array.prototype.slice.call(arguments)));
+      console.log.apply(
+        console,
+        ["[bridge.js]"].concat(Array.prototype.slice.call(arguments)),
+      );
     }
   }
 
@@ -64,7 +67,8 @@
 
   function getPreferredTheme() {
     try {
-      return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+      return window.matchMedia &&
+          window.matchMedia("(prefers-color-scheme: dark)").matches
         ? "dark"
         : "light";
     } catch (_err) {
@@ -81,8 +85,12 @@
       locale: nav.language,
       timeZone: getTimeZone(),
       containerDimensions: {
-        width: typeof window.innerWidth === "number" ? window.innerWidth : undefined,
-        height: typeof window.innerHeight === "number" ? window.innerHeight : undefined,
+        width: typeof window.innerWidth === "number"
+          ? window.innerWidth
+          : undefined,
+        height: typeof window.innerHeight === "number"
+          ? window.innerHeight
+          : undefined,
       },
     };
   }
@@ -91,7 +99,9 @@
     return {
       name: name || "generic",
       getHostContext: function () {
-        return buildGenericHostContext(window.parent === window ? "web" : "mobile");
+        return buildGenericHostContext(
+          window.parent === window ? "web" : "mobile",
+        );
       },
       buildAuthMessage: function () {
         return null;
@@ -103,14 +113,20 @@
       subscribeLifecycle: function (emitHostContextChanged) {
         var media = null;
         var themeHandler = function () {
-          var ctx = buildGenericHostContext(window.parent === window ? "web" : "mobile");
+          var ctx = buildGenericHostContext(
+            window.parent === window ? "web" : "mobile",
+          );
           emitHostContextChanged({ theme: ctx.theme, styles: ctx.styles });
         };
         var resizeHandler = function () {
           emitHostContextChanged({
             containerDimensions: {
-              width: typeof window.innerWidth === "number" ? window.innerWidth : undefined,
-              height: typeof window.innerHeight === "number" ? window.innerHeight : undefined,
+              width: typeof window.innerWidth === "number"
+                ? window.innerWidth
+                : undefined,
+              height: typeof window.innerHeight === "number"
+                ? window.innerHeight
+                : undefined,
             },
           });
         };
@@ -167,7 +183,9 @@
         : (window.navigator && window.navigator.language),
       timeZone: getTimeZone(),
       containerDimensions: {
-        width: typeof window.innerWidth === "number" ? window.innerWidth : undefined,
+        width: typeof window.innerWidth === "number"
+          ? window.innerWidth
+          : undefined,
         height: tg.viewportStableHeight || window.innerHeight || undefined,
       },
     };
@@ -221,8 +239,11 @@
         var viewportHandler = function () {
           emitHostContextChanged({
             containerDimensions: {
-              width: typeof window.innerWidth === "number" ? window.innerWidth : undefined,
-              height: tg.viewportStableHeight || window.innerHeight || undefined,
+              width: typeof window.innerWidth === "number"
+                ? window.innerWidth
+                : undefined,
+              height: tg.viewportStableHeight || window.innerHeight ||
+                undefined,
             },
           });
         };
@@ -304,7 +325,11 @@
     return new Promise(function (resolve, reject) {
       var timer = setTimeout(function () {
         delete pendingRequests[id];
-        reject(new Error("Request " + id + " timed out after " + REQUEST_TIMEOUT_MS + "ms"));
+        reject(
+          new Error(
+            "Request " + id + " timed out after " + REQUEST_TIMEOUT_MS + "ms",
+          ),
+        );
       }, REQUEST_TIMEOUT_MS);
 
       pendingRequests[id] = { resolve: resolve, reject: reject, timer: timer };
@@ -335,7 +360,10 @@
     : null;
 
   function dispatchToApp(message) {
-    log("-> App:", message.method || ("id" in message ? "response#" + message.id : "?"));
+    log(
+      "-> App:",
+      message.method || ("id" in message ? "response#" + message.id : "?"),
+    );
     _realPostMessage(message, scriptUrl.origin);
   }
 
@@ -357,18 +385,22 @@
   }
 
   function dispatchReady(detail) {
-    window.dispatchEvent(new CustomEvent("mcp-bridge-ready", {
-      detail: Object.assign(
-        { platform: PLATFORM, session: SESSION_ID },
-        detail || {},
-      ),
-    }));
+    window.dispatchEvent(
+      new CustomEvent("mcp-bridge-ready", {
+        detail: Object.assign(
+          { platform: PLATFORM, session: SESSION_ID },
+          detail || {},
+        ),
+      }),
+    );
   }
 
   function dispatchAuthError(errorMessage) {
-    window.dispatchEvent(new CustomEvent("mcp-bridge-auth-error", {
-      detail: { error: errorMessage },
-    }));
+    window.dispatchEvent(
+      new CustomEvent("mcp-bridge-auth-error", {
+        detail: { error: errorMessage },
+      }),
+    );
   }
 
   function handleInitialize(requestId) {
@@ -424,7 +456,10 @@
         : null;
 
       if (!authMessage) {
-        dispatchAuthError("Authentication required but no auth payload is available for platform " + PLATFORM + ".");
+        dispatchAuthError(
+          "Authentication required but no auth payload is available for platform " +
+            PLATFORM + ".",
+        );
         return;
       }
 
@@ -490,11 +525,17 @@
 
   function sendToServer(message) {
     if (!ws || ws.readyState !== WebSocket.OPEN) {
-      console.warn("[bridge.js] WebSocket not connected. Dropping message:", message);
+      console.warn(
+        "[bridge.js] WebSocket not connected. Dropping message:",
+        message,
+      );
       return;
     }
     if (AUTH_REQUIRED && !authenticated) {
-      console.warn("[bridge.js] Not authenticated yet. Dropping message:", message);
+      console.warn(
+        "[bridge.js] Not authenticated yet. Dropping message:",
+        message,
+      );
       return;
     }
     ws.send(JSON.stringify(message));
@@ -562,5 +603,10 @@
   platformRuntime.subscribeLifecycle(emitHostContextChanged);
   connectWs();
 
-  log("Bridge initialized for", PLATFORM, "(auth required:", AUTH_REQUIRED + ")");
+  log(
+    "Bridge initialized for",
+    PLATFORM,
+    "(auth required:",
+    AUTH_REQUIRED + ")",
+  );
 })();

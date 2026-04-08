@@ -12,10 +12,10 @@ Pure composition primitives for MCP Apps UI orchestration.
 
 ## Design
 
-All modules are pure functions with zero I/O. No network, no filesystem,
-no side effects. This makes them safe to use in any runtime context.
+All modules are pure functions with zero I/O. No network, no filesystem, no side effects. This makes
+them safe to use in any runtime context.
 
 ## Tests
 
-Unit tests are co-located with each slice (`*_test.ts`).
-Cross-slice integration tests live at `src/*_test.ts`.
+Unit tests are co-located with each slice (`*_test.ts`). Cross-slice integration tests live at
+`src/*_test.ts`.

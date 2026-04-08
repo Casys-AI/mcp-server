@@ -38,9 +38,14 @@ export function buildCspHeader(options: CspOptions = {}): string {
   const allowInline = options.allowInline !== false; // default true for backwards compat
   const inlineDirective = allowInline ? " 'unsafe-inline'" : "";
 
-  const scriptSrc = [`'self'${inlineDirective}`, ...(options.scriptSources ?? [])].join(" ");
+  const scriptSrc = [
+    `'self'${inlineDirective}`,
+    ...(options.scriptSources ?? []),
+  ].join(" ");
   const connectSrc = ["'self'", ...(options.connectSources ?? [])].join(" ");
-  const frameAncestors = ["'self'", ...(options.frameAncestors ?? [])].join(" ");
+  const frameAncestors = ["'self'", ...(options.frameAncestors ?? [])].join(
+    " ",
+  );
 
   return [
     `default-src 'none'`,

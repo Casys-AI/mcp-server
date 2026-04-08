@@ -62,7 +62,9 @@ export class BridgeClient {
   private started = false;
 
   // deno-lint-ignore no-explicit-any
-  private originalPostMessage: ((message: any, targetOrigin: string, transfer?: Transferable[]) => void) | null = null;
+  private originalPostMessage:
+    | ((message: any, targetOrigin: string, transfer?: Transferable[]) => void)
+    | null = null;
 
   constructor(options: BridgeClientOptions) {
     this.options = options;
@@ -88,7 +90,8 @@ export class BridgeClient {
     this.hostContext = await this.platform.initialize();
 
     // 2. Connect transport
-    const wsUrl = `${this.options.serverUrl}/bridge?session=${this.options.sessionId}`;
+    const wsUrl =
+      `${this.options.serverUrl}/bridge?session=${this.options.sessionId}`;
     await this.transport.connect(wsUrl);
 
     // 3. Forward incoming messages from resource server to App class
@@ -268,7 +271,10 @@ export class BridgeClient {
   private dispatchToApp(message: McpAppsMessage): void {
     // deno-lint-ignore no-explicit-any
     const _global = globalThis as any;
-    if (typeof _global.dispatchEvent === "function" && typeof _global.MessageEvent === "function") {
+    if (
+      typeof _global.dispatchEvent === "function" &&
+      typeof _global.MessageEvent === "function"
+    ) {
       _global.dispatchEvent(
         new _global.MessageEvent("message", {
           data: message,

@@ -13,6 +13,6 @@ First stage: raw tool results in, `CollectedUiResource[]` out.
 
 ## Design
 
-The collector assigns monotonically increasing slot indices. Results without
-`_meta.ui.resourceUri` are silently skipped (no slot consumed). The `clear()`
-method resets both resources and the slot counter.
+The collector assigns monotonically increasing slot indices. Results without `_meta.ui.resourceUri`
+are silently skipped (no slot consumed). The `clear()` method resets both resources and the slot
+counter.

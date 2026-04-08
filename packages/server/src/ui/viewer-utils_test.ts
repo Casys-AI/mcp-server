@@ -8,31 +8,47 @@
  */
 
 import { assertEquals } from "@std/assert";
-import { resolveViewerDistPath, discoverViewers } from "./viewer-utils.ts";
+import { discoverViewers, resolveViewerDistPath } from "./viewer-utils.ts";
 
 // ── resolveViewerDistPath ────────────────────────────────────────
 
 Deno.test("resolveViewerDistPath - returns first candidate that exists", () => {
   const exists = (path: string) => path.includes("src/ui/dist/invoice-viewer");
-  const result = resolveViewerDistPath("file:///fake/project/server.ts", "invoice-viewer", exists);
+  const result = resolveViewerDistPath(
+    "file:///fake/project/server.ts",
+    "invoice-viewer",
+    exists,
+  );
   assertEquals(result?.endsWith("src/ui/dist/invoice-viewer/index.html"), true);
 });
 
 Deno.test("resolveViewerDistPath - falls back to ui-dist candidate", () => {
   const exists = (path: string) => path.includes("ui-dist/invoice-viewer");
-  const result = resolveViewerDistPath("file:///fake/project/server.ts", "invoice-viewer", exists);
+  const result = resolveViewerDistPath(
+    "file:///fake/project/server.ts",
+    "invoice-viewer",
+    exists,
+  );
   assertEquals(result?.endsWith("ui-dist/invoice-viewer/index.html"), true);
 });
 
 Deno.test("resolveViewerDistPath - returns null when no candidate exists", () => {
   const exists = () => false;
-  const result = resolveViewerDistPath("file:///fake/project/server.ts", "invoice-viewer", exists);
+  const result = resolveViewerDistPath(
+    "file:///fake/project/server.ts",
+    "invoice-viewer",
+    exists,
+  );
   assertEquals(result, null);
 });
 
 Deno.test("resolveViewerDistPath - handles file:// URLs", () => {
   const exists = (path: string) => path.includes("src/ui/dist/chart");
-  const result = resolveViewerDistPath("file:///home/user/project/server.ts", "chart", exists);
+  const result = resolveViewerDistPath(
+    "file:///home/user/project/server.ts",
+    "chart",
+    exists,
+  );
   assertEquals(result !== null, true);
   assertEquals(result!.startsWith("/home/user/project/"), true);
 });
@@ -77,7 +93,8 @@ Deno.test("discoverViewers - skips directories without index.html", () => {
     { name: "orphan-dir", isDirectory: true },
   ];
   const readDir = () => entries;
-  const hasIndexHtml = (_dir: string, name: string) => name === "invoice-viewer";
+  const hasIndexHtml = (_dir: string, name: string) =>
+    name === "invoice-viewer";
 
   const result = discoverViewers("/fake/ui", { readDir, hasIndexHtml });
   assertEquals(result, ["invoice-viewer"]);

@@ -54,10 +54,10 @@ export function createTelegramAuthHandler(
       username: result.username,
       context: result.valid
         ? {
-            provider: "telegram",
-            userId: result.userId,
-            username: result.username,
-          }
+          provider: "telegram",
+          userId: result.userId,
+          username: result.username,
+        }
         : undefined,
       error: result.error,
     };

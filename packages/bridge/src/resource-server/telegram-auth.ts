@@ -63,12 +63,15 @@ export async function validateTelegramInitData(
   // 1. Input validation (fail-fast)
   // -----------------------------------------------------------------------
   if (!initData || typeof initData !== "string") {
-    return { valid: false, error: "initData is required and must be a non-empty string" };
+    return {
+      valid: false,
+      error: "initData is required and must be a non-empty string",
+    };
   }
   if (!botToken || typeof botToken !== "string") {
     throw new Error(
       "[telegram-auth] botToken is required. " +
-      "Provide the Telegram Bot token for HMAC-SHA256 validation.",
+        "Provide the Telegram Bot token for HMAC-SHA256 validation.",
     );
   }
 
@@ -89,7 +92,10 @@ export async function validateTelegramInitData(
 
   const authDateUnix = parseInt(authDateRaw, 10);
   if (isNaN(authDateUnix)) {
-    return { valid: false, error: "Invalid 'auth_date' parameter: not a valid integer" };
+    return {
+      valid: false,
+      error: "Invalid 'auth_date' parameter: not a valid integer",
+    };
   }
 
   // -----------------------------------------------------------------------
@@ -134,7 +140,10 @@ export async function validateTelegramInitData(
   );
 
   if (!isValid) {
-    return { valid: false, error: "HMAC-SHA256 hash mismatch: initData signature is invalid" };
+    return {
+      valid: false,
+      error: "HMAC-SHA256 hash mismatch: initData signature is invalid",
+    };
   }
 
   // -----------------------------------------------------------------------
@@ -147,7 +156,8 @@ export async function validateTelegramInitData(
   if (ageSeconds > maxAgeSeconds) {
     return {
       valid: false,
-      error: `initData expired: auth_date is ${ageSeconds}s old, max allowed is ${maxAgeSeconds}s`,
+      error:
+        `initData expired: auth_date is ${ageSeconds}s old, max allowed is ${maxAgeSeconds}s`,
     };
   }
 
@@ -155,7 +165,8 @@ export async function validateTelegramInitData(
     // Allow 60s clock skew into the future, but reject beyond that
     return {
       valid: false,
-      error: `initData auth_date is ${-ageSeconds}s in the future (beyond 60s tolerance)`,
+      error:
+        `initData auth_date is ${-ageSeconds}s in the future (beyond 60s tolerance)`,
     };
   }
 
@@ -182,7 +193,10 @@ export async function validateTelegramInitData(
  * @param data - The message to sign.
  * @returns The HMAC digest as a Uint8Array.
  */
-async function hmacSha256(key: Uint8Array, data: Uint8Array): Promise<Uint8Array> {
+async function hmacSha256(
+  key: Uint8Array,
+  data: Uint8Array,
+): Promise<Uint8Array> {
   const cryptoKey = await crypto.subtle.importKey(
     "raw",
     key as unknown as ArrayBuffer,
@@ -226,7 +240,9 @@ function parseUserData(
     return {
       userId: typeof user.id === "number" ? user.id : undefined,
       username: typeof user.username === "string" ? user.username : undefined,
-      firstName: typeof user.first_name === "string" ? user.first_name : undefined,
+      firstName: typeof user.first_name === "string"
+        ? user.first_name
+        : undefined,
       lastName: typeof user.last_name === "string" ? user.last_name : undefined,
     };
   } catch {

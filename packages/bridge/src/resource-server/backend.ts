@@ -115,7 +115,8 @@ export class JsonRpcMcpBackend implements McpBackend {
       return null;
     }
 
-    const contents = (response.result as ResourceReadResult | undefined)?.contents;
+    const contents = (response.result as ResourceReadResult | undefined)
+      ?.contents;
     if (!Array.isArray(contents) || contents.length === 0) {
       return null;
     }
@@ -139,7 +140,9 @@ export class JsonRpcMcpBackend implements McpBackend {
     if (!response.ok) {
       const text = await response.text();
       throw new Error(
-        `[JsonRpcMcpBackend] HTTP ${response.status}: ${text || response.statusText}`,
+        `[JsonRpcMcpBackend] HTTP ${response.status}: ${
+          text || response.statusText
+        }`,
       );
     }
 

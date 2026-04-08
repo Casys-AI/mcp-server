@@ -5,11 +5,7 @@
  */
 
 import { assertEquals } from "@std/assert";
-import {
-  injectArgs,
-  parseTemplate,
-  validateTemplate,
-} from "./template.ts";
+import { injectArgs, parseTemplate, validateTemplate } from "./template.ts";
 import { RuntimeErrorCode } from "./types.ts";
 import type { DashboardTemplate, McpManifest, RuntimeError } from "./types.ts";
 

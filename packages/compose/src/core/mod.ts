@@ -39,4 +39,3 @@ export type { ResolutionResult } from "./sync/mod.ts";
 
 // Composer
 export { buildCompositeUi } from "./composer/mod.ts";
-

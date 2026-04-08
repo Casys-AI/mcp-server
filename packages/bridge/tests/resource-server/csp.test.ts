@@ -17,7 +17,10 @@ Deno.test("buildCspHeader - custom script sources", () => {
   const csp = buildCspHeader({
     scriptSources: ["https://telegram.org"],
   });
-  assertEquals(csp.includes("script-src 'self' 'unsafe-inline' https://telegram.org"), true);
+  assertEquals(
+    csp.includes("script-src 'self' 'unsafe-inline' https://telegram.org"),
+    true,
+  );
 });
 
 Deno.test("buildCspHeader - custom frame ancestors", () => {

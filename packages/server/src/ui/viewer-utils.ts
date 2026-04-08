@@ -8,7 +8,13 @@
  */
 
 /** Directories to skip during auto-discovery */
-const SKIP_DIRS = new Set(["shared", "dist", "node_modules", ".cache", ".vite"]);
+const SKIP_DIRS = new Set([
+  "shared",
+  "dist",
+  "node_modules",
+  ".cache",
+  ".vite",
+]);
 
 /**
  * Convert a file:// URL to a filesystem path.

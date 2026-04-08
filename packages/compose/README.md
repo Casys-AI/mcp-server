@@ -7,10 +7,10 @@ dashboards.
 
 ## Positioning
 
-`mcp-compose` is a composition primitive for developers, integrators, and agents.
-It consumes explicit orchestration plus MCP tool results and renders a composite UI.
-It does not provide an end-user or no-code dashboard builder; intent-first authoring belongs in a
-higher product layer built on top of this library.
+`mcp-compose` is a composition primitive for developers, integrators, and agents. It consumes
+explicit orchestration plus MCP tool results and renders a composite UI. It does not provide an
+end-user or no-code dashboard builder; intent-first authoring belongs in a higher product layer
+built on top of this library.
 
 ## Why mcp-compose?
 
@@ -203,13 +203,13 @@ const tools = [
 If your server uses `@casys/mcp-server`, the helpers are re-exported:
 
 ```typescript
-import { uiMeta, composeEvents } from "@casys/mcp-server";
+import { composeEvents, uiMeta } from "@casys/mcp-server";
 ```
 
 ### UI-side events with `composeEvents()`
 
-UIs emit and listen to cross-UI events via a dedicated `ui/compose/event` channel,
-separate from the MCP Apps protocol:
+UIs emit and listen to cross-UI events via a dedicated `ui/compose/event` channel, separate from the
+MCP Apps protocol:
 
 ```typescript
 import { composeEvents } from "@casys/mcp-compose/sdk";
@@ -222,15 +222,15 @@ events.destroy(); // cleanup
 
 ## Runtime — Dashboard from Templates
 
-The runtime module starts MCP servers, calls tools, and feeds results through
-the core pipeline to produce complete dashboards:
+The runtime module starts MCP servers, calls tools, and feeds results through the core pipeline to
+produce complete dashboards:
 
 ```typescript
 import { composeDashboardFromFiles } from "@casys/mcp-compose/runtime";
 
 const result = await composeDashboardFromFiles(
-  "./manifests/",              // directory of .json manifest files
-  "./dashboards/sales.yaml",   // YAML template
+  "./manifests/", // directory of .json manifest files
+  "./dashboards/sales.yaml", // YAML template
   { customer_id: "CUST-001" }, // runtime args (replaces {{placeholders}})
 );
 await Deno.writeTextFile("dashboard.html", result.html);
@@ -238,8 +238,8 @@ await Deno.writeTextFile("dashboard.html", result.html);
 
 ### Manifest
 
-Each MCP server has a JSON manifest describing its transport and tools.
-Generated at build time — no server startup needed for discovery.
+Each MCP server has a JSON manifest describing its transport and tools. Generated at build time — no
+server startup needed for discovery.
 
 ```json
 {
@@ -251,8 +251,8 @@ Generated at build time — no server startup needed for discovery.
 }
 ```
 
-Transport: `"stdio"` (cluster starts the process with `--http --port=0`) or
-`"http"` (connect to an existing server).
+Transport: `"stdio"` (cluster starts the process with `--http --port=0`) or `"http"` (connect to an
+existing server).
 
 ### Template
 
@@ -307,15 +307,15 @@ All messages use JSON-RPC 2.0 via `postMessage`.
 
 **Runtime errors (`RuntimeErrorCode`):**
 
-| Code                    | Description                            |
-| ----------------------- | -------------------------------------- |
-| `MANIFEST_PARSE_ERROR`  | Invalid manifest JSON or structure     |
-| `TEMPLATE_PARSE_ERROR`  | Invalid template YAML or structure     |
-| `MANIFEST_NOT_FOUND`    | Template references unknown manifest   |
-| `PROCESS_START_FAILED`  | MCP server failed to start             |
-| `TOOL_CALL_FAILED`      | HTTP tool call returned an error       |
-| `TOOL_CALL_TIMEOUT`     | Tool call exceeded timeout             |
-| `PROCESS_DIED`          | Server process exited unexpectedly     |
+| Code                   | Description                          |
+| ---------------------- | ------------------------------------ |
+| `MANIFEST_PARSE_ERROR` | Invalid manifest JSON or structure   |
+| `TEMPLATE_PARSE_ERROR` | Invalid template YAML or structure   |
+| `MANIFEST_NOT_FOUND`   | Template references unknown manifest |
+| `PROCESS_START_FAILED` | MCP server failed to start           |
+| `TOOL_CALL_FAILED`     | HTTP tool call returned an error     |
+| `TOOL_CALL_TIMEOUT`    | Tool call exceeded timeout           |
+| `PROCESS_DIED`         | Server process exited unexpectedly   |
 
 ## Development
 

@@ -86,12 +86,18 @@ export interface ResourceServerConfig {
    */
   readonly onHttpRequest?: (
     request: Request,
-  ) => Promise<Response | { html: string; pendingNotifications?: PendingNotification[] } | null>;
+  ) => Promise<
+    | Response
+    | { html: string; pendingNotifications?: PendingNotification[] }
+    | null
+  >;
 }
 
 /** Tool result data to be pushed to an MCP App via WebSocket. */
 export interface ToolResultData {
-  readonly content: ReadonlyArray<{ type: string; text?: string; data?: string; mimeType?: string }>;
+  readonly content: ReadonlyArray<
+    { type: string; text?: string; data?: string; mimeType?: string }
+  >;
   readonly isError?: boolean;
 }
 
@@ -192,7 +198,7 @@ export function startResourceServer(
   if (config.platform === "telegram" && !authHandler) {
     throw new Error(
       "[ResourceServer] Telegram requires an auth handler. " +
-      "Provide `telegramBotToken` or a custom `auth` handler.",
+        "Provide `telegramBotToken` or a custom `auth` handler.",
     );
   }
 
@@ -265,7 +271,9 @@ export function startResourceServer(
     } else if (request) {
       // Reflect the request origin if it's in the allowlist (HTTP spec: only one origin allowed)
       const reqOrigin = request.headers.get("origin") ?? "";
-      origin = allowedOrigins.includes(reqOrigin) ? reqOrigin : allowedOrigins[0];
+      origin = allowedOrigins.includes(reqOrigin)
+        ? reqOrigin
+        : allowedOrigins[0];
     } else {
       origin = allowedOrigins[0];
     }
@@ -303,8 +311,15 @@ export function startResourceServer(
     // Session creation (rate-limited to prevent memory exhaustion DoS)
     if (path === "/session" && request.method === "POST") {
       if (sessions.size >= MAX_SESSIONS) {
-        log("Session creation rejected: max sessions reached (", MAX_SESSIONS, ")");
-        return new Response("Too many active sessions", { status: 429, headers: corsHeaders(request) });
+        log(
+          "Session creation rejected: max sessions reached (",
+          MAX_SESSIONS,
+          ")",
+        );
+        return new Response("Too many active sessions", {
+          status: 429,
+          headers: corsHeaders(request),
+        });
       }
       const session = sessions.create(config.platform);
       log("Session created:", session.id);
@@ -345,7 +360,10 @@ export function startResourceServer(
 
         // Flush pending notifications immediately — bridge.js queues
         // them until the app has called ui/initialize, then replays.
-        if (session.pendingNotifications && session.pendingNotifications.length > 0) {
+        if (
+          session.pendingNotifications &&
+          session.pendingNotifications.length > 0
+        ) {
           const pending = session.pendingNotifications;
           session.pendingNotifications = undefined;
           for (const notification of pending) {
@@ -381,7 +399,12 @@ export function startResourceServer(
                   }
                   session.username = authResult.username;
                   session.authContext = authResult.context;
-                  log("Authenticated session", sessionId, "principal:", authResult.principalId);
+                  log(
+                    "Authenticated session",
+                    sessionId,
+                    "principal:",
+                    authResult.principalId,
+                  );
                   if (socket.readyState === 1) {
                     socket.send(JSON.stringify({
                       type: "auth_ok",
@@ -389,21 +412,32 @@ export function startResourceServer(
                       ...(typeof authResult.principalId === "number"
                         ? { userId: authResult.principalId }
                         : {}),
-                      ...(authResult.username ? { username: authResult.username } : {}),
+                      ...(authResult.username
+                        ? { username: authResult.username }
+                        : {}),
                     }));
                   }
                 } else {
                   log("Auth failed for", sessionId, ":", authResult.error);
                   if (socket.readyState === 1) {
-                    socket.send(JSON.stringify({ type: "auth_error", error: authResult.error }));
+                    socket.send(
+                      JSON.stringify({
+                        type: "auth_error",
+                        error: authResult.error,
+                      }),
+                    );
                     socket.close(4001, "Authentication failed");
                   }
                 }
               } catch (err) {
-                const errorMessage = err instanceof Error ? err.message : String(err);
+                const errorMessage = err instanceof Error
+                  ? err.message
+                  : String(err);
                 log("Auth handler error for", sessionId, ":", errorMessage);
                 if (socket.readyState === 1) {
-                  socket.send(JSON.stringify({ type: "auth_error", error: errorMessage }));
+                  socket.send(
+                    JSON.stringify({ type: "auth_error", error: errorMessage }),
+                  );
                   socket.close(4001, "Authentication failed");
                 }
               }
@@ -413,7 +447,13 @@ export function startResourceServer(
             // Non-auth message on unauthenticated session — reject
             log("Unauthenticated message from", sessionId, "— closing");
             if (socket.readyState === 1) {
-              socket.send(JSON.stringify({ type: "auth_error", error: "Authentication required. Send { type: 'auth', initData: '...' } first." }));
+              socket.send(
+                JSON.stringify({
+                  type: "auth_error",
+                  error:
+                    "Authentication required. Send { type: 'auth', initData: '...' } first.",
+                }),
+              );
               socket.close(4003, "Authentication required");
             }
             return;
@@ -428,7 +468,12 @@ export function startResourceServer(
           }
 
           const message = data as McpAppsMessage;
-          log("Received from", sessionId, ":", (message as { method?: string }).method ?? "response");
+          log(
+            "Received from",
+            sessionId,
+            ":",
+            (message as { method?: string }).method ?? "response",
+          );
 
           const response = await routeMessage(
             session,
@@ -443,9 +488,18 @@ export function startResourceServer(
           log("Error handling message from", sessionId, ":", err);
           if (isJsonRpcMessageCandidate(event.data)) {
             const candidate = parseJsonRpcCandidate(event.data);
-            if (candidate && "method" in candidate && "id" in candidate && socket.readyState === 1) {
-              const errorMessage = err instanceof Error ? err.message : String(err);
-              socket.send(JSON.stringify(buildErrorResponse(candidate.id, -32603, errorMessage)));
+            if (
+              candidate && "method" in candidate && "id" in candidate &&
+              socket.readyState === 1
+            ) {
+              const errorMessage = err instanceof Error
+                ? err.message
+                : String(err);
+              socket.send(
+                JSON.stringify(
+                  buildErrorResponse(candidate.id, -32603, errorMessage),
+                ),
+              );
             }
           }
         }
@@ -488,10 +542,17 @@ export function startResourceServer(
     }
 
     if (uiPath && path === uiPath && request.method === "GET") {
-      return await serveBackendUiResource(request, config, corsHeaders(request));
+      return await serveBackendUiResource(
+        request,
+        config,
+        corsHeaders(request),
+      );
     }
 
-    return new Response("Not Found", { status: 404, headers: corsHeaders(request) });
+    return new Response("Not Found", {
+      status: 404,
+      headers: corsHeaders(request),
+    });
   }
 
   async function serveAppAsset(
@@ -568,7 +629,11 @@ export function startResourceServer(
         headers: { ...headers, "Content-Type": mime },
       });
     } catch (err) {
-      log("Asset not found:", resolved, err instanceof Error ? err.message : err);
+      log(
+        "Asset not found:",
+        resolved,
+        err instanceof Error ? err.message : err,
+      );
       return new Response("File not found", { status: 404, headers });
     }
   }
@@ -615,7 +680,12 @@ export function startResourceServer(
 
     if (allNotifications.length > 0) {
       session.pendingNotifications = allNotifications;
-      log("Buffered", allNotifications.length, "notification(s) for session", session.id);
+      log(
+        "Buffered",
+        allNotifications.length,
+        "notification(s) for session",
+        session.id,
+      );
     }
 
     const bridgeScriptUrl = buildBridgeScriptUrl(
@@ -650,13 +720,19 @@ export function startResourceServer(
     const url = new URL(request.url);
     const uri = url.searchParams.get("uri");
     if (!uri || !uri.startsWith("ui://")) {
-      return new Response("Missing or invalid ?uri parameter", { status: 400, headers });
+      return new Response("Missing or invalid ?uri parameter", {
+        status: 400,
+        headers,
+      });
     }
 
     try {
       const resource = await backend.readResource(uri, request);
       if (!resource) {
-        return new Response(`Resource not found: ${uri}`, { status: 404, headers });
+        return new Response(`Resource not found: ${uri}`, {
+          status: 404,
+          headers,
+        });
       }
 
       if (typeof resource === "string") {
@@ -698,7 +774,10 @@ export function startResourceServer(
         },
       });
     } catch (err) {
-      log("Failed to serve bridge.js:", err instanceof Error ? err.message : err);
+      log(
+        "Failed to serve bridge.js:",
+        err instanceof Error ? err.message : err,
+      );
       return new Response("bridge.js not found", { status: 500, headers });
     }
   }
@@ -731,7 +810,10 @@ export function startResourceServer(
         try {
           ws.close();
         } catch (err) {
-          log("Error closing WebSocket:", err instanceof Error ? err.message : err);
+          log(
+            "Error closing WebSocket:",
+            err instanceof Error ? err.message : err,
+          );
         }
       }
       wsConnections.clear();
@@ -802,9 +884,18 @@ function mergeCspOptions(
   override?: CspOptions,
 ): CspOptions {
   return {
-    scriptSources: mergeStringLists(base?.scriptSources, override?.scriptSources),
-    connectSources: mergeStringLists(base?.connectSources, override?.connectSources),
-    frameAncestors: mergeStringLists(base?.frameAncestors, override?.frameAncestors),
+    scriptSources: mergeStringLists(
+      base?.scriptSources,
+      override?.scriptSources,
+    ),
+    connectSources: mergeStringLists(
+      base?.connectSources,
+      override?.connectSources,
+    ),
+    frameAncestors: mergeStringLists(
+      base?.frameAncestors,
+      override?.frameAncestors,
+    ),
     allowInline: override?.allowInline ?? base?.allowInline,
   };
 }
@@ -861,7 +952,9 @@ function generateRef(): string {
 }
 
 /** Build a `ui/notifications/tool-result` pending notification from ToolResultData. */
-export function buildToolResultFromData(data: ToolResultData): PendingNotification {
+export function buildToolResultFromData(
+  data: ToolResultData,
+): PendingNotification {
   return {
     jsonrpc: "2.0",
     method: "ui/notifications/tool-result",

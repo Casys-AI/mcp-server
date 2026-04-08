@@ -89,7 +89,6 @@ export const UI_LAYOUT_PRESETS: readonly UiLayoutPreset[] = [
   "stack",
 ] as const;
 
-
 /**
  * Check if a value is a valid UiLayout (preset string or areas object).
  *

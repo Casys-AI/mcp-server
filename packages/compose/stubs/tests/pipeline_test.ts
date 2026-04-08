@@ -12,7 +12,10 @@ import { loadTemplate, validateTemplate } from "../../src/runtime/template.ts";
 const STUBS_DIR = new URL("../", import.meta.url).pathname;
 
 Deno.test("pipeline - loads all 4 stub manifests", async () => {
-  const manifests = new Map<string, Awaited<ReturnType<typeof loadManifests>> extends Map<string, infer V> ? V : never>();
+  const manifests = new Map<
+    string,
+    Awaited<ReturnType<typeof loadManifests>> extends Map<string, infer V> ? V : never
+  >();
 
   for (const name of ["stub-list", "stub-detail", "stub-chart", "stub-filter"]) {
     const path = `${STUBS_DIR}${name}/manifest.json`;

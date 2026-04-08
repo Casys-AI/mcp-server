@@ -95,7 +95,9 @@ export abstract class BasePostMessageAdapter implements McpAppsAdapter {
   }
 
   destroy(): void {
-    if (this.boundListener && typeof _global.removeEventListener === "function") {
+    if (
+      this.boundListener && typeof _global.removeEventListener === "function"
+    ) {
       _global.removeEventListener("message", this.boundListener);
     }
     this.boundListener = null;

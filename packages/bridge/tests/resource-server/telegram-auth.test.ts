@@ -85,10 +85,15 @@ async function buildInitData(
     ["sign"],
   );
   const hashBytes = new Uint8Array(
-    await crypto.subtle.sign("HMAC", hashKeyRaw, encoder.encode(dataCheckString)),
+    await crypto.subtle.sign(
+      "HMAC",
+      hashKeyRaw,
+      encoder.encode(dataCheckString),
+    ),
   );
 
-  const hash = Array.from(hashBytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  const hash = Array.from(hashBytes, (b) => b.toString(16).padStart(2, "0"))
+    .join("");
   params.set("hash", hash);
 
   return params.toString();
@@ -113,20 +118,30 @@ Deno.test("validateTelegramInitData - valid initData is accepted", async () => {
 
 Deno.test("validateTelegramInitData - invalid hash is rejected", async () => {
   const initData = await buildInitData({
-    forceHash: "0000000000000000000000000000000000000000000000000000000000000000",
+    forceHash:
+      "0000000000000000000000000000000000000000000000000000000000000000",
   });
   const result = await validateTelegramInitData(initData, TEST_BOT_TOKEN);
 
   assertEquals(result.valid, false);
-  assertEquals(result.error, "HMAC-SHA256 hash mismatch: initData signature is invalid");
+  assertEquals(
+    result.error,
+    "HMAC-SHA256 hash mismatch: initData signature is invalid",
+  );
 });
 
 Deno.test("validateTelegramInitData - wrong bot token is rejected", async () => {
   const initData = await buildInitData();
-  const result = await validateTelegramInitData(initData, "9999999999:WRONG_TOKEN_HERE");
+  const result = await validateTelegramInitData(
+    initData,
+    "9999999999:WRONG_TOKEN_HERE",
+  );
 
   assertEquals(result.valid, false);
-  assertEquals(result.error, "HMAC-SHA256 hash mismatch: initData signature is invalid");
+  assertEquals(
+    result.error,
+    "HMAC-SHA256 hash mismatch: initData signature is invalid",
+  );
 });
 
 Deno.test("validateTelegramInitData - expired auth_date is rejected", async () => {
@@ -166,7 +181,10 @@ Deno.test("validateTelegramInitData - missing auth_date parameter", async () => 
   const params = new URLSearchParams();
   params.set("hash", "abc123");
   params.set("user", JSON.stringify(TEST_USER));
-  const result = await validateTelegramInitData(params.toString(), TEST_BOT_TOKEN);
+  const result = await validateTelegramInitData(
+    params.toString(),
+    TEST_BOT_TOKEN,
+  );
 
   assertEquals(result.valid, false);
   assertEquals(result.error, "Missing 'auth_date' parameter in initData");
@@ -176,7 +194,10 @@ Deno.test("validateTelegramInitData - empty initData string", async () => {
   const result = await validateTelegramInitData("", TEST_BOT_TOKEN);
 
   assertEquals(result.valid, false);
-  assertEquals(result.error, "initData is required and must be a non-empty string");
+  assertEquals(
+    result.error,
+    "initData is required and must be a non-empty string",
+  );
 });
 
 Deno.test("validateTelegramInitData - missing botToken throws", async () => {
@@ -225,7 +246,11 @@ Deno.test("validateTelegramInitData - initData without user field", async () => 
     ["sign"],
   );
   const secretKey = new Uint8Array(
-    await crypto.subtle.sign("HMAC", secretKeyRaw, encoder.encode(TEST_BOT_TOKEN)),
+    await crypto.subtle.sign(
+      "HMAC",
+      secretKeyRaw,
+      encoder.encode(TEST_BOT_TOKEN),
+    ),
   );
   const hashKeyRaw = await crypto.subtle.importKey(
     "raw",
@@ -235,12 +260,20 @@ Deno.test("validateTelegramInitData - initData without user field", async () => 
     ["sign"],
   );
   const hashBytes = new Uint8Array(
-    await crypto.subtle.sign("HMAC", hashKeyRaw, encoder.encode(dataCheckString)),
+    await crypto.subtle.sign(
+      "HMAC",
+      hashKeyRaw,
+      encoder.encode(dataCheckString),
+    ),
   );
-  const hash = Array.from(hashBytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  const hash = Array.from(hashBytes, (b) => b.toString(16).padStart(2, "0"))
+    .join("");
   params.set("hash", hash);
 
-  const result = await validateTelegramInitData(params.toString(), TEST_BOT_TOKEN);
+  const result = await validateTelegramInitData(
+    params.toString(),
+    TEST_BOT_TOKEN,
+  );
 
   assertEquals(result.valid, true);
   assertEquals(result.userId, undefined);

@@ -71,7 +71,7 @@ export type {
   CompositionValidationResult,
 } from "./src/sdk/mod.ts";
 
-export { composeEvents, COMPOSE_EVENT_METHOD } from "./src/sdk/mod.ts";
+export { COMPOSE_EVENT_METHOD, composeEvents } from "./src/sdk/mod.ts";
 export type {
   ComposeEventHandler,
   ComposeEventPayload,

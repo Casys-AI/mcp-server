@@ -28,8 +28,7 @@ await build({
   package: {
     name: "@casys/mcp-compose",
     version: "0.3.0",
-    description:
-      "Compose and synchronize multiple MCP Apps UIs into composite dashboards",
+    description: "Compose and synchronize multiple MCP Apps UIs into composite dashboards",
     license: "MIT",
     repository: {
       type: "git",

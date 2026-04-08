@@ -37,7 +37,10 @@ const server = startResourceServer({
   csp: {
     scriptSources: ["https://telegram.org"],
     connectSources: ["ws://localhost:4000"],
-    frameAncestors: ["https://web.telegram.org", "https://desktop-app.telegram.org"],
+    frameAncestors: [
+      "https://web.telegram.org",
+      "https://desktop-app.telegram.org",
+    ],
   },
   options: {
     resourceServerPort: PORT,
@@ -73,7 +76,9 @@ const server = startResourceServer({
         });
 
         console.log(
-          `[Demo] Session ${session.id.slice(0, 8)}... called get_time -> ${time}`,
+          `[Demo] Session ${
+            session.id.slice(0, 8)
+          }... called get_time -> ${time}`,
         );
 
         return {
@@ -83,7 +88,11 @@ const server = startResourceServer({
             content: [
               {
                 type: "text",
-                text: JSON.stringify({ time, date, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
+                text: JSON.stringify({
+                  time,
+                  date,
+                  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                }),
               },
             ],
           },

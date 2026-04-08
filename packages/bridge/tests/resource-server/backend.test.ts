@@ -103,7 +103,8 @@ Deno.test("resource-server - built-in ui proxy serves backend resources", async 
       readResource(uri: string) {
         assertEquals(uri, "ui://demo/index.html");
         return Promise.resolve({
-          html: "<html><head><title>Demo</title></head><body><h1>Hello</h1></body></html>",
+          html:
+            "<html><head><title>Demo</title></head><body><h1>Hello</h1></body></html>",
         });
       },
     },

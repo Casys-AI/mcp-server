@@ -62,9 +62,14 @@ async function buildInitData(
     ["sign"],
   );
   const hashBytes = new Uint8Array(
-    await crypto.subtle.sign("HMAC", hashKeyRaw, encoder.encode(dataCheckString)),
+    await crypto.subtle.sign(
+      "HMAC",
+      hashKeyRaw,
+      encoder.encode(dataCheckString),
+    ),
   );
-  const hash = Array.from(hashBytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  const hash = Array.from(hashBytes, (b) => b.toString(16).padStart(2, "0"))
+    .join("");
   params.set("hash", hash);
 
   return params.toString();
@@ -94,7 +99,10 @@ function connectWs(baseUrl: string, sessionId: string): WebSocket {
 
 function waitForMessage(ws: WebSocket): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("WS message timeout")), 5000);
+    const timer = setTimeout(
+      () => reject(new Error("WS message timeout")),
+      5000,
+    );
     ws.addEventListener("message", (event) => {
       clearTimeout(timer);
       resolve(JSON.parse(event.data));
@@ -102,7 +110,9 @@ function waitForMessage(ws: WebSocket): Promise<Record<string, unknown>> {
   });
 }
 
-function waitForClose(ws: WebSocket): Promise<{ code: number; reason: string }> {
+function waitForClose(
+  ws: WebSocket,
+): Promise<{ code: number; reason: string }> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("WS close timeout")), 5000);
     ws.addEventListener("close", (event) => {
@@ -310,15 +320,15 @@ Deno.test("server-auth - custom auth handler works for arbitrary platforms", asy
       return Promise.resolve(
         payload?.token === "ok"
           ? {
-              valid: true,
-              principalId: "user-42",
-              username: "custom-user",
-              context: { provider: "custom-platform" },
-            }
+            valid: true,
+            principalId: "user-42",
+            username: "custom-user",
+            context: { provider: "custom-platform" },
+          }
           : {
-              valid: false,
-              error: "bad token",
-            },
+            valid: false,
+            error: "bad token",
+          },
       );
     },
     onMessage: (_session, message) => {

@@ -23,12 +23,7 @@
  * @module runtime/cluster
  */
 
-import type {
-  McpCluster,
-  McpConnection,
-  McpManifest,
-  RuntimeError,
-} from "./types.ts";
+import type { McpCluster, McpConnection, McpManifest, RuntimeError } from "./types.ts";
 import { RuntimeErrorCode } from "./types.ts";
 
 /** Default timeout for server startup (ms). */
@@ -81,7 +76,9 @@ export async function connectHttp(manifest: McpManifest): Promise<McpConnection>
   } catch (cause) {
     throw {
       code: RuntimeErrorCode.PROCESS_START_FAILED,
-      message: `Cannot connect to "${manifest.name}" at ${baseUrl}: ${cause instanceof Error ? cause.message : String(cause)}`,
+      message: `Cannot connect to "${manifest.name}" at ${baseUrl}: ${
+        cause instanceof Error ? cause.message : String(cause)
+      }`,
       server: manifest.name,
       cause,
     } satisfies RuntimeError;
@@ -156,7 +153,9 @@ export async function startServer(
   } catch (cause) {
     throw {
       code: RuntimeErrorCode.PROCESS_START_FAILED,
-      message: `Failed to start "${manifest.name}": ${cause instanceof Error ? cause.message : String(cause)}`,
+      message: `Failed to start "${manifest.name}": ${
+        cause instanceof Error ? cause.message : String(cause)
+      }`,
       server: manifest.name,
       cause,
     } satisfies RuntimeError;
@@ -307,11 +306,13 @@ async function detectListenUrl(
     timerId = setTimeout(() => {
       reader.releaseLock();
       drainStream(stderr);
-      reject({
-        code: RuntimeErrorCode.PROCESS_START_FAILED,
-        message: `Server "${serverName}" did not report a listening URL within ${timeoutMs}ms`,
-        server: serverName,
-      } satisfies RuntimeError);
+      reject(
+        {
+          code: RuntimeErrorCode.PROCESS_START_FAILED,
+          message: `Server "${serverName}" did not report a listening URL within ${timeoutMs}ms`,
+          server: serverName,
+        } satisfies RuntimeError,
+      );
     }, timeoutMs);
   });
 
@@ -322,7 +323,8 @@ async function detectListenUrl(
         if (done) {
           throw {
             code: RuntimeErrorCode.PROCESS_DIED,
-            message: `Server "${serverName}" exited before reporting a listening URL. Stderr: ${buffer}`,
+            message:
+              `Server "${serverName}" exited before reporting a listening URL. Stderr: ${buffer}`,
             server: serverName,
           } satisfies RuntimeError;
         }
@@ -355,8 +357,11 @@ function drainStream(stream: ReadableStream<Uint8Array>): void {
   (async () => {
     try {
       while (!(await reader.read()).done) { /* discard */ }
-    } catch { /* stream closed */ }
-    finally { reader.releaseLock(); }
+    } catch {
+      /* stream closed */
+    } finally {
+      reader.releaseLock();
+    }
   })();
 }
 
@@ -369,7 +374,7 @@ function createHttpConnection(
     name,
     transportType: "http",
     uiBaseUrl: baseUrl,
-    async close() { /* no-op for http connections */ },
+    async close() {/* no-op for http connections */},
     async callTool(
       toolName: string,
       args?: Record<string, unknown>,
@@ -444,7 +449,9 @@ async function httpCallTool(
     }
     throw {
       code: RuntimeErrorCode.TOOL_CALL_FAILED,
-      message: `Tool call "${toolName}" on "${serverName}" failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+      message: `Tool call "${toolName}" on "${serverName}" failed: ${
+        cause instanceof Error ? cause.message : String(cause)
+      }`,
       server: serverName,
       tool: toolName,
       cause,
@@ -465,7 +472,9 @@ async function httpCallTool(
   if (json.error) {
     throw {
       code: RuntimeErrorCode.TOOL_CALL_FAILED,
-      message: `Tool call "${toolName}" on "${serverName}" returned error: ${json.error.message ?? JSON.stringify(json.error)}`,
+      message: `Tool call "${toolName}" on "${serverName}" returned error: ${
+        json.error.message ?? JSON.stringify(json.error)
+      }`,
       server: serverName,
       tool: toolName,
       cause: json.error,

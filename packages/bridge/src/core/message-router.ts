@@ -46,7 +46,10 @@ interface PendingRequest {
  */
 export class MessageRouter {
   private readonly requestHandlers = new Map<string, RequestHandler>();
-  private readonly notificationHandlers = new Map<string, NotificationHandler>();
+  private readonly notificationHandlers = new Map<
+    string,
+    NotificationHandler
+  >();
   private readonly pendingRequests = new Map<string | number, PendingRequest>();
 
   // -------------------------------------------------------------------------

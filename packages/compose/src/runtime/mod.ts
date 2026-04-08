@@ -26,30 +26,13 @@ export type {
 export { RuntimeErrorCode } from "./types.ts";
 
 // Manifest
-export {
-  loadManifest,
-  loadManifests,
-  parseManifest,
-  validateManifest,
-} from "./manifest.ts";
+export { loadManifest, loadManifests, parseManifest, validateManifest } from "./manifest.ts";
 
 // Template
-export {
-  injectArgs,
-  loadTemplate,
-  parseTemplate,
-  validateTemplate,
-} from "./template.ts";
+export { injectArgs, loadTemplate, parseTemplate, validateTemplate } from "./template.ts";
 
 // Cluster
-export {
-  connectHttp,
-  createCluster,
-  startServer,
-} from "./cluster.ts";
+export { connectHttp, createCluster, startServer } from "./cluster.ts";
 
 // Compose (main entry points)
-export {
-  composeDashboard,
-  composeDashboardFromFiles,
-} from "./compose.ts";
+export { composeDashboard, composeDashboardFromFiles } from "./compose.ts";

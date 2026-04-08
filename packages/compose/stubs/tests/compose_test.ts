@@ -37,60 +37,75 @@ async function loadAllManifests(): Promise<Map<string, McpManifest>> {
   return map;
 }
 
-Deno.test({ name: "compose e2e - filter-chart dashboard", ...TEST_OPTS, fn: async () => {
-  const manifests = await loadAllManifests();
-  const template = await loadTemplate(`${STUBS_DIR}templates/filter-chart.yaml`);
+Deno.test({
+  name: "compose e2e - filter-chart dashboard",
+  ...TEST_OPTS,
+  fn: async () => {
+    const manifests = await loadAllManifests();
+    const template = await loadTemplate(`${STUBS_DIR}templates/filter-chart.yaml`);
 
-  const result = await composeDashboard({ template, manifests });
+    const result = await composeDashboard({ template, manifests });
 
-  assertEquals(result.descriptor.layout, "split");
-  assertEquals(result.descriptor.children.length, 2);
-  assertEquals(result.descriptor.sync.length, 1);
+    assertEquals(result.descriptor.layout, "split");
+    assertEquals(result.descriptor.children.length, 2);
+    assertEquals(result.descriptor.sync.length, 1);
 
-  assertStringIncludes(result.html, "<!DOCTYPE html>");
-  assertStringIncludes(result.html, "layout-split");
+    assertStringIncludes(result.html, "<!DOCTYPE html>");
+    assertStringIncludes(result.html, "layout-split");
 
-  for (const child of result.descriptor.children) {
-    assertEquals(child.resourceUri.startsWith("ui://"), false,
-      `resourceUri should be resolved: ${child.resourceUri}`);
-    assertStringIncludes(child.resourceUri, "http://");
-  }
+    for (const child of result.descriptor.children) {
+      assertEquals(
+        child.resourceUri.startsWith("ui://"),
+        false,
+        `resourceUri should be resolved: ${child.resourceUri}`,
+      );
+      assertStringIncludes(child.resourceUri, "http://");
+    }
 
-  assertEquals(result.warnings.length, 0, `Warnings: ${result.warnings.join("; ")}`);
-}});
+    assertEquals(result.warnings.length, 0, `Warnings: ${result.warnings.join("; ")}`);
+  },
+});
 
-Deno.test({ name: "compose e2e - master-detail dashboard", ...TEST_OPTS, fn: async () => {
-  const manifests = await loadAllManifests();
-  const template = await loadTemplate(`${STUBS_DIR}templates/master-detail.yaml`);
+Deno.test({
+  name: "compose e2e - master-detail dashboard",
+  ...TEST_OPTS,
+  fn: async () => {
+    const manifests = await loadAllManifests();
+    const template = await loadTemplate(`${STUBS_DIR}templates/master-detail.yaml`);
 
-  const result = await composeDashboard({ template, manifests });
+    const result = await composeDashboard({ template, manifests });
 
-  assertEquals(result.descriptor.layout, "split");
-  assertEquals(result.descriptor.children.length, 2);
-  assertEquals(result.descriptor.sync.length, 1);
+    assertEquals(result.descriptor.layout, "split");
+    assertEquals(result.descriptor.children.length, 2);
+    assertEquals(result.descriptor.sync.length, 1);
 
-  const syncRule = result.descriptor.sync[0];
-  assertEquals(syncRule.event, "item.selected");
-  assertEquals(syncRule.action, "item.show");
-  assertEquals(typeof syncRule.from, "number");
-  assertEquals(typeof syncRule.to, "number");
-}});
+    const syncRule = result.descriptor.sync[0];
+    assertEquals(syncRule.event, "item.selected");
+    assertEquals(syncRule.action, "item.show");
+    assertEquals(typeof syncRule.from, "number");
+    assertEquals(typeof syncRule.to, "number");
+  },
+});
 
-Deno.test({ name: "compose e2e - full dashboard (4 stubs, grid, 3 sync)", ...TEST_OPTS, fn: async () => {
-  const manifests = await loadAllManifests();
-  const template = await loadTemplate(`${STUBS_DIR}templates/full-dashboard.yaml`);
+Deno.test({
+  name: "compose e2e - full dashboard (4 stubs, grid, 3 sync)",
+  ...TEST_OPTS,
+  fn: async () => {
+    const manifests = await loadAllManifests();
+    const template = await loadTemplate(`${STUBS_DIR}templates/full-dashboard.yaml`);
 
-  const result = await composeDashboard({ template, manifests });
+    const result = await composeDashboard({ template, manifests });
 
-  assertEquals(typeof result.descriptor.layout, "object"); // areas layout
-  assertEquals(result.descriptor.children.length, 4);
-  assertEquals(result.descriptor.sync.length, 3);
+    assertEquals(typeof result.descriptor.layout, "object"); // areas layout
+    assertEquals(result.descriptor.children.length, 4);
+    assertEquals(result.descriptor.sync.length, 3);
 
-  for (const child of result.descriptor.children) {
-    assertStringIncludes(child.resourceUri, "http://");
-  }
+    for (const child of result.descriptor.children) {
+      assertStringIncludes(child.resourceUri, "http://");
+    }
 
-  assertStringIncludes(result.html, "layout-areas");
-  assertStringIncludes(result.html, "syncRules");
-  assertStringIncludes(result.html, "COMPOSE_METHOD");
-}});
+    assertStringIncludes(result.html, "layout-areas");
+    assertStringIncludes(result.html, "syncRules");
+    assertStringIncludes(result.html, "COMPOSE_METHOD");
+  },
+});

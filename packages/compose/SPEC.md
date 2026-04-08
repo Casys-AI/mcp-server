@@ -27,9 +27,9 @@ A standalone, dependency-free library that:
 
 ## Product Boundary
 
-This spec describes the composition primitive.
-It does not define a no-code or end-user dashboard builder.
-Orchestration authoring is assumed to happen upstream in developer, agent, or product-layer code.
+This spec describes the composition primitive. It does not define a no-code or end-user dashboard
+builder. Orchestration authoring is assumed to happen upstream in developer, agent, or product-layer
+code.
 
 ## Architecture
 
@@ -59,8 +59,7 @@ Orchestration authoring is assumed to happen upstream in developer, agent, or pr
 
 ### 1. `core/` — Composition semantics
 
-`core` is the source of truth for the composition model.
-It owns:
+`core` is the source of truth for the composition model. It owns:
 
 - `types/` — `UiLayout`, `UiSyncRule`, `UiOrchestration`, resource and descriptor types
 - `collector/` — extraction and accumulation of `_meta.ui.resourceUri`
@@ -82,8 +81,8 @@ This layer stays deterministic, side-effect free, and dependency-free.
 
 ### 3. `host/` — Host integration contracts
 
-`host` defines the host-facing contracts for embedding composite UIs.
-It stays intentionally thin and type-oriented.
+`host` defines the host-facing contracts for embedding composite UIs. It stays intentionally thin
+and type-oriented.
 
 ## AX (Agent Experience) Design Principles
 
@@ -183,10 +182,10 @@ Future work remains possible, but it should stay within the primitive/product bo
 
 ### Short-term — CLI and user experience
 
-- [ ] CLI `mcp-compose compose` — design dashboards from manifests (no servers needed,
-      agent browses available tools/emits/accepts, generates template YAML)
-- [ ] CLI `mcp-compose deploy <template.yaml>` — fetch MCPs from JSR, prompt for
-      missing env vars (from `requiredEnv`), start servers, serve dashboard
+- [ ] CLI `mcp-compose compose` — design dashboards from manifests (no servers needed, agent browses
+      available tools/emits/accepts, generates template YAML)
+- [ ] CLI `mcp-compose deploy <template.yaml>` — fetch MCPs from JSR, prompt for missing env vars
+      (from `requiredEnv`), start servers, serve dashboard
 - [ ] Local credential storage (`.env` or keychain, per template)
 - [ ] Sync rule auto-discovery from manifests (propose wiring from emits/accepts)
 - [ ] Dashboard persistence (save/load templates as YAML)
@@ -199,11 +198,12 @@ Future work remains possible, but it should stay within the primitive/product bo
 
 ### Long-term — SDK as intelligent router (Tailscale for MCPs)
 
-The SDK becomes a local daemon that bridges local data sources to online dashboards.
-Like Tailscale creates a mesh between machines, the SDK creates a mesh between MCPs
-and dashboards — regardless of where data lives.
+The SDK becomes a local daemon that bridges local data sources to online dashboards. Like Tailscale
+creates a mesh between machines, the SDK creates a mesh between MCPs and dashboards — regardless of
+where data lives.
 
 Architecture:
+
 ```
 mcp-compose connect
   → SDK starts local MCPs (Docker ERPNext, postgres, etc.)
@@ -214,10 +214,11 @@ mcp-compose connect
 ```
 
 Milestones:
+
 - [ ] `mcp-compose connect` — local daemon that starts MCPs + opens tunnel
 - [ ] Cloud relay worker (Deno Deploy) — routes HTTP ↔ WebSocket per session
-- [ ] Cloud-native MCPs (SaaS APIs like Iopole) run as Subhosting workers
-      (no tunnel needed, MCP runs in the cloud with user credentials)
+- [ ] Cloud-native MCPs (SaaS APIs like Iopole) run as Subhosting workers (no tunnel needed, MCP
+      runs in the cloud with user credentials)
 - [ ] Local-data MCPs (ERPNext Docker, postgres) connect via tunnel
 - [ ] Shareable dashboard URLs — one link, data stays local
 - [ ] Multi-tenant session management

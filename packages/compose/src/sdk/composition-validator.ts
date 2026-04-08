@@ -145,7 +145,8 @@ export function validateComposition(
       if (!sourceMeta.emits.includes(rule.event)) {
         issues.push({
           code: "SYNC_EVENT_NOT_EMITTED",
-          message: `Sync rule[${i}] event "${rule.event}" is not declared in emits of "${rule.from}"`,
+          message:
+            `Sync rule[${i}] event "${rule.event}" is not declared in emits of "${rule.from}"`,
           tool: rule.from,
           event: rule.event,
           path: `sync[${i}].event`,
@@ -158,7 +159,8 @@ export function validateComposition(
       if (!targetMeta.accepts.includes(rule.action)) {
         issues.push({
           code: "SYNC_ACTION_NOT_ACCEPTED",
-          message: `Sync rule[${i}] action "${rule.action}" is not declared in accepts of "${rule.to}"`,
+          message:
+            `Sync rule[${i}] action "${rule.action}" is not declared in accepts of "${rule.to}"`,
           tool: rule.to,
           event: rule.action,
           path: `sync[${i}].action`,

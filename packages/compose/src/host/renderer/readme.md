@@ -18,6 +18,6 @@ Final stage: composite descriptor in, HTML string out.
 
 ## Design
 
-Output is a self-contained HTML5 document with inline CSS and JS. The event bus
-implements `ui/initialize`, `ui/update-model-context`, `ui/notifications/tool-result`,
-and broadcast support (`to: "*"`). User-controlled content is HTML-escaped.
+Output is a self-contained HTML5 document with inline CSS and JS. The event bus implements
+`ui/initialize`, `ui/update-model-context`, `ui/notifications/tool-result`, and broadcast support
+(`to: "*"`). User-controlled content is HTML-escaped.

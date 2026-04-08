@@ -21,5 +21,6 @@
 - `validateComposition()` delegates structural checks to core `validateSyncRules`.
 - Semantic checks (emits/accepts) only fire when tools declare them.
 - Depends only on core — no circular deps to host or other layers.
-- `composeEvents()` uses `ui/compose/event` method exclusively — never sends or listens on MCP Apps protocol methods.
+- `composeEvents()` uses `ui/compose/event` method exclusively — never sends or listens on MCP Apps
+  protocol methods.
 - `composeEvents()` is browser-only; uses no Deno or Node APIs.

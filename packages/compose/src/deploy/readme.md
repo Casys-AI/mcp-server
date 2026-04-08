@@ -5,11 +5,12 @@ Cloud deployment layer — publish dashboards as shareable links on Deno Deploy.
 ## Vision
 
 `mcp-compose deploy` takes a local dashboard composition and publishes it online:
+
 - Deploys a **relay worker** on Deno Deploy (one per dashboard, ephemeral)
 - Cloud-native MCPs (SaaS APIs) are deployed alongside via the Deploy API
 - Local-data MCPs connect via a **WebSocket tunnel** from the local SDK
-- The user gets a **shareable URL** — the relay serves the dashboard and routes
-  tool calls to the right MCPs (cloud or local via tunnel)
+- The user gets a **shareable URL** — the relay serves the dashboard and routes tool calls to the
+  right MCPs (cloud or local via tunnel)
 - On teardown, all Deploy resources are deleted programmatically
 
 ## Architecture
@@ -56,6 +57,7 @@ interface DeployTransport {
 ```
 
 The manifest can then declare:
+
 ```json
 {
   "name": "mcp-einvoice",
@@ -75,22 +77,20 @@ The manifest can then declare:
 
 ## Design decisions
 
-- **Deploy is opt-in**: The library works fully in local mode. Deploy adds
-  shareability but is not required for composition or preview.
+- **Deploy is opt-in**: The library works fully in local mode. Deploy adds shareability but is not
+  required for composition or preview.
 
-- **One relay per dashboard**: Sharing a relay across dashboards would
-  create session routing complexity and cross-tenant risks. Each deploy
-  gets its own relay worker — simple, isolated, deletable.
+- **One relay per dashboard**: Sharing a relay across dashboards would create session routing
+  complexity and cross-tenant risks. Each deploy gets its own relay worker — simple, isolated,
+  deletable.
 
-- **Outbound-only tunnel**: The local SDK connects TO the relay (outbound
-  WebSocket), not the other way around. No port forwarding, no firewall
-  config, no VPN. Like Tailscale — the connection is initiated from inside
-  the network, not from outside.
+- **Outbound-only tunnel**: The local SDK connects TO the relay (outbound WebSocket), not the other
+  way around. No port forwarding, no firewall config, no VPN. Like Tailscale — the connection is
+  initiated from inside the network, not from outside.
 
-- **Deno Deploy over custom infra**: Deploy provides free-tier hosting,
-  WebSocket support, KV for session state, and programmatic project creation
-  via REST API. No servers to manage.
+- **Deno Deploy over custom infra**: Deploy provides free-tier hosting, WebSocket support, KV for
+  session state, and programmatic project creation via REST API. No servers to manage.
 
-- **Env vars in Deploy, never in HTML**: Credentials are stored in the
-  Deploy project's env vars (encrypted at rest). The dashboard HTML never
-  contains credentials — it only contains iframe URLs pointing to the relay.
+- **Env vars in Deploy, never in HTML**: Credentials are stored in the Deploy project's env vars
+  (encrypted at rest). The dashboard HTML never contains credentials — it only contains iframe URLs
+  pointing to the relay.

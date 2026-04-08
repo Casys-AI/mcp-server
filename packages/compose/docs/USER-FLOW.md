@@ -12,8 +12,8 @@
 
 ### 1. DISCOVER — Agent reads available MCPs
 
-The agent reads the static manifests from the MCP registry (JSR). Each manifest
-declares the MCP's tools, emits/accepts, and required environment variables.
+The agent reads the static manifests from the MCP registry (JSR). Each manifest declares the MCP's
+tools, emits/accepts, and required environment variables.
 
 ```
 Agent: "What data sources do you want to connect?"
@@ -46,9 +46,8 @@ Credentials are stored locally (`.env` or keychain). Never sent to the cloud.
 
 ### 3. COMPOSE — Agent generates template, user previews locally
 
-The agent generates a YAML template with the layout, sync rules, and sources.
-The runtime starts the MCPs locally, composes the dashboard, and serves it on
-localhost for preview.
+The agent generates a YAML template with the layout, sync rules, and sources. The runtime starts the
+MCPs locally, composes the dashboard, and serves it on localhost for preview.
 
 ```
 Agent: "I've composed a dashboard with:"
@@ -69,6 +68,7 @@ User:  "Perfect, deploy it"
 ```
 
 The YAML template:
+
 ```yaml
 name: Invoice Dashboard
 sources:
@@ -101,8 +101,8 @@ orchestration:
 
 ### 4. DEPLOY — Shareable link, tunnel for local data
 
-The runtime deploys a relay worker on Deno Deploy and opens a WebSocket tunnel
-for MCPs that need local data access.
+The runtime deploys a relay worker on Deno Deploy and opens a WebSocket tunnel for MCPs that need
+local data access.
 
 ```
 Agent: "Deploying..."
@@ -121,30 +121,32 @@ User:  → sends link to colleague
 ## Mixed sources in one dashboard
 
 A single dashboard can combine:
-- **Local MCPs** (postgres → Docker DB, ERPNext → local Docker)
-  → Data stays local, tunnel routes tool calls
-- **Cloud MCPs** (einvoice → Iopole API)
-  → MCP runs on Deploy or connects directly
 
-The agent and the user don't need to think about this distinction.
-The manifest declares the transport type, the runtime handles the rest.
+- **Local MCPs** (postgres → Docker DB, ERPNext → local Docker) → Data stays local, tunnel routes
+  tool calls
+- **Cloud MCPs** (einvoice → Iopole API) → MCP runs on Deploy or connects directly
+
+The agent and the user don't need to think about this distinction. The manifest declares the
+transport type, the runtime handles the rest.
 
 ## What you can build
 
 Any application that can be expressed as:
+
 - Multiple data sources (MCPs)
 - Composed into a layout (areas grid)
 - With cross-UI events (sync rules)
 - Served as a web dashboard
 
 Examples:
+
 - **Business dashboard**: invoices + CRM + charts from multiple sources
 - **System monitoring**: local metrics + cloud alerts + status timeline
 - **Data exploration**: DB browser + visualization + filters
 - **Operations console**: order management + inventory + logistics
 
-The limit is the available MCP catalog. If there's a MCP for the data source,
-it can be composed into a dashboard.
+The limit is the available MCP catalog. If there's a MCP for the data source, it can be composed
+into a dashboard.
 
 ## Lifecycle
 
@@ -154,6 +156,5 @@ deploy   → shareable link → tunnel keeps data local
 teardown → relay deleted, tunnel closed, link dies
 ```
 
-The shareable link is ephemeral by default. When the user stops the CLI
-(Ctrl+C or machine shutdown), the tunnel drops and the link stops working.
-The relay is cleaned up on Deno Deploy.
+The shareable link is ephemeral by default. When the user stops the CLI (Ctrl+C or machine
+shutdown), the tunnel drops and the link stops working. The relay is cleaned up on Deno Deploy.

@@ -10,7 +10,7 @@
 
 import { assertEquals, assertStringIncludes } from "@std/assert";
 import { parseManifest } from "../../src/runtime/manifest.ts";
-import { startServer, createCluster } from "../../src/runtime/cluster.ts";
+import { createCluster, startServer } from "../../src/runtime/cluster.ts";
 import type { McpManifest, RuntimeError } from "../../src/runtime/types.ts";
 import { RuntimeErrorCode } from "../../src/runtime/types.ts";
 
@@ -48,141 +48,179 @@ async function loadAllManifests(): Promise<Map<string, McpManifest>> {
 // Single server tests
 // =============================================================================
 
-Deno.test({ name: "cluster - start stub-filter and verify health", ...TEST_OPTS, fn: async () => {
-  const manifest = await loadStubManifest("stub-filter");
-  const conn = await startServer(manifest, { timeoutMs: 10_000 });
+Deno.test({
+  name: "cluster - start stub-filter and verify health",
+  ...TEST_OPTS,
+  fn: async () => {
+    const manifest = await loadStubManifest("stub-filter");
+    const conn = await startServer(manifest, { timeoutMs: 10_000 });
 
-  try {
-    assertEquals(conn.name, "stub-filter");
-    assertEquals(conn.transportType, "stdio");
-    assertStringIncludes(conn.uiBaseUrl, "http://");
+    try {
+      assertEquals(conn.name, "stub-filter");
+      assertEquals(conn.transportType, "stdio");
+      assertStringIncludes(conn.uiBaseUrl, "http://");
 
-    const res = await fetch(`${conn.uiBaseUrl}/health`);
-    const data = await res.json();
-    assertEquals(data.status, "ok");
-    assertEquals(data.server, "stub-filter");
-  } finally {
-    await conn.close();
-  }
-}});
+      const res = await fetch(`${conn.uiBaseUrl}/health`);
+      const data = await res.json();
+      assertEquals(data.status, "ok");
+      assertEquals(data.server, "stub-filter");
+    } finally {
+      await conn.close();
+    }
+  },
+});
 
-Deno.test({ name: "cluster - start stub-list with STUB_API_KEY", ...TEST_OPTS, fn: async () => {
-  const manifest = await loadStubManifest("stub-list", { STUB_API_KEY: "test-key" });
-  const conn = await startServer(manifest, { timeoutMs: 10_000 });
+Deno.test({
+  name: "cluster - start stub-list with STUB_API_KEY",
+  ...TEST_OPTS,
+  fn: async () => {
+    const manifest = await loadStubManifest("stub-list", { STUB_API_KEY: "test-key" });
+    const conn = await startServer(manifest, { timeoutMs: 10_000 });
 
-  try {
-    const res = await fetch(`${conn.uiBaseUrl}/health`);
-    const data = await res.json();
-    assertEquals(data.status, "ok");
-  } finally {
-    await conn.close();
-  }
-}});
+    try {
+      const res = await fetch(`${conn.uiBaseUrl}/health`);
+      const data = await res.json();
+      assertEquals(data.status, "ok");
+    } finally {
+      await conn.close();
+    }
+  },
+});
 
-Deno.test({ name: "cluster - stub-list fails without STUB_API_KEY", ...TEST_OPTS, fn: async () => {
-  const manifest = await loadStubManifest("stub-list", {});
+Deno.test({
+  name: "cluster - stub-list fails without STUB_API_KEY",
+  ...TEST_OPTS,
+  fn: async () => {
+    const manifest = await loadStubManifest("stub-list", {});
 
-  try {
-    await startServer(manifest, { timeoutMs: 5_000 });
-    throw new Error("Should have thrown");
-  } catch (e) {
-    const err = e as RuntimeError;
-    assertEquals(
-      err.code === RuntimeErrorCode.PROCESS_DIED || err.code === RuntimeErrorCode.PROCESS_START_FAILED,
-      true,
-      `Expected PROCESS_DIED or PROCESS_START_FAILED, got ${err.code}`,
-    );
-  }
-}});
+    try {
+      await startServer(manifest, { timeoutMs: 5_000 });
+      throw new Error("Should have thrown");
+    } catch (e) {
+      const err = e as RuntimeError;
+      assertEquals(
+        err.code === RuntimeErrorCode.PROCESS_DIED ||
+          err.code === RuntimeErrorCode.PROCESS_START_FAILED,
+        true,
+        `Expected PROCESS_DIED or PROCESS_START_FAILED, got ${err.code}`,
+      );
+    }
+  },
+});
 
 // =============================================================================
 // UI endpoint tests
 // =============================================================================
 
-Deno.test({ name: "cluster - /ui serves HTML with composeEvents", ...TEST_OPTS, fn: async () => {
-  const manifest = await loadStubManifest("stub-chart");
-  const conn = await startServer(manifest, { timeoutMs: 10_000 });
+Deno.test({
+  name: "cluster - /ui serves HTML with composeEvents",
+  ...TEST_OPTS,
+  fn: async () => {
+    const manifest = await loadStubManifest("stub-chart");
+    const conn = await startServer(manifest, { timeoutMs: 10_000 });
 
-  try {
-    const res = await fetch(
-      `${conn.uiBaseUrl}/ui?uri=${encodeURIComponent("ui://stub-chart/bar-chart")}`,
-    );
-    assertEquals(res.status, 200);
-    assertStringIncludes(res.headers.get("content-type") ?? "", "text/html");
+    try {
+      const res = await fetch(
+        `${conn.uiBaseUrl}/ui?uri=${encodeURIComponent("ui://stub-chart/bar-chart")}`,
+      );
+      assertEquals(res.status, 200);
+      assertStringIncludes(res.headers.get("content-type") ?? "", "text/html");
 
-    const html = await res.text();
-    assertStringIncludes(html, "<!DOCTYPE html>");
-    assertStringIncludes(html, "composeEvents");
-    assertStringIncludes(html, "ui/compose/event");
-  } finally {
-    await conn.close();
-  }
-}});
+      const html = await res.text();
+      assertStringIncludes(html, "<!DOCTYPE html>");
+      assertStringIncludes(html, "composeEvents");
+      assertStringIncludes(html, "ui/compose/event");
+    } finally {
+      await conn.close();
+    }
+  },
+});
 
-Deno.test({ name: "cluster - /ui returns 400 without uri param", ...TEST_OPTS, fn: async () => {
-  const manifest = await loadStubManifest("stub-filter");
-  const conn = await startServer(manifest, { timeoutMs: 10_000 });
+Deno.test({
+  name: "cluster - /ui returns 400 without uri param",
+  ...TEST_OPTS,
+  fn: async () => {
+    const manifest = await loadStubManifest("stub-filter");
+    const conn = await startServer(manifest, { timeoutMs: 10_000 });
 
-  try {
-    const res = await fetch(`${conn.uiBaseUrl}/ui`);
-    assertEquals(res.status, 400);
-    await res.body?.cancel();
-  } finally {
-    await conn.close();
-  }
-}});
+    try {
+      const res = await fetch(`${conn.uiBaseUrl}/ui`);
+      assertEquals(res.status, 400);
+      await res.body?.cancel();
+    } finally {
+      await conn.close();
+    }
+  },
+});
 
-Deno.test({ name: "cluster - /ui returns 404 for unknown resource", ...TEST_OPTS, fn: async () => {
-  const manifest = await loadStubManifest("stub-filter");
-  const conn = await startServer(manifest, { timeoutMs: 10_000 });
+Deno.test({
+  name: "cluster - /ui returns 404 for unknown resource",
+  ...TEST_OPTS,
+  fn: async () => {
+    const manifest = await loadStubManifest("stub-filter");
+    const conn = await startServer(manifest, { timeoutMs: 10_000 });
 
-  try {
-    const res = await fetch(
-      `${conn.uiBaseUrl}/ui?uri=${encodeURIComponent("ui://stub-filter/nonexistent")}`,
-    );
-    assertEquals(res.status, 404);
-    await res.body?.cancel();
-  } finally {
-    await conn.close();
-  }
-}});
+    try {
+      const res = await fetch(
+        `${conn.uiBaseUrl}/ui?uri=${encodeURIComponent("ui://stub-filter/nonexistent")}`,
+      );
+      assertEquals(res.status, 404);
+      await res.body?.cancel();
+    } finally {
+      await conn.close();
+    }
+  },
+});
 
 // =============================================================================
 // Multi-server cluster tests
 // =============================================================================
 
-Deno.test({ name: "cluster - start filter + chart", ...TEST_OPTS, fn: async () => {
-  const manifests = await loadAllManifests();
-  const cluster = createCluster(manifests, ["stub-filter", "stub-chart"]);
-  await cluster.startAll();
+Deno.test({
+  name: "cluster - start filter + chart",
+  ...TEST_OPTS,
+  fn: async () => {
+    const manifests = await loadAllManifests();
+    const cluster = createCluster(manifests, ["stub-filter", "stub-chart"]);
+    await cluster.startAll();
 
-  try {
-    const filterUrl = cluster.getUiBaseUrl("stub-filter");
-    const chartUrl = cluster.getUiBaseUrl("stub-chart");
-    assertEquals(typeof filterUrl, "string");
-    assertEquals(typeof chartUrl, "string");
+    try {
+      const filterUrl = cluster.getUiBaseUrl("stub-filter");
+      const chartUrl = cluster.getUiBaseUrl("stub-chart");
+      assertEquals(typeof filterUrl, "string");
+      assertEquals(typeof chartUrl, "string");
 
-    const filterHealth = await (await fetch(`${filterUrl}/health`)).json();
-    assertEquals(filterHealth.server, "stub-filter");
+      const filterHealth = await (await fetch(`${filterUrl}/health`)).json();
+      assertEquals(filterHealth.server, "stub-filter");
 
-    const chartHealth = await (await fetch(`${chartUrl}/health`)).json();
-    assertEquals(chartHealth.server, "stub-chart");
-  } finally {
-    await cluster.stopAll();
-  }
-}});
-
-Deno.test({ name: "cluster - start all 4 stubs", ...TEST_OPTS, fn: async () => {
-  const manifests = await loadAllManifests();
-  const cluster = createCluster(manifests, ["stub-filter", "stub-chart", "stub-list", "stub-detail"]);
-  await cluster.startAll();
-
-  try {
-    for (const name of ["stub-filter", "stub-chart", "stub-list", "stub-detail"]) {
-      const url = cluster.getUiBaseUrl(name);
-      assertEquals(typeof url, "string", `Missing uiBaseUrl for ${name}`);
+      const chartHealth = await (await fetch(`${chartUrl}/health`)).json();
+      assertEquals(chartHealth.server, "stub-chart");
+    } finally {
+      await cluster.stopAll();
     }
-  } finally {
-    await cluster.stopAll();
-  }
-}});
+  },
+});
+
+Deno.test({
+  name: "cluster - start all 4 stubs",
+  ...TEST_OPTS,
+  fn: async () => {
+    const manifests = await loadAllManifests();
+    const cluster = createCluster(manifests, [
+      "stub-filter",
+      "stub-chart",
+      "stub-list",
+      "stub-detail",
+    ]);
+    await cluster.startAll();
+
+    try {
+      for (const name of ["stub-filter", "stub-chart", "stub-list", "stub-detail"]) {
+        const url = cluster.getUiBaseUrl(name);
+        assertEquals(typeof url, "string", `Missing uiBaseUrl for ${name}`);
+      }
+    } finally {
+      await cluster.stopAll();
+    }
+  },
+});

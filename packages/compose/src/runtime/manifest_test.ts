@@ -5,12 +5,7 @@
  */
 
 import { assertEquals } from "@std/assert";
-import {
-  loadManifest,
-  loadManifests,
-  parseManifest,
-  validateManifest,
-} from "./manifest.ts";
+import { loadManifest, loadManifests, parseManifest, validateManifest } from "./manifest.ts";
 import { RuntimeErrorCode } from "./types.ts";
 import type { RuntimeError } from "./types.ts";
 

@@ -5,10 +5,7 @@
  */
 
 import { assertEquals, assertThrows } from "@std/assert";
-import {
-  COMPOSE_EVENT_METHOD,
-  composeEvents,
-} from "./compose-events.ts";
+import { COMPOSE_EVENT_METHOD, composeEvents } from "./compose-events.ts";
 import type { ComposeSource, ComposeTarget } from "./compose-events.ts";
 
 /** Create a mock parent window that records postMessage calls. */

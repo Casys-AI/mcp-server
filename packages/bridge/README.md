@@ -4,7 +4,10 @@
 [![JSR](https://jsr.io/badges/@casys/mcp-bridge)](https://jsr.io/@casys/mcp-bridge)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Bridge [MCP Apps](https://modelcontextprotocol.io/specification/2025-11-25/client/roots) interactive UIs to messaging platforms. Turn any MCP tool with a `ui://` resource into a Telegram Mini App or LINE LIFF app.
+Bridge
+[MCP Apps](https://modelcontextprotocol.io/specification/2025-11-25/client/roots)
+interactive UIs to messaging platforms. Turn any MCP tool with a `ui://`
+resource into a Telegram Mini App or LINE LIFF app.
 
 ```
 MCP Server (tools with ui:// resources)
@@ -64,32 +67,35 @@ console.log(`Bridge running at ${server.baseUrl}`);
 ```html
 <!DOCTYPE html>
 <html>
-<head><title>My MCP App</title></head>
-<body>
-  <button id="btn">Get Data</button>
-  <div id="result"></div>
-  <script>
-    // bridge.js is auto-injected by the resource server
-    // It intercepts postMessage and routes via WebSocket to your handler
+  <head><title>My MCP App</title></head>
+  <body>
+    <button id="btn">Get Data</button>
+    <div id="result"></div>
+    <script>
+      // bridge.js is auto-injected by the resource server
+      // It intercepts postMessage and routes via WebSocket to your handler
 
-    window.addEventListener("mcp-bridge-ready", () => {
-      document.getElementById("btn").onclick = async () => {
-        const id = Date.now();
-        window.parent.postMessage({
-          jsonrpc: "2.0", id,
-          method: "tools/call",
-          params: { name: "get_data", arguments: {} },
-        }, "*");
-      };
-    });
+      window.addEventListener("mcp-bridge-ready", () => {
+        document.getElementById("btn").onclick = async () => {
+          const id = Date.now();
+          window.parent.postMessage({
+            jsonrpc: "2.0",
+            id,
+            method: "tools/call",
+            params: { name: "get_data", arguments: {} },
+          }, "*");
+        };
+      });
 
-    window.addEventListener("message", (e) => {
-      if (e.data?.result) {
-        document.getElementById("result").textContent = JSON.stringify(e.data.result);
-      }
-    });
-  </script>
-</body>
+      window.addEventListener("message", (e) => {
+        if (e.data?.result) {
+          document.getElementById("result").textContent = JSON.stringify(
+            e.data.result,
+          );
+        }
+      });
+    </script>
+  </body>
 </html>
 ```
 
@@ -106,6 +112,7 @@ ngrok http 4000
 ```
 
 Then configure your Telegram bot via [@BotFather](https://t.me/BotFather):
+
 1. `/setmenubutton` -> select your bot
 2. Enter your HTTPS URL: `https://your-domain.com/app/my-app/index.html`
 3. Open the bot on Telegram mobile -> tap Menu Button
@@ -118,10 +125,12 @@ Then configure your Telegram bot via [@BotFather](https://t.me/BotFather):
 2. **Resource server** serves the MCP App HTML with `bridge.js` auto-injected
 3. **bridge.js** intercepts `postMessage` calls from the MCP App
 4. Messages are routed via **WebSocket** to the resource server
-5. Resource server forwards **`tools/call`** and **`resources/read`** to your configured backend
+5. Resource server forwards **`tools/call`** and **`resources/read`** to your
+   configured backend
 6. Response flows back: backend -> WebSocket -> bridge.js -> MCP App
 
-The MCP App doesn't know it's running in Telegram. It uses the standard MCP Apps SDK (`postMessage`), and the bridge handles the translation.
+The MCP App doesn't know it's running in Telegram. It uses the standard MCP Apps
+SDK (`postMessage`), and the bridge handles the translation.
 
 ---
 
@@ -157,9 +166,9 @@ const config: ResourceServerConfig = {
 
 ```typescript
 import {
-  buildToolCallRequest,
-  buildSuccessResponse,
   buildErrorResponse,
+  buildSuccessResponse,
+  buildToolCallRequest,
   isRequest,
   isResponse,
   MessageRouter,
@@ -202,13 +211,13 @@ const proxyUrl = resolveToHttp(uri, "https://my-domain.com", { mode: "query" });
 
 ## Architecture
 
-| Layer | Component | Role |
-|-------|-----------|------|
-| **Client** | `bridge.js` | IIFE injected into MCP App HTML. Intercepts postMessage, routes via WebSocket |
-| **Server** | `ResourceServer` | HTTP server (serves HTML + bridge.js), WebSocket endpoint, session management |
-| **Protocol** | `MessageRouter` | JSON-RPC 2.0 routing, pending request tracking, timeout |
-| **Adapters** | Platform runtimes | Map host SDKs (Telegram today, extensible for others) to MCP Apps HostContext |
-| **Security** | `CSP` + `SessionStore` | Content-Security-Policy headers, session auth, path traversal protection |
+| Layer        | Component              | Role                                                                          |
+| ------------ | ---------------------- | ----------------------------------------------------------------------------- |
+| **Client**   | `bridge.js`            | IIFE injected into MCP App HTML. Intercepts postMessage, routes via WebSocket |
+| **Server**   | `ResourceServer`       | HTTP server (serves HTML + bridge.js), WebSocket endpoint, session management |
+| **Protocol** | `MessageRouter`        | JSON-RPC 2.0 routing, pending request tracking, timeout                       |
+| **Adapters** | Platform runtimes      | Map host SDKs (Telegram today, extensible for others) to MCP Apps HostContext |
+| **Security** | `CSP` + `SessionStore` | Content-Security-Policy headers, session auth, path traversal protection      |
 
 ---
 
@@ -232,7 +241,10 @@ deno task demo
 
 ## Companion Package
 
-Built to work with [@casys/mcp-server](https://jsr.io/@casys/mcp-server) — the production MCP server framework. Use `@casys/mcp-server` to build MCP tools with `ui://` resources, and `@casys/mcp-bridge` to deliver them to messaging platforms.
+Built to work with [@casys/mcp-server](https://jsr.io/@casys/mcp-server) — the
+production MCP server framework. Use `@casys/mcp-server` to build MCP tools with
+`ui://` resources, and `@casys/mcp-bridge` to deliver them to messaging
+platforms.
 
 ---
 

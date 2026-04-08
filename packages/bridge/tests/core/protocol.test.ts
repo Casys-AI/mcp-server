@@ -39,7 +39,10 @@ Deno.test("protocol - resetRequestIdCounter", () => {
 // ---- Type guards ----
 
 Deno.test("isJsonRpcMessage - valid message", () => {
-  assertEquals(isJsonRpcMessage({ jsonrpc: "2.0", id: 1, method: "test" }), true);
+  assertEquals(
+    isJsonRpcMessage({ jsonrpc: "2.0", id: 1, method: "test" }),
+    true,
+  );
 });
 
 Deno.test("isJsonRpcMessage - invalid", () => {
@@ -57,17 +60,27 @@ Deno.test("isRequest - identifies requests", () => {
 
 Deno.test("isNotification - identifies notifications", () => {
   assertEquals(isNotification({ jsonrpc: "2.0", method: "test" }), true);
-  assertEquals(isNotification({ jsonrpc: "2.0", id: 1, method: "test" }), false);
+  assertEquals(
+    isNotification({ jsonrpc: "2.0", id: 1, method: "test" }),
+    false,
+  );
 });
 
 Deno.test("isResponse - identifies success responses", () => {
   assertEquals(isResponse({ jsonrpc: "2.0", id: 1, result: "ok" }), true);
-  assertEquals(isResponse({ jsonrpc: "2.0", id: 1, error: { code: 1, message: "err" } }), false);
+  assertEquals(
+    isResponse({ jsonrpc: "2.0", id: 1, error: { code: 1, message: "err" } }),
+    false,
+  );
 });
 
 Deno.test("isErrorResponse - identifies error responses", () => {
   assertEquals(
-    isErrorResponse({ jsonrpc: "2.0", id: 1, error: { code: -32601, message: "not found" } }),
+    isErrorResponse({
+      jsonrpc: "2.0",
+      id: 1,
+      error: { code: -32601, message: "not found" },
+    }),
     true,
   );
   assertEquals(isErrorResponse({ jsonrpc: "2.0", id: 1, result: "ok" }), false);
@@ -77,7 +90,10 @@ Deno.test("isErrorResponse - identifies error responses", () => {
 
 Deno.test("buildToolCallRequest", () => {
   resetRequestIdCounter();
-  const req = buildToolCallRequest({ name: "get-time", arguments: { tz: "UTC" } });
+  const req = buildToolCallRequest({
+    name: "get-time",
+    arguments: { tz: "UTC" },
+  });
   assertEquals(req.jsonrpc, "2.0");
   assertEquals(req.method, McpAppsMethod.TOOLS_CALL);
   assertEquals(req.params, { name: "get-time", arguments: { tz: "UTC" } });
@@ -99,13 +115,17 @@ Deno.test("buildOpenLinkRequest", () => {
 
 Deno.test("buildMessageRequest", () => {
   resetRequestIdCounter();
-  const req = buildMessageRequest({ content: [{ type: "text", text: "hello" }] });
+  const req = buildMessageRequest({
+    content: [{ type: "text", text: "hello" }],
+  });
   assertEquals(req.method, McpAppsMethod.UI_MESSAGE);
 });
 
 Deno.test("buildUpdateModelContextRequest", () => {
   resetRequestIdCounter();
-  const req = buildUpdateModelContextRequest({ content: [{ type: "text", text: "ctx" }] });
+  const req = buildUpdateModelContextRequest({
+    content: [{ type: "text", text: "ctx" }],
+  });
   assertEquals(req.method, McpAppsMethod.UI_UPDATE_MODEL_CONTEXT);
 });
 
@@ -182,7 +202,11 @@ Deno.test("buildSuccessResponse", () => {
 });
 
 Deno.test("buildErrorResponse", () => {
-  const resp = buildErrorResponse(1, JsonRpcErrorCode.METHOD_NOT_FOUND, "not found");
+  const resp = buildErrorResponse(
+    1,
+    JsonRpcErrorCode.METHOD_NOT_FOUND,
+    "not found",
+  );
   assertEquals(resp.error.code, -32601);
   assertEquals(resp.error.message, "not found");
 });

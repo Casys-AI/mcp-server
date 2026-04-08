@@ -187,7 +187,9 @@ export function buildToolInputNotification(params: {
 
 /** Build a `ui/notifications/tool-result` notification (Host -> App). */
 export function buildToolResultNotification(params: {
-  content: ReadonlyArray<{ type: string; text?: string; data?: string; mimeType?: string }>;
+  content: ReadonlyArray<
+    { type: string; text?: string; data?: string; mimeType?: string }
+  >;
   isError?: boolean;
 }): McpAppsNotification {
   return {

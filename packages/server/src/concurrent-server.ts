@@ -13,9 +13,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
+  type CallToolRequest,
   CallToolRequestSchema,
   ListResourcesRequestSchema,
   ListToolsRequestSchema,
+  type ReadResourceRequest,
   ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { Hono } from "hono";
@@ -301,26 +303,29 @@ export class ConcurrentMCPServer {
     });
 
     // resources/read — serve resource content by URI
-    server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-      const uri = request.params.uri;
-      const info = this.resources.get(uri);
-      if (!info) {
-        throw new Error(`Resource not found: ${uri}`);
-      }
+    server.setRequestHandler(
+      ReadResourceRequestSchema,
+      async (request: ReadResourceRequest) => {
+        const uri = request.params.uri;
+        const info = this.resources.get(uri);
+        if (!info) {
+          throw new Error(`Resource not found: ${uri}`);
+        }
 
-      try {
-        const content = await info.handler(new URL(uri));
-        const finalContent = this.applyResourceCsp(content);
-        return { contents: [finalContent] };
-      } catch (error) {
-        this.log(
-          `[ERROR] Resource handler failed for ${uri}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-        throw error;
-      }
-    });
+        try {
+          const content = await info.handler(new URL(uri));
+          const finalContent = this.applyResourceCsp(content);
+          return { contents: [finalContent] };
+        } catch (error) {
+          this.log(
+            `[ERROR] Resource handler failed for ${uri}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+          throw error;
+        }
+      },
+    );
 
     this.resourceHandlersInstalled = true;
     this.log("Resources capability pre-declared (expectResources: true)");
@@ -343,20 +348,24 @@ export class ConcurrentMCPServer {
     });
 
     // tools/call handler (delegates to middleware pipeline)
-    server.setRequestHandler(CallToolRequestSchema, async (request) => {
-      const toolName = request.params.name;
-      const args = request.params.arguments || {};
+    server.setRequestHandler(
+      CallToolRequestSchema,
+      async (request: CallToolRequest) => {
+        const toolName = request.params.name;
+        const args = request.params.arguments || {};
 
-      let result: unknown;
-      try {
-        result = await this.executeToolCall(toolName, args);
-      } catch (error) {
-        return this.handleToolError(error, toolName);
-      }
+        let result: unknown;
+        try {
+          result = await this.executeToolCall(toolName, args);
+        } catch (error) {
+          return this.handleToolError(error, toolName);
+        }
 
-      // Serialization errors are framework bugs, not tool errors — let them propagate
-      return this.buildToolCallResult(toolName, result);
-    });
+        // Serialization errors are framework bugs, not tool errors —
+        // let them propagate
+        return this.buildToolCallResult(toolName, result);
+      },
+    );
   }
 
   /**

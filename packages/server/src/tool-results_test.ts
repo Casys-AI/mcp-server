@@ -7,10 +7,10 @@
  */
 
 import { assertEquals } from "@std/assert";
-import { ConcurrentMCPServer } from "./concurrent-server.ts";
+import { McpApp } from "./mcp-app.ts";
 
 /** Helper to start HTTP server on a free port */
-async function startTestHttp(server: ConcurrentMCPServer) {
+async function startTestHttp(server: McpApp) {
   const listener = Deno.listen({ port: 0 });
   const port = (listener.addr as Deno.NetAddr).port;
   listener.close();
@@ -42,7 +42,7 @@ async function callTool(
 // ============================================
 
 Deno.test("tools/call - StructuredToolResult produces content + structuredContent", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "test",
     version: "1.0.0",
     logger: () => {},
@@ -69,7 +69,7 @@ Deno.test("tools/call - StructuredToolResult produces content + structuredConten
 });
 
 Deno.test("tools/call - plain string return still works (backward compat)", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "test",
     version: "1.0.0",
     logger: () => {},
@@ -91,7 +91,7 @@ Deno.test("tools/call - plain string return still works (backward compat)", asyn
 });
 
 Deno.test("tools/call - plain object return still works (backward compat)", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "test",
     version: "1.0.0",
     logger: () => {},
@@ -114,7 +114,7 @@ Deno.test("tools/call - plain object return still works (backward compat)", asyn
 });
 
 Deno.test("tools/call - preformatted result passes through (backward compat)", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "test",
     version: "1.0.0",
     logger: () => {},
@@ -140,7 +140,7 @@ Deno.test("tools/call - preformatted result passes through (backward compat)", a
 // ============================================
 
 Deno.test("tools/call - no toolErrorMapper: thrown error becomes JSON-RPC error", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "test",
     version: "1.0.0",
     logger: () => {},
@@ -165,7 +165,7 @@ Deno.test("tools/call - no toolErrorMapper: thrown error becomes JSON-RPC error"
 });
 
 Deno.test("tools/call - toolErrorMapper returns string: produces isError result", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "test",
     version: "1.0.0",
     logger: () => {},
@@ -174,7 +174,11 @@ Deno.test("tools/call - toolErrorMapper returns string: produces isError result"
   });
 
   server.registerTool(
-    { name: "biz_fail", description: "BizFail", inputSchema: { type: "object" } },
+    {
+      name: "biz_fail",
+      description: "BizFail",
+      inputSchema: { type: "object" },
+    },
     () => {
       throw new Error("not allowed");
     },
@@ -192,7 +196,7 @@ Deno.test("tools/call - toolErrorMapper returns string: produces isError result"
 });
 
 Deno.test("tools/call - toolErrorMapper returns null: error rethrown as JSON-RPC error", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "test",
     version: "1.0.0",
     logger: () => {},
@@ -200,7 +204,11 @@ Deno.test("tools/call - toolErrorMapper returns null: error rethrown as JSON-RPC
   });
 
   server.registerTool(
-    { name: "sys_fail", description: "SysFail", inputSchema: { type: "object" } },
+    {
+      name: "sys_fail",
+      description: "SysFail",
+      inputSchema: { type: "object" },
+    },
     () => {
       throw new Error("system failure");
     },
@@ -220,7 +228,7 @@ Deno.test("tools/call - toolErrorMapper receives toolName and error", async () =
   let capturedToolName: string | undefined;
   let capturedError: unknown;
 
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "test",
     version: "1.0.0",
     logger: () => {},

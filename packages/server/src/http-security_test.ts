@@ -15,7 +15,7 @@ import {
   assertRejects,
   assertStringIncludes,
 } from "@std/assert";
-import { ConcurrentMCPServer } from "./concurrent-server.ts";
+import { McpApp } from "./mcp-app.ts";
 import type { Middleware, MiddlewareContext } from "./middleware/types.ts";
 
 // ─── Helpers ─────────────────────────────────────────────
@@ -75,7 +75,7 @@ async function initSession(port: number): Promise<string> {
 // ═══════════════════════════════════════════════════════════
 
 Deno.test("security - requireAuth throws when no auth provider configured", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "auth-guard",
     version: "1.0.0",
     logger: () => {},
@@ -91,7 +91,7 @@ Deno.test("security - requireAuth throws when no auth provider configured", asyn
 });
 
 Deno.test("security - requireAuth=false (default) allows start without auth", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "no-auth",
     version: "1.0.0",
     logger: () => {},
@@ -114,7 +114,7 @@ Deno.test("security - requireAuth=false (default) allows start without auth", as
 // ═══════════════════════════════════════════════════════════
 
 Deno.test("security - maxBodyBytes rejects oversized payload with 413", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "body-limit",
     version: "1.0.0",
     logger: () => {},
@@ -149,7 +149,7 @@ Deno.test("security - maxBodyBytes rejects oversized payload with 413", async ()
 });
 
 Deno.test("security - maxBodyBytes allows normal-sized payloads", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "body-limit-ok",
     version: "1.0.0",
     logger: () => {},
@@ -172,7 +172,7 @@ Deno.test("security - maxBodyBytes allows normal-sized payloads", async () => {
 });
 
 Deno.test("security - maxBodyBytes=null disables the limit", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "no-body-limit",
     version: "1.0.0",
     logger: () => {},
@@ -201,7 +201,7 @@ Deno.test("security - maxBodyBytes=null disables the limit", async () => {
 // ═══════════════════════════════════════════════════════════
 
 Deno.test("security - corsOrigins allowlist reflects in CORS headers", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "cors-test",
     version: "1.0.0",
     logger: () => {},
@@ -235,7 +235,7 @@ Deno.test("security - corsOrigins allowlist reflects in CORS headers", async () 
 
 Deno.test("security - corsOrigins wildcard emits warning log", async () => {
   const logs: string[] = [];
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "cors-warn",
     version: "1.0.0",
     logger: (msg: string) => logs.push(msg),
@@ -260,7 +260,7 @@ Deno.test("security - corsOrigins wildcard emits warning log", async () => {
 
 Deno.test("security - corsOrigins allowlist does NOT emit wildcard warning", async () => {
   const logs: string[] = [];
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "cors-no-warn",
     version: "1.0.0",
     logger: (msg: string) => logs.push(msg),
@@ -284,7 +284,7 @@ Deno.test("security - corsOrigins allowlist does NOT emit wildcard warning", asy
 });
 
 Deno.test("security - corsOrigins rejects unknown origin", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "cors-reject",
     version: "1.0.0",
     logger: () => {},
@@ -323,7 +323,7 @@ Deno.test("security - corsOrigins rejects unknown origin", async () => {
 // ═══════════════════════════════════════════════════════════
 
 Deno.test("security - ipRateLimit returns 429 after limit exceeded", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "rate-limit",
     version: "1.0.0",
     logger: () => {},
@@ -359,7 +359,7 @@ Deno.test("security - ipRateLimit returns 429 after limit exceeded", async () =>
 });
 
 Deno.test("security - ipRateLimit includes Retry-After header", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "rate-retry",
     version: "1.0.0",
     logger: () => {},
@@ -404,7 +404,7 @@ Deno.test("security - ipRateLimit includes Retry-After header", async () => {
 });
 
 Deno.test("security - ipRateLimit onLimitExceeded='wait' delays instead of rejecting", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "rate-wait",
     version: "1.0.0",
     logger: () => {},
@@ -446,7 +446,7 @@ Deno.test("security - ipRateLimit onLimitExceeded='wait' delays instead of rejec
 });
 
 Deno.test("security - ipRateLimit applies to GET (SSE) endpoints too", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "rate-sse",
     version: "1.0.0",
     logger: () => {},
@@ -488,7 +488,7 @@ Deno.test("security - sessionId propagated to middleware context on tools/call",
     return next();
   };
 
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "session-propagation",
     version: "1.0.0",
     logger: () => {},
@@ -533,7 +533,7 @@ Deno.test("security - sessionId propagated to middleware context on tools/call",
 // ═══════════════════════════════════════════════════════════
 
 Deno.test("e2e - secure flow: initialize → session → tools/call → result", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "e2e-secure",
     version: "1.0.0",
     logger: () => {},
@@ -611,7 +611,7 @@ Deno.test("e2e - secure flow: initialize → session → tools/call → result",
 });
 
 Deno.test("e2e - invalid session returns 404", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "e2e-bad-session",
     version: "1.0.0",
     logger: () => {},
@@ -644,7 +644,7 @@ Deno.test("e2e - invalid session returns 404", async () => {
 });
 
 Deno.test("e2e - default maxBodyBytes (1 MB) allows reasonable payloads", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "e2e-default-limit",
     version: "1.0.0",
     logger: () => {},

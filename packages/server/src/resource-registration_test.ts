@@ -1,5 +1,5 @@
 /**
- * Unit tests for resource registration in ConcurrentMCPServer
+ * Unit tests for resource registration in McpApp
  *
  * Tests MCP Apps (SEP-1865) resource support including:
  * - registerResource() single registration
@@ -12,15 +12,15 @@
  */
 
 import { assertEquals, assertThrows } from "@std/assert";
-import { ConcurrentMCPServer } from "./concurrent-server.ts";
+import { McpApp } from "./mcp-app.ts";
 import type { MCPResource, ResourceHandler } from "./types.ts";
 import { MCP_APP_MIME_TYPE } from "./types.ts";
 
 /**
  * Helper to create test server instance
  */
-function createTestServer(): ConcurrentMCPServer {
-  return new ConcurrentMCPServer({
+function createTestServer(): McpApp {
+  return new McpApp({
     name: "test-server",
     version: "1.0.0",
     // Suppress logging during tests
@@ -230,7 +230,7 @@ Deno.test("registerResource - handles URI edge cases (trailing slash, query para
 Deno.test("registerResource - accepts non-ui:// URI with warning (soft validation)", () => {
   // Using separate server with custom logger to capture warning
   let warnLogged = false;
-  const warnServer = new ConcurrentMCPServer({
+  const warnServer = new McpApp({
     name: "warn-test",
     version: "1.0.0",
     logger: (msg) => {

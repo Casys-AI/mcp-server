@@ -4,11 +4,11 @@
  */
 
 import { assertEquals, assertExists } from "@std/assert";
-import { ConcurrentMCPServer } from "./concurrent-server.ts";
+import { McpApp } from "./mcp-app.ts";
 
 Deno.test("e2e - all SDK 1.27 features on one server", async () => {
   // Server with toolErrorMapper (Feature 5)
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "e2e-sdk-features",
     version: "1.0.0",
     logger: () => {},

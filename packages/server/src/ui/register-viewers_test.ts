@@ -1,5 +1,5 @@
 /**
- * Tests for registerViewers() on ConcurrentMCPServer
+ * Tests for registerViewers() on McpApp
  *
  * Integration tests: verifies that registerViewers() correctly registers
  * MCP Apps resources using the viewer utilities.
@@ -8,11 +8,11 @@
  */
 
 import { assertEquals, assertThrows } from "@std/assert";
-import { ConcurrentMCPServer } from "../concurrent-server.ts";
+import { McpApp } from "../mcp-app.ts";
 import { MCP_APP_MIME_TYPE } from "../types.ts";
 
-function createTestServer(): ConcurrentMCPServer {
-  return new ConcurrentMCPServer({
+function createTestServer(): McpApp {
+  return new McpApp({
     name: "test-server",
     version: "1.0.0",
     logger: () => {},
@@ -169,13 +169,14 @@ Deno.test("registerViewers - custom humanName function", () => {
 Deno.test("registerViewers - throws if prefix is empty", () => {
   const server = createTestServer();
   assertThrows(
-    () => server.registerViewers({
-      prefix: "",
-      viewers: ["viewer"],
-      moduleUrl: "file:///project/server.ts",
-      exists: () => true,
-      readFile: () => "",
-    }),
+    () =>
+      server.registerViewers({
+        prefix: "",
+        viewers: ["viewer"],
+        moduleUrl: "file:///project/server.ts",
+        exists: () => true,
+        readFile: () => "",
+      }),
     Error,
     "prefix",
   );

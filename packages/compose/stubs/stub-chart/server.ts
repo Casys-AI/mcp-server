@@ -5,7 +5,7 @@
  * @module stubs/stub-chart
  */
 
-import { ConcurrentMCPServer } from "@casys/mcp-server";
+import { McpApp } from "@casys/mcp-server";
 import { buildStubHtml, MCP_APP_MIME_TYPE, startStubServer } from "../shared.ts";
 
 const MOCK_DATA = [
@@ -16,7 +16,7 @@ const MOCK_DATA = [
   { label: "May", value: 52 },
 ];
 
-const server = new ConcurrentMCPServer({
+const server = new McpApp({
   name: "stub-chart",
   version: "0.1.0",
   logger: (msg: string) => console.error(`[stub-chart] ${msg}`),
@@ -47,10 +47,13 @@ server.registerResource(
   () => ({
     uri: "ui://stub-chart/bar-chart",
     mimeType: MCP_APP_MIME_TYPE,
-    text: buildStubHtml("Bar Chart", `
+    text: buildStubHtml(
+      "Bar Chart",
+      `
       <h3>Chart</h3>
       <div id="chart" style="display:flex;align-items:flex-end;gap:8px;height:200px;padding-top:16px;"></div>
-    `, `
+    `,
+      `
       var chartEl = document.getElementById("chart");
       var data = ${JSON.stringify(MOCK_DATA)};
 
@@ -72,7 +75,8 @@ server.registerResource(
           render(payload.data.data);
         }
       });
-    `),
+    `,
+    ),
   }),
 );
 

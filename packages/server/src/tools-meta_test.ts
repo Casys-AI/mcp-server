@@ -10,14 +10,14 @@
  */
 
 import { assertEquals } from "@std/assert";
-import { ConcurrentMCPServer } from "./concurrent-server.ts";
+import { McpApp } from "./mcp-app.ts";
 import type { MCPTool } from "./types.ts";
 
 /**
  * Helper to create test server instance
  */
-function createTestServer(): ConcurrentMCPServer {
-  return new ConcurrentMCPServer({
+function createTestServer(): McpApp {
+  return new McpApp({
     name: "test-server",
     version: "1.0.0",
     // Suppress logging during tests
@@ -132,7 +132,7 @@ Deno.test("registerTool - _meta.ui with visibility array", () => {
 // ============================================
 
 /** Helper to start HTTP server on a free port */
-async function startTestHttp(server: ConcurrentMCPServer) {
+async function startTestHttp(server: McpApp) {
   const listener = Deno.listen({ port: 0 });
   const port = (listener.addr as Deno.NetAddr).port;
   listener.close();
@@ -205,7 +205,9 @@ Deno.test("tools/list - includes tools with visibility ['model', 'app']", async 
       name: "both",
       description: "Both",
       inputSchema: { type: "object" },
-      _meta: { ui: { resourceUri: "ui://test/both", visibility: ["model", "app"] } },
+      _meta: {
+        ui: { resourceUri: "ui://test/both", visibility: ["model", "app"] },
+      },
     },
     () => "result",
   );

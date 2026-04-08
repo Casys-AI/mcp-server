@@ -17,7 +17,7 @@ import {
 } from "./middleware.ts";
 import { createScopeMiddleware } from "./scope-middleware.ts";
 import type { MiddlewareContext } from "../middleware/types.ts";
-import { ConcurrentMCPServer } from "../concurrent-server.ts";
+import { McpApp } from "../mcp-app.ts";
 
 // ============================================
 // Mock AuthProvider
@@ -319,7 +319,7 @@ Deno.test("createScopeMiddleware - throws when no authInfo on HTTP request (no-s
 // ============================================
 
 Deno.test("HTTP + Auth - 401 without token", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "test-auth",
     version: "1.0.0",
     logger: () => {},
@@ -364,7 +364,7 @@ Deno.test("HTTP + Auth - 401 without token", async () => {
 });
 
 Deno.test("HTTP + Auth - 200 with valid token", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "test-auth",
     version: "1.0.0",
     logger: () => {},
@@ -412,7 +412,7 @@ Deno.test("HTTP + Auth - 200 with valid token", async () => {
 });
 
 Deno.test("HTTP + Auth - 401 with invalid token", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "test-auth",
     version: "1.0.0",
     logger: () => {},
@@ -459,7 +459,7 @@ Deno.test("HTTP + Auth - 401 with invalid token", async () => {
 });
 
 Deno.test("HTTP + Auth - RFC 9728 endpoint returns metadata", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "test-auth",
     version: "1.0.0",
     logger: () => {},
@@ -491,7 +491,7 @@ Deno.test("HTTP + Auth - RFC 9728 endpoint returns metadata", async () => {
 });
 
 Deno.test("HTTP + Auth - RFC 9728 endpoint 404 when no auth", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "test-no-auth",
     version: "1.0.0",
     logger: () => {},
@@ -516,7 +516,7 @@ Deno.test("HTTP + Auth - RFC 9728 endpoint 404 when no auth", async () => {
 });
 
 Deno.test("HTTP + Auth - no auth config means tools work without token", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "test-no-auth",
     version: "1.0.0",
     logger: () => {},
@@ -556,7 +556,7 @@ Deno.test("HTTP + Auth - no auth config means tools work without token", async (
 });
 
 Deno.test("HTTP + Auth - scope enforcement 403", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "test-scopes",
     version: "1.0.0",
     logger: () => {},
@@ -607,7 +607,7 @@ Deno.test("HTTP + Auth - scope enforcement 403", async () => {
 });
 
 Deno.test("HTTP + Auth - tools/list requires token (no auth bypass)", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "test-auth-bypass",
     version: "1.0.0",
     logger: () => {},
@@ -668,7 +668,7 @@ Deno.test("HTTP + Auth - tools/list requires token (no auth bypass)", async () =
 });
 
 Deno.test("HTTP + Auth - initialize does NOT require token", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "test-init-no-auth",
     version: "1.0.0",
     logger: () => {},

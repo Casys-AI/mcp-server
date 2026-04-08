@@ -6,7 +6,7 @@
  * @module stubs/stub-list
  */
 
-import { ConcurrentMCPServer } from "@casys/mcp-server";
+import { McpApp } from "@casys/mcp-server";
 import { buildStubHtml, MCP_APP_MIME_TYPE, startStubServer } from "../shared.ts";
 
 // Env var check (tests the requiredEnv flow)
@@ -24,7 +24,7 @@ const ITEMS = [
   { id: "ITEM-005", name: "Epsilon Tool", category: "tools", price: 14.99 },
 ];
 
-const server = new ConcurrentMCPServer({
+const server = new McpApp({
   name: "stub-list",
   version: "0.1.0",
   logger: (msg: string) => console.error(`[stub-list] ${msg}`),
@@ -65,10 +65,13 @@ server.registerResource(
   () => ({
     uri: "ui://stub-list/item-list",
     mimeType: MCP_APP_MIME_TYPE,
-    text: buildStubHtml("Item List", `
+    text: buildStubHtml(
+      "Item List",
+      `
       <h3>Items</h3>
       <ul id="list" style="list-style:none;"></ul>
-    `, `
+    `,
+      `
       var items = ${JSON.stringify(ITEMS)};
       var listEl = document.getElementById("list");
       var events = composeEvents();
@@ -101,7 +104,8 @@ server.registerResource(
         });
         render(filtered);
       });
-    `),
+    `,
+    ),
   }),
 );
 

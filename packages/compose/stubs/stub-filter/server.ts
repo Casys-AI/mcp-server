@@ -5,12 +5,12 @@
  * @module stubs/stub-filter
  */
 
-import { ConcurrentMCPServer } from "@casys/mcp-server";
+import { McpApp } from "@casys/mcp-server";
 import { buildStubHtml, MCP_APP_MIME_TYPE, startStubServer } from "../shared.ts";
 
 const CATEGORIES = ["all", "widgets", "gadgets", "tools"];
 
-const server = new ConcurrentMCPServer({
+const server = new McpApp({
   name: "stub-filter",
   version: "0.1.0",
   logger: (msg: string) => console.error(`[stub-filter] ${msg}`),
@@ -41,7 +41,9 @@ server.registerResource(
   () => ({
     uri: "ui://stub-filter/filter-panel",
     mimeType: MCP_APP_MIME_TYPE,
-    text: buildStubHtml("Filter Panel", `
+    text: buildStubHtml(
+      "Filter Panel",
+      `
       <h3>Filters</h3>
       <label>Category</label>
       <select id="category">
@@ -50,7 +52,8 @@ server.registerResource(
       <br><br>
       <label>Search</label>
       <input id="search" type="text" placeholder="Search...">
-    `, `
+    `,
+      `
       var events = composeEvents();
       var cat = document.getElementById("category");
       var search = document.getElementById("search");
@@ -59,7 +62,8 @@ server.registerResource(
       }
       cat.addEventListener("change", emitFilter);
       search.addEventListener("input", emitFilter);
-    `),
+    `,
+    ),
   }),
 );
 

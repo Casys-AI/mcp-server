@@ -4,7 +4,7 @@
  * @module stubs/shared
  */
 
-import type { ConcurrentMCPServer } from "@casys/mcp-server";
+import type { McpApp } from "@casys/mcp-server";
 
 /** MCP Apps MIME type for HTML UI resources. */
 export const MCP_APP_MIME_TYPE = "text/html;profile=mcp-app";
@@ -48,7 +48,7 @@ function composeEvents() {
  * Shared boilerplate for all stubs.
  */
 export async function startStubServer(
-  server: ConcurrentMCPServer,
+  server: McpApp,
   defaultPort: number,
 ): Promise<void> {
   const cliArgs = Deno.args;
@@ -71,7 +71,9 @@ export async function startStubServer(
         },
       }],
       onListen: (info: { hostname: string; port: number }) => {
-        console.error(`[${server.name}] HTTP server listening on http://${info.hostname}:${info.port}`);
+        console.error(
+          `[${server.name}] HTTP server listening on http://${info.hostname}:${info.port}`,
+        );
       },
     });
   } else {

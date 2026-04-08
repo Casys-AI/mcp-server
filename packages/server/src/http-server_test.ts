@@ -10,11 +10,11 @@ import {
   assertRejects,
   assertStringIncludes,
 } from "@std/assert";
-import { ConcurrentMCPServer } from "./concurrent-server.ts";
+import { McpApp } from "./mcp-app.ts";
 import { MCP_APP_MIME_TYPE } from "./types.ts";
 
 Deno.test("startHttp - starts server and handles initialize", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "test-server",
     version: "1.0.0",
     logger: () => {}, // Silence logs
@@ -52,7 +52,7 @@ Deno.test("startHttp - starts server and handles initialize", async () => {
 });
 
 Deno.test("startHttp - requires auth when configured", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "auth-required-test",
     version: "1.0.0",
     logger: () => {},
@@ -70,7 +70,7 @@ Deno.test("startHttp - requires auth when configured", async () => {
 });
 
 Deno.test("startHttp - enforces maxBodyBytes", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "body-limit-test",
     version: "1.0.0",
     logger: () => {},
@@ -107,7 +107,7 @@ Deno.test("startHttp - enforces maxBodyBytes", async () => {
 });
 
 Deno.test("startHttp - handles tools/list", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "test-server",
     version: "1.0.0",
     logger: () => {},
@@ -144,7 +144,7 @@ Deno.test("startHttp - handles tools/list", async () => {
 });
 
 Deno.test("startHttp - handles tools/call", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "test-server",
     version: "1.0.0",
     logger: () => {},
@@ -187,7 +187,7 @@ Deno.test("startHttp - handles tools/call", async () => {
 });
 
 Deno.test("startHttp - handles resources/list", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "test-server",
     version: "1.0.0",
     logger: () => {},
@@ -229,7 +229,7 @@ Deno.test("startHttp - handles resources/list", async () => {
 });
 
 Deno.test("startHttp - handles resources/read", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "test-server",
     version: "1.0.0",
     logger: () => {},
@@ -273,7 +273,7 @@ Deno.test("startHttp - handles resources/read", async () => {
 });
 
 Deno.test("startHttp - returns error for unknown resource", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "test-server",
     version: "1.0.0",
     logger: () => {},
@@ -309,7 +309,7 @@ Deno.test("startHttp - returns error for unknown resource", async () => {
 });
 
 Deno.test("startHttp - health endpoint works", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "health-test",
     version: "2.0.0",
     logger: () => {},
@@ -333,7 +333,7 @@ Deno.test("startHttp - health endpoint works", async () => {
 });
 
 Deno.test("startHttp - GET returns 405", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "test-server",
     version: "1.0.0",
     logger: () => {},
@@ -357,7 +357,7 @@ Deno.test("startHttp - GET returns 405", async () => {
 // ── CSP meta tag injection (resourceCsp) ────────────────────────
 
 Deno.test("startHttp - resources/read injects CSP meta tag when resourceCsp is set", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "csp-test",
     version: "1.0.0",
     logger: () => {},
@@ -412,7 +412,7 @@ Deno.test("startHttp - resources/read injects CSP meta tag when resourceCsp is s
 });
 
 Deno.test("startHttp - resources/read does NOT inject CSP when resourceCsp is not set", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "no-csp-test",
     version: "1.0.0",
     logger: () => {},
@@ -457,7 +457,7 @@ Deno.test("startHttp - resources/read does NOT inject CSP when resourceCsp is no
 });
 
 Deno.test("startHttp - resources/read skips CSP injection for non-HTML resources", async () => {
-  const server = new ConcurrentMCPServer({
+  const server = new McpApp({
     name: "json-csp-test",
     version: "1.0.0",
     logger: () => {},

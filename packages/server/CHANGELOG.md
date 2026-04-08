@@ -4,13 +4,16 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-04-08
+
 ### Added
 
 - **`createMultiTenantMiddleware()`** — tenant resolution middleware sitting
   after the auth middleware. Delegates tenant identification to a user-provided
   `TenantResolver`, injects the resolved `tenantId` into `ctx.authInfo`, and
   rejects mismatches with a generic `invalid_token` error. Passthrough on STDIO;
-  fails fast with a config error if `ctx.authInfo` is missing on HTTP.
+  fails fast with a config error if `ctx.authInfo` is missing on HTTP. Existing
+  single-tenant servers require no changes.
 - **`AuthInfo.tenantId`** — new optional field populated by the multi-tenant
   middleware. Tool handlers should read this instead of raw JWT claims.
   `authInfo` is re-frozen after injection.
@@ -38,19 +41,25 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
 - **New types** — `TenantResolver`, `TenantResolution`,
   `MultiTenantMiddlewareOptions` exported from `mod.ts`.
 
-Non-breaking: existing single-tenant servers require no changes.
-
 ### Changed
 
-- **`ConcurrentMCPServer` → `McpApp`** — the framework's main class has been
-  renamed (and its source file moved from `src/concurrent-server.ts` to
-  `src/mcp-app.ts`). `McpApp` is now the canonical name everywhere — class body,
-  error messages, JSDoc, internal modules, tests, README, and the compose stubs.
-  Same goes for the options type: `ConcurrentServerOptions → McpAppOptions`.
-  Rationale: "Concurrent" described a trivial feature (any HTTP server is
-  concurrent), while `McpApp` captures the actual value of the lib — a
-  middleware-first framework on top of the MCP SDK, mirroring the Hono idiom
-  (`new Hono()` → `new McpApp()`).
+- **`ConcurrentMCPServer` → `McpApp`** — **non-breaking**. The framework's
+  main class has been renamed and its source file moved from
+  `src/concurrent-server.ts` to `src/mcp-app.ts` (git-tracked rename, history
+  preserved). `McpApp` is now the canonical name everywhere — class body,
+  error messages, JSDoc, internal modules, tests, README, and the compose
+  stubs. The options type follows: `ConcurrentServerOptions → McpAppOptions`.
+  Existing code keeps working unchanged thanks to the deprecated re-exports
+  in `mod.ts` (see Deprecated below) — `import { ConcurrentMCPServer } from
+  "@casys/mcp-server"` still resolves to the same constructor at runtime,
+  `ConcurrentMCPServer === McpApp` is true, and `instanceof` checks pass in
+  both directions. Migration is a one-line import swap when consumers are
+  ready. Rationale: "Concurrent" described a trivial implementation detail
+  (any HTTP server is concurrent), while `McpApp` captures the actual value
+  of the lib — a middleware-first framework on top of the MCP SDK, mirroring
+  the Hono idiom (`new Hono()` → `new McpApp()`). `McpServer` was off the
+  table because it would collide with the SDK's own `McpServer` class which
+  we wrap.
 
 ### Deprecated
 
@@ -61,6 +70,20 @@ Non-breaking: existing single-tenant servers require no changes.
   be removed in **v1.0**.
 - **`ConcurrentServerOptions`** — same treatment as a re-export of
   `McpAppOptions`. Will be removed in v1.0.
+
+### Fixed
+
+- **`setRequestHandler` callbacks now have explicit type annotations** — the
+  `tools/call` and `resources/read` handlers in `McpApp` (formerly
+  `ConcurrentMCPServer`) relied on TypeScript inference for their `request`
+  parameter. The MCP SDK exports the Zod-inferred types
+  (`CallToolRequest`, `ReadResourceRequest`) from `@modelcontextprotocol/sdk/types.js`
+  but the callback sites used neither imports nor annotations. Consumers who
+  pulled the package via a local-path workspace and built with strict
+  `noImplicitAny` were tripping on the inference gap. Both callbacks now
+  import and annotate the request types explicitly, surfacing full type info
+  at the call site and catching SDK shape drift early. Runtime behaviour
+  unchanged.
 
 ## [0.12.0] - 2026-03-22
 

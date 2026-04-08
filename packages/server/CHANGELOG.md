@@ -22,22 +22,13 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
 - **Empty-`tenantId` guard** — `{ ok: true, tenantId: "" }` is rejected as if it
   were a resolver failure, preventing truthy-guard bypasses in downstream
   handlers.
-- **`McpApp` — recommended alias for `ConcurrentMCPServer`** — the main
-  framework class is now also exported as `McpApp`, mirroring the Hono idiom.
-  "Concurrent" described a trivial feature (any HTTP server is concurrent);
-  `McpApp` captures the actual value of the lib (middleware-first framework on
-  top of the MCP SDK). Both names point to the same class — same constructor
-  identity, `instanceof` works on either, zero migration cost for new consumers.
-  The internal class name `ConcurrentMCPServer` is preserved for now to keep
-  stack traces and existing code untouched; a hard rename of the internal class
-  can happen in a future major version.
-- **`ConcurrentMCPServer.getFetchHandler()`** — returns a Web Standard fetch
-  handler without binding a port. Use this to mount the MCP HTTP layer inside
-  another framework (Fresh, Hono, Express, Cloudflare Workers, etc.) without
-  giving up port ownership to `startHttp`. Auth, multi-tenant middleware, scope
-  checks, rate limiting, sessions, and SSE all run identically. Designed for the
-  multi-tenant SaaS pattern of caching one server-per-tenant and dispatching
-  from the host framework's routing layer.
+- **`McpApp.getFetchHandler()`** — returns a Web Standard fetch handler without
+  binding a port. Use this to mount the MCP HTTP layer inside another framework
+  (Fresh, Hono, Express, Cloudflare Workers, etc.) without giving up port
+  ownership to `startHttp`. Auth, multi-tenant middleware, scope checks, rate
+  limiting, sessions, and SSE all run identically. Designed for the multi-tenant
+  SaaS pattern of caching one server-per-tenant and dispatching from the host
+  framework's routing layer.
 - **`HttpServerOptions.embedded` + `embeddedHandlerCallback`** — internal
   mechanism powering `getFetchHandler`. Most consumers should use
   `getFetchHandler` directly rather than setting these.
@@ -48,6 +39,28 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
   `MultiTenantMiddlewareOptions` exported from `mod.ts`.
 
 Non-breaking: existing single-tenant servers require no changes.
+
+### Changed
+
+- **`ConcurrentMCPServer` → `McpApp`** — the framework's main class has been
+  renamed (and its source file moved from `src/concurrent-server.ts` to
+  `src/mcp-app.ts`). `McpApp` is now the canonical name everywhere — class body,
+  error messages, JSDoc, internal modules, tests, README, and the compose stubs.
+  Same goes for the options type: `ConcurrentServerOptions → McpAppOptions`.
+  Rationale: "Concurrent" described a trivial feature (any HTTP server is
+  concurrent), while `McpApp` captures the actual value of the lib — a
+  middleware-first framework on top of the MCP SDK, mirroring the Hono idiom
+  (`new Hono()` → `new McpApp()`).
+
+### Deprecated
+
+- **`ConcurrentMCPServer`** — kept as a re-export of `McpApp` for backwards
+  compatibility (`export { McpApp as ConcurrentMCPServer }`). Both names point
+  to the exact same class at runtime, so `instanceof` checks pass in both
+  directions and migration is a one-line import swap. The deprecated alias will
+  be removed in **v1.0**.
+- **`ConcurrentServerOptions`** — same treatment as a re-export of
+  `McpAppOptions`. Will be removed in v1.0.
 
 ## [0.12.0] - 2026-03-22
 

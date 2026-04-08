@@ -6,7 +6,10 @@
 
 **Everything you need to build, compose, and deploy production MCP servers.**
 
-The official SDK gives you the protocol. Casys MCP Platform gives you the production stack: composable middleware, OAuth2 auth, concurrency control, observability, interactive UIs, and multi-server composition — all in TypeScript.
+The official SDK gives you the protocol. Casys MCP Platform gives you the
+production stack: composable middleware, OAuth2 auth, concurrency control,
+observability, interactive UIs, and multi-server composition — all in
+TypeScript.
 
 ```
 rate-limit → auth → custom middleware → scope-check → validation → backpressure → handler
@@ -16,11 +19,11 @@ rate-limit → auth → custom middleware → scope-check → validation → bac
 
 ## Packages
 
-| Package | Status | Description |
-|---------|--------|-------------|
-| [`@casys/mcp-server`](packages/server/) | **Production** | The framework. Middleware, auth, dual transport, observability. |
-| [`@casys/mcp-compose`](packages/compose/) | Experimental | Multi-server UI composition — sync and orchestrate MCP Apps into dashboards. |
-| [`@casys/mcp-bridge`](packages/bridge/) | Experimental | Deliver MCP Apps UIs through Telegram Mini Apps, LINE LIFF, and other messaging platforms. |
+| Package                                   | Status         | Description                                                                                |
+| ----------------------------------------- | -------------- | ------------------------------------------------------------------------------------------ |
+| [`@casys/mcp-server`](packages/server/)   | **Production** | The framework. Middleware, auth, dual transport, observability.                            |
+| [`@casys/mcp-compose`](packages/compose/) | Experimental   | Multi-server UI composition — sync and orchestrate MCP Apps into dashboards.               |
+| [`@casys/mcp-bridge`](packages/bridge/)   | Experimental   | Deliver MCP Apps UIs through Telegram Mini Apps, LINE LIFF, and other messaging platforms. |
 
 ---
 
@@ -37,9 +40,9 @@ deno add jsr:@casys/mcp-server
 ### STDIO Server
 
 ```typescript
-import { ConcurrentMCPServer } from "@casys/mcp-server";
+import { McpApp } from "@casys/mcp-server";
 
-const server = new ConcurrentMCPServer({ name: "my-server", version: "1.0.0" });
+const server = new McpApp({ name: "my-server", version: "1.0.0" });
 
 server.registerTool(
   {
@@ -60,9 +63,9 @@ await server.start();
 ### HTTP Server with Auth
 
 ```typescript
-import { ConcurrentMCPServer, createAuth0AuthProvider } from "@casys/mcp-server";
+import { createAuth0AuthProvider, McpApp } from "@casys/mcp-server";
 
-const server = new ConcurrentMCPServer({
+const server = new McpApp({
   name: "my-api",
   version: "1.0.0",
   maxConcurrent: 10,
@@ -85,19 +88,19 @@ await server.startHttp({ port: 3000 });
 
 ## Why Casys MCP Platform?
 
-|                         | Official SDK | @casys/mcp-server |
-| ----------------------- | :----------: | :---: |
-| MCP protocol compliance | Yes | Yes |
-| Composable middleware    | — | Onion model (like Hono/Koa) |
-| OAuth2 / JWT auth       | — | 4 OIDC presets + YAML config |
-| Concurrency control     | — | 3 backpressure strategies |
-| Rate limiting           | — | Sliding window, per-client |
-| Schema validation       | — | JSON Schema (ajv) |
-| Streamable HTTP + SSE   | Manual | Built-in session management |
-| OpenTelemetry tracing   | — | Automatic spans per tool call |
-| Prometheus metrics      | — | `/metrics` endpoint |
-| MCP Apps (UI resources) | Manual | `registerResource()` + `ui://` |
-| Multi-server composition | — | `@casys/mcp-compose` |
+|                          | Official SDK |       @casys/mcp-server        |
+| ------------------------ | :----------: | :----------------------------: |
+| MCP protocol compliance  |     Yes      |              Yes               |
+| Composable middleware    |      —       |  Onion model (like Hono/Koa)   |
+| OAuth2 / JWT auth        |      —       |  4 OIDC presets + YAML config  |
+| Concurrency control      |      —       |   3 backpressure strategies    |
+| Rate limiting            |      —       |   Sliding window, per-client   |
+| Schema validation        |      —       |       JSON Schema (ajv)        |
+| Streamable HTTP + SSE    |    Manual    |  Built-in session management   |
+| OpenTelemetry tracing    |      —       | Automatic spans per tool call  |
+| Prometheus metrics       |      —       |      `/metrics` endpoint       |
+| MCP Apps (UI resources)  |    Manual    | `registerResource()` + `ui://` |
+| Multi-server composition |      —       |      `@casys/mcp-compose`      |
 
 ---
 
@@ -105,12 +108,16 @@ await server.startHttp({ port: 3000 });
 
 ### @casys/mcp-server — The Framework
 
-The core of the platform. Build MCP servers with the same developer experience as Hono or Koa — register tools, plug in middleware, start serving.
+The core of the platform. Build MCP servers with the same developer experience
+as Hono or Koa — register tools, plug in middleware, start serving.
 
 **Highlights:**
-- **Middleware pipeline** — rate-limit, auth, validation, backpressure, all composable
+
+- **Middleware pipeline** — rate-limit, auth, validation, backpressure, all
+  composable
 - **4 OAuth2 presets** — Google, Auth0, GitHub Actions, generic OIDC
-- **Dual transport** — STDIO for local/CLI, HTTP (Streamable HTTP + SSE) for remote
+- **Dual transport** — STDIO for local/CLI, HTTP (Streamable HTTP + SSE) for
+  remote
 - **Observability** — OpenTelemetry spans + Prometheus metrics out of the box
 - **MCP Apps** — serve interactive UIs as MCP resources
 
@@ -118,17 +125,21 @@ The core of the platform. Build MCP servers with the same developer experience a
 
 ### @casys/mcp-compose — Multi-Server Composition
 
-> *Experimental — API may change.*
+> _Experimental — API may change._
 
-Orchestrate multiple MCP Apps UIs into composite dashboards. Define layouts, sync rules between panels, and let the composition engine handle the event routing.
+Orchestrate multiple MCP Apps UIs into composite dashboards. Define layouts,
+sync rules between panels, and let the composition engine handle the event
+routing.
 
 [Documentation](packages/compose/README.md)
 
 ### @casys/mcp-bridge — Messaging Platform Bridge
 
-> *Experimental — API may change.*
+> _Experimental — API may change._
 
-Deliver MCP Apps interactive UIs through messaging platforms. Currently supports Telegram Mini Apps and LINE LIFF with platform-specific authentication and lifecycle handling.
+Deliver MCP Apps interactive UIs through messaging platforms. Currently supports
+Telegram Mini Apps and LINE LIFF with platform-specific authentication and
+lifecycle handling.
 
 [Documentation](packages/bridge/README.md)
 

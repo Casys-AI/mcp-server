@@ -4,9 +4,12 @@
 [![JSR](https://jsr.io/badges/@casys/mcp-server)](https://jsr.io/@casys/mcp-server)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**The "Hono for MCP"** — a production-grade framework for building Model Context Protocol servers in TypeScript.
+**The "Hono for MCP"** — a production-grade framework for building Model Context
+Protocol servers in TypeScript.
 
-Composable middleware, OAuth2 auth, dual transport, observability, and everything you need to ship reliable MCP servers. Built on the official [@modelcontextprotocol/sdk](https://github.com/modelcontextprotocol/sdk).
+Composable middleware, OAuth2 auth, dual transport, observability, and
+everything you need to ship reliable MCP servers. Built on the official
+[@modelcontextprotocol/sdk](https://github.com/modelcontextprotocol/sdk).
 
 ```
 rate-limit → auth → custom middleware → scope-check → validation → backpressure → handler
@@ -16,7 +19,8 @@ rate-limit → auth → custom middleware → scope-check → validation → bac
 
 ## Why @casys/mcp-server?
 
-The official SDK gives you the protocol. This framework gives you the production stack.
+The official SDK gives you the protocol. This framework gives you the production
+stack.
 
 |                         | Official SDK |       @casys/mcp-server        |
 | ----------------------- | :----------: | :----------------------------: |
@@ -51,9 +55,9 @@ deno add jsr:@casys/mcp-server
 ### STDIO Server (5 lines)
 
 ```typescript
-import { ConcurrentMCPServer } from "@casys/mcp-server";
+import { McpApp } from "@casys/mcp-server";
 
-const server = new ConcurrentMCPServer({ name: "my-server", version: "1.0.0" });
+const server = new McpApp({ name: "my-server", version: "1.0.0" });
 
 server.registerTool(
   {
@@ -74,12 +78,9 @@ await server.start();
 ### HTTP Server with Auth
 
 ```typescript
-import {
-  ConcurrentMCPServer,
-  createGoogleAuthProvider,
-} from "@casys/mcp-server";
+import { createGoogleAuthProvider, McpApp } from "@casys/mcp-server";
 
-const server = new ConcurrentMCPServer({
+const server = new McpApp({
   name: "my-api",
   version: "1.0.0",
   maxConcurrent: 10,
@@ -156,7 +157,8 @@ const timing: Middleware = async (ctx, next) => {
 server.use(timing);
 ```
 
-Built-in pipeline: `rate-limit → auth → custom → scope-check → validation → backpressure → handler`
+Built-in pipeline:
+`rate-limit → auth → custom → scope-check → validation → backpressure → handler`
 
 ### OAuth2 / JWT Auth
 
@@ -164,9 +166,9 @@ Four OIDC presets out of the box:
 
 ```typescript
 import {
-  createGoogleAuthProvider, // Google OIDC
   createAuth0AuthProvider, // Auth0
   createGitHubAuthProvider, // GitHub Actions OIDC
+  createGoogleAuthProvider, // Google OIDC
   createOIDCAuthProvider, // Generic OIDC (Keycloak, Okta, etc.)
 } from "@casys/mcp-server";
 
@@ -191,7 +193,8 @@ const provider = new JwtAuthProvider({
 });
 ```
 
-Token verification is cached (SHA-256 hash → AuthInfo, TTL = min(token expiry, 5min)) to avoid redundant JWKS round-trips.
+Token verification is cached (SHA-256 hash → AuthInfo, TTL = min(token expiry,
+5min)) to avoid redundant JWKS round-trips.
 
 ### YAML + Env Config
 
@@ -217,7 +220,9 @@ Priority: `programmatic > env vars > YAML > no auth`
 
 ### RFC 9728
 
-When auth is configured, the framework automatically exposes `GET /.well-known/oauth-protected-resource` per [RFC 9728](https://www.rfc-editor.org/rfc/rfc9728).
+When auth is configured, the framework automatically exposes
+`GET /.well-known/oauth-protected-resource` per
+[RFC 9728](https://www.rfc-editor.org/rfc/rfc9728).
 
 ### Observability
 
@@ -272,7 +277,7 @@ Three backpressure strategies when the server is at capacity:
 | `reject`          | Fail fast with immediate error             |
 
 ```typescript
-new ConcurrentMCPServer({
+new McpApp({
   maxConcurrent: 10,
   backpressureStrategy: "queue",
 });
@@ -283,7 +288,7 @@ new ConcurrentMCPServer({
 Sliding window rate limiter with per-client tracking:
 
 ```typescript
-new ConcurrentMCPServer({
+new McpApp({
   rateLimit: {
     maxRequests: 100,
     windowMs: 60_000,
@@ -293,15 +298,19 @@ new ConcurrentMCPServer({
 });
 ```
 
-For HTTP endpoints, use `startHttp({ ipRateLimit: ... })` to rate limit by client IP (or custom key).
+For HTTP endpoints, use `startHttp({ ipRateLimit: ... })` to rate limit by
+client IP (or custom key).
 
 ### Security Best Practices (Tool Handlers)
 
 Tool handlers receive **untrusted JSON input**. Treat args as hostile:
 
-- **Define strict schemas**: `additionalProperties: false`, `minLength`, `pattern`, `enum`.
-- **Never pass raw args to a shell** (`Deno.Command`, `child_process.exec`). If you must, use an allowlist + argv array (no shell).
-- **Validate paths & resources**: allowlisted roots, deny `..`, restrict env access.
+- **Define strict schemas**: `additionalProperties: false`, `minLength`,
+  `pattern`, `enum`.
+- **Never pass raw args to a shell** (`Deno.Command`, `child_process.exec`). If
+  you must, use an allowlist + argv array (no shell).
+- **Validate paths & resources**: allowlisted roots, deny `..`, restrict env
+  access.
 - **Prefer safe APIs**: parameterized DB queries, SDK methods, typed clients.
 - **Log sensitive actions**: file writes, network calls, admin ops.
 
@@ -310,7 +319,7 @@ Tool handlers receive **untrusted JSON input**. Treat args as hostile:
 Register interactive UIs as MCP resources:
 
 ```typescript
-import { ConcurrentMCPServer, MCP_APP_MIME_TYPE } from "@casys/mcp-server";
+import { MCP_APP_MIME_TYPE, McpApp } from "@casys/mcp-server";
 
 server.registerResource(
   { uri: "ui://my-server/viewer", name: "Data Viewer" },
@@ -326,10 +335,15 @@ server.registerResource(
 
 ## API Reference
 
-### ConcurrentMCPServer
+### McpApp
+
+> **Note:** `ConcurrentMCPServer` and `ConcurrentServerOptions` remain exported
+> as `@deprecated` aliases for backwards compatibility and will be removed in
+> v1.0. New code should use `McpApp` / `McpAppOptions`. The aliases point to the
+> exact same class — `instanceof` checks pass on both.
 
 ```typescript
-const server = new ConcurrentMCPServer(options: ConcurrentServerOptions);
+const server = new McpApp(options: McpAppOptions);
 
 // Registration (before start)
 server.registerTool(tool, handler);

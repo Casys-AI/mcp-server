@@ -123,10 +123,10 @@ export function createAuthMiddleware(provider: AuthProvider): Middleware {
       return next();
     }
 
-    const metadata = provider.getResourceMetadata();
-    const resource = metadata.resource;
-    const base = resource.endsWith("/") ? resource.slice(0, -1) : resource;
-    const metadataUrl = `${base}/.well-known/oauth-protected-resource`;
+    // 0.15.0+: provider's getResourceMetadata() always returns a valid
+    // absolute URL in resource_metadata_url (type system guarantees it).
+    // No derivation needed at the middleware level anymore.
+    const metadataUrl = provider.getResourceMetadata().resource_metadata_url;
 
     const token = extractBearerToken(ctx.request);
     if (!token) {

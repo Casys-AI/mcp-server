@@ -5,8 +5,9 @@
  * @module lib/server/auth/auth_test
  */
 
-import { assert, assertEquals, assertRejects } from "@std/assert";
+import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { AuthProvider } from "./provider.ts";
+import { JwtAuthProvider } from "./jwt-provider.ts";
 import type { AuthInfo, ProtectedResourceMetadata } from "./types.ts";
 import {
   AuthError,
@@ -52,6 +53,8 @@ class MockAuthProvider extends AuthProvider {
   getResourceMetadata(): ProtectedResourceMetadata {
     return {
       resource: "https://mock.example.com",
+      resource_metadata_url:
+        "https://mock.example.com/.well-known/oauth-protected-resource",
       authorization_servers: ["https://auth.example.com"],
       bearer_methods_supported: ["header"],
     };
@@ -703,4 +706,52 @@ Deno.test("HTTP + Auth - initialize does NOT require token", async () => {
   } finally {
     await http.shutdown();
   }
+});
+
+// ============================================
+// JwtAuthProvider — resource_metadata_url resolution (0.15.0+)
+// ============================================
+
+Deno.test("JwtAuthProvider — factory auto-derives resource_metadata_url from URL resource", () => {
+  const provider = new JwtAuthProvider({
+    issuer: "https://idp.example.com",
+    audience: "https://api.example.com",
+    resource: "https://api.example.com",
+    authorizationServers: ["https://idp.example.com"],
+  });
+  const metadata = provider.getResourceMetadata();
+  assertEquals(
+    metadata.resource_metadata_url,
+    "https://api.example.com/.well-known/oauth-protected-resource",
+  );
+});
+
+Deno.test("JwtAuthProvider — uses explicit resourceMetadataUrl for opaque resource", () => {
+  const provider = new JwtAuthProvider({
+    issuer: "https://idp.example.com",
+    audience: "367545125829670172",
+    resource: "367545125829670172",
+    authorizationServers: ["https://idp.example.com"],
+    resourceMetadataUrl:
+      "https://my-tenant.example.com/mcp/.well-known/oauth-protected-resource",
+  });
+  const metadata = provider.getResourceMetadata();
+  assertEquals(
+    metadata.resource_metadata_url,
+    "https://my-tenant.example.com/mcp/.well-known/oauth-protected-resource",
+  );
+});
+
+Deno.test("JwtAuthProvider — throws when resource is opaque and resourceMetadataUrl is missing", () => {
+  assertThrows(
+    () =>
+      new JwtAuthProvider({
+        issuer: "https://idp.example.com",
+        audience: "367545125829670172",
+        resource: "367545125829670172",
+        authorizationServers: ["https://idp.example.com"],
+      }),
+    Error,
+    "resourceMetadataUrl is required",
+  );
 });

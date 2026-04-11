@@ -42,6 +42,17 @@ export interface AuthConfig {
   jwksUri?: string;
   /** Supported scopes */
   scopesSupported?: string[];
+  /**
+   * Absolute HTTP(S) URL where the `/.well-known/oauth-protected-resource`
+   * metadata document is served publicly (RFC 9728 § 3).
+   *
+   * Required when `resource` is an opaque URI (e.g., an OIDC project ID used
+   * as JWT audience per RFC 9728 § 2) — otherwise `JwtAuthProvider` will
+   * throw at construction. When `resource` is itself an HTTP(S) URL, this
+   * field is optional and auto-derived by the factory. Mirrors
+   * `JwtAuthProviderOptions.resourceMetadataUrl`.
+   */
+  resourceMetadataUrl?: string;
 }
 
 /**
@@ -56,6 +67,7 @@ interface ConfigFile {
     issuer?: string;
     jwksUri?: string;
     scopesSupported?: string[];
+    resourceMetadataUrl?: string;
   };
 }
 
@@ -75,6 +87,7 @@ interface ConfigFile {
  * - MCP_AUTH_ISSUER → auth.issuer
  * - MCP_AUTH_JWKS_URI → auth.jwksUri
  * - MCP_AUTH_SCOPES → auth.scopesSupported (space-separated)
+ * - MCP_AUTH_RESOURCE_METADATA_URL → auth.resourceMetadataUrl
  *
  * @param configPath - Path to YAML config file. Defaults to "mcp-server.yaml" in cwd.
  * @returns AuthConfig or null if no auth configured
@@ -94,6 +107,7 @@ export async function loadAuthConfig(
   const envIssuer = env("MCP_AUTH_ISSUER");
   const envJwksUri = env("MCP_AUTH_JWKS_URI");
   const envScopes = env("MCP_AUTH_SCOPES");
+  const envResourceMetadataUrl = env("MCP_AUTH_RESOURCE_METADATA_URL");
 
   // 3. Merge: env overrides YAML
   const provider = envProvider ?? yamlAuth?.provider;
@@ -135,6 +149,8 @@ export async function loadAuthConfig(
     scopesSupported: envScopes
       ? envScopes.split(" ").filter(Boolean)
       : yamlAuth?.scopesSupported,
+    resourceMetadataUrl: envResourceMetadataUrl ??
+      yamlAuth?.resourceMetadataUrl,
   };
 
   // Provider-specific validation (fail-fast)
@@ -165,6 +181,7 @@ export function createAuthProviderFromConfig(config: AuthConfig): AuthProvider {
     audience: config.audience,
     resource: config.resource,
     scopesSupported: config.scopesSupported,
+    resourceMetadataUrl: config.resourceMetadataUrl,
   };
 
   switch (config.provider) {
@@ -224,6 +241,9 @@ async function loadYamlAuth(
       ? auth.scopesSupported.filter((s: unknown): s is string =>
         typeof s === "string"
       )
+      : undefined,
+    resourceMetadataUrl: typeof auth.resourceMetadataUrl === "string"
+      ? auth.resourceMetadataUrl
       : undefined,
   };
 }

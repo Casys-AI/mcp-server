@@ -66,8 +66,27 @@ import type { AuthProvider } from "./provider.ts";
  * @see https://datatracker.ietf.org/doc/html/rfc9728
  */
 export interface ProtectedResourceMetadata {
-  /** Resource identifier (URL of this MCP server) */
+  /**
+   * RFC 9728 § 2 resource identifier. URI that identifies the protected
+   * resource — used as the JWT `aud` claim. Can be an HTTP(S) URL OR an
+   * opaque URI (e.g., an OIDC project ID). Do NOT assume it's an URL.
+   */
   resource: string;
+
+  /**
+   * Absolute HTTP(S) URL where this metadata document is served publicly.
+   * Per RFC 9728 § 3, this is the URL a client discovers via the
+   * WWW-Authenticate challenge. Always an HTTP(S) URL, regardless of
+   * whether `resource` itself is an URL or an opaque URI.
+   *
+   * REQUIRED as of 0.15.0 — previously derived at the middleware level
+   * from `resource`, which produced a broken URL when `resource` was not
+   * itself an HTTP(S) URL. Callers using the `createOIDCAuthProvider`
+   * factory or `JwtAuthProvider` can omit the explicit value when their
+   * `resource` IS an HTTP(S) URL (the factory auto-derives). Custom
+   * `AuthProvider` subclasses must always set it explicitly.
+   */
+  resource_metadata_url: string;
 
   /** Authorization servers that can issue valid tokens */
   authorization_servers: string[];

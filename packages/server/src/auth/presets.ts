@@ -23,6 +23,12 @@ export interface PresetOptions {
   resource: string;
   /** Scopes supported by this server */
   scopesSupported?: string[];
+  /**
+   * Absolute HTTP(S) URL where the `/.well-known/oauth-protected-resource`
+   * metadata document is served publicly (RFC 9728 § 3). Required when
+   * `resource` is an opaque URI. See `JwtAuthProviderOptions.resourceMetadataUrl`.
+   */
+  resourceMetadataUrl?: string;
 }
 
 /**
@@ -48,6 +54,7 @@ export function createGitHubAuthProvider(
     resource: options.resource,
     authorizationServers: ["https://token.actions.githubusercontent.com"],
     scopesSupported: options.scopesSupported,
+    resourceMetadataUrl: options.resourceMetadataUrl,
   });
 }
 
@@ -75,6 +82,7 @@ export function createGoogleAuthProvider(
     authorizationServers: ["https://accounts.google.com"],
     jwksUri: "https://www.googleapis.com/oauth2/v3/certs",
     scopesSupported: options.scopesSupported,
+    resourceMetadataUrl: options.resourceMetadataUrl,
   });
 }
 
@@ -104,6 +112,7 @@ export function createAuth0AuthProvider(
     authorizationServers: [issuer],
     jwksUri: `${issuer}.well-known/jwks.json`,
     scopesSupported: options.scopesSupported,
+    resourceMetadataUrl: options.resourceMetadataUrl,
   });
 }
 

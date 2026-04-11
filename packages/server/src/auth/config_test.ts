@@ -366,3 +366,25 @@ Deno.test("createAuthProviderFromConfig - passes scopesSupported to metadata", (
   const metadata = provider.getResourceMetadata();
   assertEquals(metadata.scopes_supported, ["read", "write"]);
 });
+
+Deno.test("createAuthProviderFromConfig - forwards resourceMetadataUrl for opaque resource (0.15.0+)", () => {
+  // Regression test for 0.15.0: YAML/env users with an opaque `resource`
+  // (e.g., OIDC project ID as JWT audience per RFC 9728 § 2) MUST be able
+  // to supply `resourceMetadataUrl` through the config layer, otherwise
+  // JwtAuthProvider would throw at boot with no recovery path.
+  const config: AuthConfig = {
+    provider: "oidc",
+    audience: "367545125829670172",
+    resource: "367545125829670172",
+    issuer: "https://idp.example.com",
+    resourceMetadataUrl:
+      "https://my-tenant.example.com/mcp/.well-known/oauth-protected-resource",
+  };
+  const provider = createAuthProviderFromConfig(config);
+  assert(provider instanceof JwtAuthProvider);
+  const metadata = provider.getResourceMetadata();
+  assertEquals(
+    metadata.resource_metadata_url,
+    "https://my-tenant.example.com/mcp/.well-known/oauth-protected-resource",
+  );
+});

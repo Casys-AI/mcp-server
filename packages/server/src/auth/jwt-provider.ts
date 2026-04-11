@@ -28,6 +28,23 @@ export interface JwtAuthProviderOptions {
   authorizationServers: string[];
   /** Scopes supported by this server */
   scopesSupported?: string[];
+  /**
+   * Absolute HTTP(S) URL where the `/.well-known/oauth-protected-resource`
+   * metadata document is served publicly. Used to populate the
+   * `resource_metadata` parameter of the WWW-Authenticate challenge
+   * (RFC 9728 § 5) and the `resource_metadata_url` field of
+   * `ProtectedResourceMetadata`.
+   *
+   * - When omitted AND `resource` is an HTTP(S) URL, the factory
+   *   auto-derives `${resource}/.well-known/oauth-protected-resource`.
+   * - When omitted AND `resource` is an opaque URI (e.g., an OIDC project
+   *   ID used as JWT audience — valid per RFC 9728 § 2), the factory
+   *   throws at construction. Set this option explicitly in that case
+   *   (fail-fast, no silent broken header).
+   *
+   * @example "https://my-mcp.example.com/.well-known/oauth-protected-resource"
+   */
+  resourceMetadataUrl?: string;
 }
 
 /**
@@ -54,6 +71,7 @@ interface CachedAuth {
 export class JwtAuthProvider extends AuthProvider {
   private jwks: ReturnType<typeof createRemoteJWKSet>;
   private options: JwtAuthProviderOptions;
+  private readonly resourceMetadataUrl: string;
 
   // Token verification cache: hash(token) → AuthInfo with TTL
   // Prevents redundant JWKS fetches (network round-trip per tool call)
@@ -77,6 +95,32 @@ export class JwtAuthProvider extends AuthProvider {
       throw new Error(
         "[JwtAuthProvider] at least one authorizationServer is required",
       );
+    }
+
+    // Resolve resource_metadata_url: explicit > auto-derive (if URL) > throw.
+    // Per RFC 9728 § 2, `resource` is an URI identifier and MAY be opaque
+    // (e.g., an OIDC project ID used as JWT audience). The metadata document
+    // URL is a separate concept — always an HTTP(S) URL. We used to derive
+    // it from `resource` by string concatenation, which produced a broken
+    // URL when `resource` was not itself an HTTP(S) URL. 0.15.0+ requires
+    // the caller to provide the URL explicitly whenever `resource` is opaque.
+    if (options.resourceMetadataUrl) {
+      this.resourceMetadataUrl = options.resourceMetadataUrl;
+    } else {
+      const isUrl = /^https?:\/\//.test(options.resource);
+      if (!isUrl) {
+        throw new Error(
+          `[JwtAuthProvider] resourceMetadataUrl is required when 'resource' ` +
+            `is not an HTTP(S) URL (got resource="${options.resource}"). ` +
+            `Per RFC 9728 § 2, 'resource' is an URI identifier that can be ` +
+            `opaque (e.g., an OIDC project ID used as JWT audience). The ` +
+            `metadata document URL is a separate concept. Set 'resourceMetadataUrl' ` +
+            `to the HTTPS URL where your /.well-known/oauth-protected-resource ` +
+            `endpoint is served publicly (e.g., "https://my-mcp.example.com/.well-known/oauth-protected-resource").`,
+        );
+      }
+      const base = options.resource.replace(/\/$/, "");
+      this.resourceMetadataUrl = `${base}/.well-known/oauth-protected-resource`;
     }
 
     this.options = options;
@@ -153,6 +197,7 @@ export class JwtAuthProvider extends AuthProvider {
   getResourceMetadata(): ProtectedResourceMetadata {
     return {
       resource: this.options.resource,
+      resource_metadata_url: this.resourceMetadataUrl,
       authorization_servers: this.options.authorizationServers,
       scopes_supported: this.options.scopesSupported,
       bearer_methods_supported: ["header"],

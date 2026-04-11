@@ -1159,15 +1159,16 @@ export class McpApp {
       return c.json(this.authProvider.getResourceMetadata());
     });
 
-    // Helper: build resource metadata URL safely (avoid double slash)
-    const buildMetadataUrl = (resource: string): string => {
-      const base = resource.endsWith("/") ? resource.slice(0, -1) : resource;
-      return `${base}/.well-known/oauth-protected-resource`;
-    };
-
     // Auth verification helper for HTTP endpoints.
     // Returns an error Response if auth is required but token is missing/invalid.
     // Returns null if auth passes or is not configured.
+    //
+    // 0.15.0+: provider's getResourceMetadata() always returns a valid
+    // absolute URL in resource_metadata_url (type-enforced). We used to
+    // derive this URL from `metadata.resource` by string concatenation
+    // (see `buildMetadataUrl` helper, removed 0.15.0), which produced a
+    // broken URL when `resource` was an opaque URI per RFC 9728 § 2
+    // (e.g., an OIDC project ID used as JWT audience).
     const verifyHttpAuth = async (
       request: Request,
     ): Promise<Response | null> => {
@@ -1177,7 +1178,7 @@ export class McpApp {
       if (!token) {
         const metadata = this.authProvider.getResourceMetadata();
         return createUnauthorizedResponse(
-          buildMetadataUrl(metadata.resource),
+          metadata.resource_metadata_url,
           "missing_token",
           "Authorization header with Bearer token required",
         );
@@ -1187,7 +1188,7 @@ export class McpApp {
       if (!authInfo) {
         const metadata = this.authProvider.getResourceMetadata();
         return createUnauthorizedResponse(
-          buildMetadataUrl(metadata.resource),
+          metadata.resource_metadata_url,
           "invalid_token",
           "Invalid or expired token",
         );

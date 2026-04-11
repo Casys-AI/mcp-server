@@ -24,6 +24,8 @@ import type { AuthInfo, ProtectedResourceMetadata } from "./types.ts";
  *   getResourceMetadata(): ProtectedResourceMetadata {
  *     return {
  *       resource: "https://my-mcp.example.com",
+ *       resource_metadata_url:
+ *         "https://my-mcp.example.com/.well-known/oauth-protected-resource",
  *       authorization_servers: ["https://auth.example.com"],
  *       bearer_methods_supported: ["header"],
  *     };

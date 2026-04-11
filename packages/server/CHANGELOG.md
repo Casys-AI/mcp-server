@@ -4,6 +4,67 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-04-11
+
+### BREAKING
+
+- **`ProtectedResourceMetadata.resource_metadata_url` is now required**
+  (previously the field did not exist and the middleware derived the metadata
+  URL from `resource`, which produced a broken URL when `resource` was not
+  itself an HTTP(S) URL — e.g., when using an opaque OIDC project ID as JWT
+  audience per RFC 9728 § 2).
+
+### Fixed
+
+- **`WWW-Authenticate` header now always contains a valid absolute HTTP(S) URL**
+  in the `resource_metadata="..."` parameter. Previously, if a custom
+  `AuthProvider` returned a non-URL `resource` (for example, an opaque OAuth2
+  resource URI or an OIDC project ID used as audience — both valid per RFC 9728
+  § 2), the middleware would compute
+  `${resource}/.well-known/oauth-protected-resource` and produce something like
+  `"367545125829670172/.well-known/oauth-protected-resource"` — not a valid URL,
+  causing RFC 9728 § 5 compliant clients (Claude.ai / ChatGPT) to fail OAuth
+  discovery.
+
+  The fix makes `resource_metadata_url` a first-class required field on
+  `ProtectedResourceMetadata`, always set by the provider, and used directly by
+  the middleware. Derivation from `resource` is no longer attempted.
+
+### Changed
+
+- `JwtAuthProviderOptions` accepts a new optional
+  `resourceMetadataUrl?: string`.
+  - When the option is set, it is used as-is.
+  - When omitted AND `resource` is an HTTP(S) URL, the factory auto-derives
+    `${resource}/.well-known/oauth-protected-resource` and stores it (existing
+    URL-resource callers get a no-op migration — no code change needed on their
+    side).
+  - When omitted AND `resource` is not an HTTP(S) URL, `JwtAuthProvider` throws
+    at construction with a clear error message pointing to RFC 9728 and
+    suggesting the fix.
+
+### Migration
+
+- **If your `resource` is an HTTP(S) URL**: no change needed. The factory
+  auto-derives the metadata URL and stores it. `getResourceMetadata()` now
+  returns a `resource_metadata_url` field, but you don't need to provide one.
+- **If your `resource` is an opaque URI** (e.g., OIDC project ID): add
+  `resourceMetadataUrl` to the `createOIDCAuthProvider` / `JwtAuthProvider`
+  options, pointing to the HTTPS URL where your
+  `/.well-known/oauth-protected-resource` endpoint is served publicly.
+- **If you have a custom `AuthProvider` subclass**: the
+  `ProtectedResourceMetadata` returned by `getResourceMetadata()` must include
+  `resource_metadata_url`. TypeScript will catch missing values at compile time.
+- **If you configure `@casys/mcp-server` via YAML or environment variables AND
+  your `resource` is an opaque URI** (not an HTTP(S) URL): set
+  `auth.resourceMetadataUrl` in YAML or the env var
+  `MCP_AUTH_RESOURCE_METADATA_URL` to the public HTTPS URL of your
+  `/.well-known/oauth-protected-resource` endpoint. Previously this case would
+  fail at startup with a `JwtAuthProvider` error and no recovery path — the
+  config layer silently dropped any override attempt because the field was not
+  plumbed through `AuthConfig` / `loadYamlAuth` / `loadEnvAuth` /
+  `createAuthProviderFromConfig`. Now wired end-to-end.
+
 ## [0.14.0] - 2026-04-08
 
 ### Added

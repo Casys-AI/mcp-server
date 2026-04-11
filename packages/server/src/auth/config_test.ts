@@ -47,6 +47,12 @@ function clearAuthEnv() {
       "MCP_AUTH_ISSUER",
       "MCP_AUTH_JWKS_URI",
       "MCP_AUTH_SCOPES",
+      // Added in 0.15.1 to match the new env var read in
+      // config.ts:loadEnvAuth() (introduced 0.15.0 for the
+      // resource_metadata_url YAML/env plumbing). Without this entry,
+      // a test that sets MCP_AUTH_RESOURCE_METADATA_URL leaks its value
+      // to subsequent tests in the same process → spurious green/red flips.
+      "MCP_AUTH_RESOURCE_METADATA_URL",
     ]
   ) {
     Deno.env.delete(key);

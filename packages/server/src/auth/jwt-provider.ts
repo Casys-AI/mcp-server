@@ -68,6 +68,50 @@ interface CachedAuth {
   expiresAt: number; // ms timestamp
 }
 
+/**
+ * Validate that a string is a parseable absolute HTTP(S) URL. Used by
+ * `JwtAuthProvider`'s constructor to enforce the RFC 9728 § 3 invariant
+ * at construction time: the `resource_metadata_url` placed in the
+ * `WWW-Authenticate` challenge MUST be a URL clients can fetch. Before
+ * 0.15.1 the constructor stored whatever string the caller passed and
+ * trusted the type system, which silently produced broken headers when
+ * the value was empty / a relative path / unparseable / contained
+ * trailing whitespace — the exact class of bug that 0.15.0 was meant to
+ * eliminate (see postmortem phase8-deployment.md § 7 and F.1).
+ *
+ * Throws with a clear error message pointing at the offending value
+ * (`JSON.stringify`-ed so quotes/newlines/specials don't break log
+ * parsing) and suggesting a concrete fix. The `source` parameter names
+ * which input produced the bad value so operators reading the error know
+ * which config key to correct.
+ *
+ * Returns the normalized URL string (via `URL.toString()`), which
+ * lowercases the scheme and applies minor canonicalization — so a
+ * caller passing `HTTPS://foo.com/` receives `https://foo.com/` back.
+ */
+function validateAbsoluteHttpUrl(raw: string, source: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error(
+      `[JwtAuthProvider] ${source} is not a parseable URL: ${
+        JSON.stringify(raw)
+      }. Expected an absolute HTTP(S) URL like ` +
+        `"https://my-mcp.example.com/.well-known/oauth-protected-resource".`,
+    );
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new Error(
+      `[JwtAuthProvider] ${source} must use http:// or https:// scheme, ` +
+        `got ${JSON.stringify(parsed.protocol)} in ${JSON.stringify(raw)}. ` +
+        `Per RFC 9728 § 3, the protected resource metadata document must ` +
+        `be served over HTTP(S).`,
+    );
+  }
+  return parsed.toString();
+}
+
 export class JwtAuthProvider extends AuthProvider {
   private jwks: ReturnType<typeof createRemoteJWKSet>;
   private options: JwtAuthProviderOptions;
@@ -104,26 +148,56 @@ export class JwtAuthProvider extends AuthProvider {
     // it from `resource` by string concatenation, which produced a broken
     // URL when `resource` was not itself an HTTP(S) URL. 0.15.0+ requires
     // the caller to provide the URL explicitly whenever `resource` is opaque.
-    if (options.resourceMetadataUrl) {
-      this.resourceMetadataUrl = options.resourceMetadataUrl;
+    //
+    // 0.15.1 hardening: both branches now run through `validateAbsoluteHttpUrl`
+    // which `new URL()`-parses the result and rejects non-HTTP(S) schemes.
+    // Empty / whitespace-only `resourceMetadataUrl` is treated as absent
+    // (so a YAML key with no value falls through to the derivation branch
+    // instead of silently producing `"://host"`). The scheme regex is now
+    // case-insensitive — `HTTPS://foo.com` is a valid URL per RFC 3986
+    // and we accept it (normalization happens in validateAbsoluteHttpUrl).
+    // `options.resource` is `.trim()`-ed before derivation so trailing
+    // whitespace doesn't produce an unparseable URL.
+    const explicitUrl = options.resourceMetadataUrl?.trim();
+    if (explicitUrl) {
+      this.resourceMetadataUrl = validateAbsoluteHttpUrl(
+        explicitUrl,
+        "options.resourceMetadataUrl",
+      );
     } else {
-      const isUrl = /^https?:\/\//.test(options.resource);
+      const isUrl = /^https?:\/\//i.test(options.resource);
       if (!isUrl) {
         throw new Error(
           `[JwtAuthProvider] resourceMetadataUrl is required when 'resource' ` +
-            `is not an HTTP(S) URL (got resource="${options.resource}"). ` +
-            `Per RFC 9728 § 2, 'resource' is an URI identifier that can be ` +
-            `opaque (e.g., an OIDC project ID used as JWT audience). The ` +
+            `is not an HTTP(S) URL (got resource=${
+              JSON.stringify(options.resource)
+            }). Per RFC 9728 § 2, 'resource' is an URI identifier that can ` +
+            `be opaque (e.g., an OIDC project ID used as JWT audience). The ` +
             `metadata document URL is a separate concept. Set 'resourceMetadataUrl' ` +
             `to the HTTPS URL where your /.well-known/oauth-protected-resource ` +
-            `endpoint is served publicly (e.g., "https://my-mcp.example.com/.well-known/oauth-protected-resource").`,
+            `endpoint is served publicly (e.g., ` +
+            `"https://my-mcp.example.com/.well-known/oauth-protected-resource").`,
         );
       }
-      const base = options.resource.replace(/\/$/, "");
-      this.resourceMetadataUrl = `${base}/.well-known/oauth-protected-resource`;
+      const base = options.resource.trim().replace(/\/$/, "");
+      const derived = `${base}/.well-known/oauth-protected-resource`;
+      this.resourceMetadataUrl = validateAbsoluteHttpUrl(
+        derived,
+        "derived from options.resource",
+      );
     }
 
-    this.options = options;
+    // Normalize `resource` at store time so `getResourceMetadata()` returns
+    // the trimmed value in the RFC 9728 Protected Resource Metadata JSON
+    // payload. Prior to 0.15.1 the derivation branch trimmed `resource` for
+    // URL construction BUT `this.options` kept the raw value, so clients
+    // fetching `/.well-known/oauth-protected-resource` would see
+    // `"resource": "https://api.example.com   "` with trailing whitespace
+    // in the JSON body. The WWW-Authenticate header was always clean
+    // (middleware only reads `resource_metadata_url` which went through
+    // `validateAbsoluteHttpUrl` + `new URL().toString()` normalization),
+    // so runtime was never broken — just the PRM doc body was polluted.
+    this.options = { ...options, resource: options.resource.trim() };
     const jwksUri = options.jwksUri ??
       `${options.issuer}/.well-known/jwks.json`;
     this.jwks = createRemoteJWKSet(new URL(jwksUri));

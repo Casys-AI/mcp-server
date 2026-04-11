@@ -4,6 +4,61 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-04-11
+
+### Fixed
+
+- **`JwtAuthProvider` constructor now runtime-validates `resourceMetadataUrl`**
+  — both the explicit-value branch and the auto-derive-from-`resource` branch
+  call `new URL()` on the resulting string and reject non-HTTP(S) schemes with a
+  clear error message. Previously the constructor stored the value verbatim and
+  trusted the type system; a caller passing `"not a url"`, a relative path, a
+  `javascript:` scheme, or a value with trailing whitespace would silently
+  produce a broken `WWW-Authenticate` header at runtime — the exact class of bug
+  that 0.15.0 was meant to eliminate, just transferred to the constructor layer.
+  0.15.1 closes that hole with a `validateAbsoluteHttpUrl` helper.
+
+- **Empty-string and whitespace-only `resourceMetadataUrl` are now treated as
+  absent.** Previously `if (options.resourceMetadataUrl)` accepted `""` as falsy
+  and silently fell through to derivation. Now the code trims the value and
+  checks for non-empty explicitly — a YAML key with no value or an env var
+  expanded to empty gets the same behavior as omitting the key entirely (instead
+  of producing `"://host"`).
+
+- **Trailing whitespace in `resource` is now trimmed before derivation.**
+  Previously `"https://foo.com   "` produced
+  `"https://foo.com   /.well-known/oauth-protected-resource"` — unparseable.
+  0.15.1 trims before the path append AND runs the result through
+  `validateAbsoluteHttpUrl` as a belt-and-suspenders check.
+
+- **`resource` URL detection is now case-insensitive.** `"HTTPS://foo.com"` is a
+  valid URL per RFC 3986 (scheme comparison is case-insensitive) and 0.15.1
+  accepts it, normalizing to lowercase via `new URL().toString()`. Previously
+  the `/^https?:\/\//` regex was case-sensitive and would have thrown on
+  uppercase schemes as if they were opaque URIs.
+
+- **`clearAuthEnv()` test helper now clears `MCP_AUTH_RESOURCE_METADATA_URL`.**
+  The helper was written for 0.14.0 and the 0.15.0 commit added a read of the
+  new env var in `config.ts:loadEnvAuth` but forgot to mirror that in the
+  cleanup. A test that sets the env var leaked its value to subsequent tests in
+  the same process — intermittent green/red flips waiting to happen. Fix:
+  one-line addition to the helper.
+
+### Changed
+
+- **Error message on invalid `resource` now `JSON.stringify`s the value.**
+  Previously the error template embedded `${options.resource}` raw; a value
+  containing quotes, newlines, or other specials could break error log parsing.
+  Now the value is unambiguously inspectable even when weird.
+
+### Migration
+
+No migration needed. Backward compatible with 0.15.0 — all existing valid
+configurations keep working. The changes only make previously-silent-wrong
+configurations fail loudly at construction. If your tests set
+`MCP_AUTH_RESOURCE_METADATA_URL` you may want to mirror the `clearAuthEnv()`
+update in your own test helpers.
+
 ## [0.15.0] - 2026-04-11
 
 ### BREAKING

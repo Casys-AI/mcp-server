@@ -755,3 +755,111 @@ Deno.test("JwtAuthProvider — throws when resource is opaque and resourceMetada
     "resourceMetadataUrl is required",
   );
 });
+
+// ============================================
+// JwtAuthProvider — 0.15.1 runtime validation hardening
+// ============================================
+
+Deno.test("JwtAuthProvider — empty-string resourceMetadataUrl is treated as absent (0.15.1)", () => {
+  // YAML key with no value or an env var misconfigured to empty should
+  // behave identically to the key being omitted — fall through to
+  // auto-derivation for URL `resource`. Previously the truthy check on
+  // `options.resourceMetadataUrl` would silently accept `""` and produce
+  // `"://host"` in the WWW-Authenticate header. 0.15.1 trims + checks
+  // for non-empty instead.
+  const provider = new JwtAuthProvider({
+    issuer: "https://idp.example.com",
+    audience: "https://api.example.com",
+    resource: "https://api.example.com",
+    authorizationServers: ["https://idp.example.com"],
+    resourceMetadataUrl: "",
+  });
+  assertEquals(
+    provider.getResourceMetadata().resource_metadata_url,
+    "https://api.example.com/.well-known/oauth-protected-resource",
+  );
+});
+
+Deno.test("JwtAuthProvider — whitespace-only resourceMetadataUrl is also treated as absent (0.15.1)", () => {
+  const provider = new JwtAuthProvider({
+    issuer: "https://idp.example.com",
+    audience: "https://api.example.com",
+    resource: "https://api.example.com",
+    authorizationServers: ["https://idp.example.com"],
+    resourceMetadataUrl: "   ",
+  });
+  assertEquals(
+    provider.getResourceMetadata().resource_metadata_url,
+    "https://api.example.com/.well-known/oauth-protected-resource",
+  );
+});
+
+Deno.test("JwtAuthProvider — invalid URL in resourceMetadataUrl throws at construction (0.15.1)", () => {
+  // Prior to 0.15.1 the constructor stored the explicit value verbatim
+  // without `new URL()`-parsing. A caller passing a relative path or a
+  // non-URL string would silently produce a broken WWW-Authenticate
+  // header at runtime — exactly the class of bug 0.15.0 was meant to
+  // eliminate (just transferred to the constructor layer).
+  assertThrows(
+    () =>
+      new JwtAuthProvider({
+        issuer: "https://idp.example.com",
+        audience: "367545125829670172",
+        resource: "367545125829670172",
+        authorizationServers: ["https://idp.example.com"],
+        resourceMetadataUrl: "not a url",
+      }),
+    Error,
+    "not a parseable URL",
+  );
+});
+
+Deno.test("JwtAuthProvider — non-HTTP(S) scheme in resourceMetadataUrl is rejected (0.15.1)", () => {
+  assertThrows(
+    () =>
+      new JwtAuthProvider({
+        issuer: "https://idp.example.com",
+        audience: "367545125829670172",
+        resource: "367545125829670172",
+        authorizationServers: ["https://idp.example.com"],
+        resourceMetadataUrl: "javascript:alert(1)",
+      }),
+    Error,
+    "must use http:// or https://",
+  );
+});
+
+Deno.test("JwtAuthProvider — trailing whitespace in URL resource is trimmed before derivation (0.15.1)", () => {
+  // Previously `"https://foo.com   ".replace(/\/$/, "") + "/.well-known/..."`
+  // produced `"https://foo.com   /.well-known/..."` — unparseable. 0.15.1
+  // adds `.trim()` before the path append AND runs the derived value
+  // through `validateAbsoluteHttpUrl` as a belt-and-suspenders check.
+  const provider = new JwtAuthProvider({
+    issuer: "https://idp.example.com",
+    audience: "https://api.example.com",
+    resource: "https://api.example.com   ",
+    authorizationServers: ["https://idp.example.com"],
+  });
+  assertEquals(
+    provider.getResourceMetadata().resource_metadata_url,
+    "https://api.example.com/.well-known/oauth-protected-resource",
+  );
+});
+
+Deno.test("JwtAuthProvider — uppercase HTTPS scheme is accepted and normalized (0.15.1)", () => {
+  // RFC 3986 says scheme comparison is case-insensitive, so `HTTPS://foo.com`
+  // is a valid URL. Prior to 0.15.1 the `/^https?:\/\//` regex was
+  // case-sensitive and would have thrown on uppercase schemes as if they
+  // were opaque URIs. 0.15.1 uses the `i` flag + delegates to `new URL()`
+  // which normalizes the scheme to lowercase.
+  const provider = new JwtAuthProvider({
+    issuer: "https://idp.example.com",
+    audience: "HTTPS://api.example.com",
+    resource: "HTTPS://api.example.com",
+    authorizationServers: ["https://idp.example.com"],
+  });
+  assertEquals(
+    provider.getResourceMetadata().resource_metadata_url,
+    "https://api.example.com/.well-known/oauth-protected-resource",
+  );
+});

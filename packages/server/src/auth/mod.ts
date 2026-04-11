@@ -52,13 +52,27 @@ export type {
 
 // OIDC Presets
 export {
+  buildJwtAuthProvider,
   createAuth0AuthProvider,
   createGitHubAuthProvider,
   createGoogleAuthProvider,
   createOIDCAuthProvider,
 } from "./presets.ts";
-export type { OIDCPresetOptions, PresetOptions } from "./presets.ts";
+export type {
+  BuildJwtAuthProviderOptions,
+  OIDCPresetOptions,
+  PresetOptions,
+} from "./presets.ts";
 
 // Config loader (YAML + env)
 export { createAuthProviderFromConfig, loadAuthConfig } from "./config.ts";
-export type { AuthConfig, AuthProviderName } from "./config.ts";
+// `AuthConfig` is a discriminated union in 0.17.0 — each variant is also
+// exported for callers that want to annotate variables explicitly.
+export type {
+  Auth0AuthConfig,
+  AuthConfig,
+  AuthProviderName,
+  GitHubAuthConfig,
+  GoogleAuthConfig,
+  OIDCAuthConfig,
+} from "./config.ts";

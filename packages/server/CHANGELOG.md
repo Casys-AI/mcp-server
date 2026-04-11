@@ -4,47 +4,219 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
 
 ## [Unreleased]
 
-### Deferred from 0.16.0 review — tracked as GitHub issues
+## [0.17.0] - 2026-04-11
 
-All four items below were identified during the 0.16.0 type-design review but
-deferred to keep the PR focused. They're canonically tracked as GitHub issues on
-`Casys-AI/mcp-server`; the bullets here are kept in sync but the issues are the
-authoritative state.
+This release bundles the four deferred items from the 0.16.0 type-design review
+(issues [#11](https://github.com/Casys-AI/mcp-server/issues/11),
+[#12](https://github.com/Casys-AI/mcp-server/issues/12),
+[#13](https://github.com/Casys-AI/mcp-server/issues/13),
+[#14](https://github.com/Casys-AI/mcp-server/issues/14)) into one breaking minor
+bump. Three of four are BREAKING; one is additive. All four live in `src/auth/`,
+so a single migration pass covers the whole auth module. Preset users (the 90%
+case) need **zero changes**; only direct `new JwtAuthProvider(...)` callers,
+custom `AuthProvider` subclasses, and app-code constructing `AuthConfig` /
+`AuthOptions` literals need updates.
 
-- **[#11](https://github.com/Casys-AI/mcp-server/issues/11) — `AuthConfig`
-  discriminated union on `provider` tag (→ 0.17.0, main deferred scope).** Lift
-  the current runtime `loadAuthConfig()` validation (checks like
-  `config.provider === "auth0" && !config.domain`) into a type-level DU matching
-  what 0.16.0 did for `JwtAuthProviderOptions`. Each variant encodes
-  provider-specific required fields:
-  - `"github"` / `"google"`: base only
-  - `"auth0"`: base + required `domain`
-  - `"oidc"`: base + required `issuer`, optional `jwksUri`
+### BREAKING
 
-  The runtime checks stay as defense-in-depth for YAML/env input, but TS callers
-  of `AuthConfig` get compile-time safety. See `src/auth/config.ts:AuthConfig`
-  for the TODO anchor pointing here. **Hard trigger**: do this refactor the next
-  time a new provider preset is added, per the 0.16.0 type-design-analyzer
-  recommendation.
+**(1) [#12](https://github.com/Casys-AI/mcp-server/issues/12) —
+`JwtAuthProviderOptions` now requires a `kind: "url" | "opaque"` discriminant
+tag.**
 
-- **[#12](https://github.com/Casys-AI/mcp-server/issues/12) —
-  `JwtAuthProviderOptions` branch disjointness.** The DU branches overlap
-  structurally because `HttpsUrl extends string` — a caller annotating their
-  constant as `OpaqueResource` with an `HttpsUrl`-branded `resource` type-checks
-  even though it's semantically misleading. No runtime bug, but either document
-  or add a `kind` discriminant tag. Bundle with #11 for consistency.
+The 0.16.0 DU lacked a discriminant, which made:
 
-- **[#13](https://github.com/Casys-AI/mcp-server/issues/13) — `AuthOptions`
-  still has raw-string URL fields.** `types.ts:AuthOptions` (`resource: string`,
-  `authorizationServers: string[]`) wasn't touched by 0.16.0 because it's the
-  public `McpApp` constructor-option interface, not the `JwtAuthProvider` API.
-  Either brand the fields to match `ProtectedResourceMetadata` or delete it if
-  dead. Dilutes the "HttpsUrl everywhere" story.
+- TypeScript narrowing unsound (finding C1 from the 0.16.0 review). After
+  `if (options.resourceMetadataUrl !== undefined)`, TS could not narrow
+  `options.resource` from `HttpsUrl | string` to `HttpsUrl` because the union
+  collapsed to `string`. The constructor comment documented this honestly as
+  "defense-in-depth via re-validation" but the type system wasn't doing the work
+  it claimed.
+- Branches not strictly disjoint (finding C2). A caller annotating their
+  constant as `JwtAuthProviderOptionsOpaqueResource` with an `HttpsUrl`-branded
+  `resource` type-checked anyway because `HttpsUrl
+  extends string`.
+  Semantically misleading, no runtime bug.
 
-- **[#14](https://github.com/Casys-AI/mcp-server/issues/14) — Export
-  `buildJwtProvider` as public API.** The bridge helper in `presets.ts`
-  (raw-string → DU translation) would be useful to 3rd-party OIDC provider
-  implementations. Non-breaking addition, could ship in any minor bump.
+0.17.0 adds an explicit `kind` tag to both branches:
+
+```typescript
+// Before (0.16.x)
+new JwtAuthProvider({
+  issuer: "https://idp.example.com",
+  audience: "https://api.example.com",
+  resource: httpsUrl("https://api.example.com"),
+  authorizationServers: [httpsUrl("https://idp.example.com")],
+});
+
+// After (0.17.0)
+new JwtAuthProvider({
+  kind: "url", // ← NEW: required
+  issuer: "https://idp.example.com",
+  audience: "https://api.example.com",
+  resource: httpsUrl("https://api.example.com"),
+  authorizationServers: [httpsUrl("https://idp.example.com")],
+});
+```
+
+The constructor now narrows soundly on `options.kind === "opaque"`: after the
+check, TS knows `resource` is `string` with required `resourceMetadataUrl`; in
+the else branch, TS knows `resource` is `HttpsUrl`. No more honest-but-unsound
+comments.
+
+**(2) [#11](https://github.com/Casys-AI/mcp-server/issues/11) — `AuthConfig` is
+now a discriminated union on `provider` tag.**
+
+The flat 0.16.x interface used optional `domain?` / `issuer?` fields guarded by
+runtime checks in `loadAuthConfig()`. A TS caller could construct an invalid
+`AuthConfig` literal (e.g., `provider: "auth0"` without `domain`) and the
+compiler wouldn't complain — the failure only surfaced at boot.
+
+0.17.0 lifts the invariant to the type level via 4 exported variants:
+
+```typescript
+export interface GitHubAuthConfig extends AuthConfigBase {
+  provider: "github";
+}
+export interface GoogleAuthConfig extends AuthConfigBase {
+  provider: "google";
+}
+export interface Auth0AuthConfig extends AuthConfigBase {
+  provider: "auth0";
+  domain: string; // required
+}
+export interface OIDCAuthConfig extends AuthConfigBase {
+  provider: "oidc";
+  issuer: string; // required
+  jwksUri?: string;
+}
+export type AuthConfig =
+  | GitHubAuthConfig
+  | GoogleAuthConfig
+  | Auth0AuthConfig
+  | OIDCAuthConfig;
+```
+
+`createAuthProviderFromConfig()` no longer needs non-null assertions
+(`config.domain!`) — TypeScript narrowing on `config.provider` types the
+required fields correctly in each branch.
+
+`loadAuthConfig()` still runtime-validates YAML/env input (untyped at the
+file-system boundary) and throws with the same error messages as 0.16.x — the
+failure mode is unchanged for config-file users. The DU benefits TS callers who
+construct `AuthConfig` literals directly in application code (typically test
+fixtures or programmatic wiring).
+
+Migration: literals that already pass `domain` / `issuer` where needed satisfy
+the DU unchanged. The break bites only when the literal was missing a required
+field and relying on runtime validation (a latent bug).
+
+**(3) [#13](https://github.com/Casys-AI/mcp-server/issues/13) — `AuthOptions`
+slimmed; dead `resource` / `authorizationServers` / `scopesSupported` fields
+removed.**
+
+The pre-0.17 `AuthOptions` exposed `authorizationServers: string[]`,
+`resource: string`, and `scopesSupported?: string[]` alongside
+`provider: AuthProvider`. **Only `provider` was ever read by `McpApp` at
+runtime** (at `mcp-app.ts:1061`, where
+`this.authProvider =
+this.options.auth.provider`). The three other fields were
+vestigial from a pre-0.15 design where `McpApp` could auto-construct a
+`JwtAuthProvider` from its own `auth:` option — that auto-construction path was
+removed when `createAuthProviderFromConfig` took over YAML/env provider
+construction, but the dead fields stayed in the interface.
+
+```typescript
+// Before (0.16.x) — the 3 extra fields were SILENTLY IGNORED
+new McpApp({
+  name: "my-server",
+  version: "1.0.0",
+  auth: {
+    provider: myProvider,
+    authorizationServers: ["https://idp.example.com"], // silently ignored
+    resource: "https://my-mcp.example.com", // silently ignored
+  },
+});
+
+// After (0.17.0)
+new McpApp({
+  name: "my-server",
+  version: "1.0.0",
+  auth: {
+    provider: myProvider,
+  },
+});
+```
+
+Callers who passed the vestigial fields now get a TS error
+(`Object literal may only specify known properties`). The fix is to remove them
+— they had no effect before, they have no effect now, the type system is just
+honest about it.
+
+### Added
+
+**(4) [#14](https://github.com/Casys-AI/mcp-server/issues/14) —
+`buildJwtAuthProvider` exported as public API** _(non-breaking addition)_.
+
+The bridge helper previously named `buildJwtProvider` (private in `presets.ts`)
+is now exported from `mod.ts` as `buildJwtAuthProvider`, alongside its
+`BuildJwtAuthProviderOptions` interface. 3rd-party OIDC provider implementations
+(Keycloak, Zitadel custom, Okta, …) can now build factory functions that
+delegate URL-vs-opaque detection, `HttpsUrl` validation, and `kind`-tag
+selection to the shared bridge instead of reimplementing it:
+
+```typescript
+import { buildJwtAuthProvider, type JwtAuthProvider } from "@casys/mcp-server";
+
+export function createKeycloakAuthProvider(
+  options: KeycloakPresetOptions,
+): JwtAuthProvider {
+  const issuer = `https://${options.keycloakHost}/realms/${options.realm}`;
+  return buildJwtAuthProvider(
+    {
+      issuer,
+      audience: options.audience,
+      authorizationServers: [issuer],
+      jwksUri: `${issuer}/protocol/openid-connect/certs`,
+      resource: options.resource,
+      resourceMetadataUrl: options.resourceMetadataUrl,
+    },
+    "createKeycloakAuthProvider",
+  );
+}
+```
+
+The `label` second argument is optional (defaults to `"buildJwtAuthProvider"`)
+and threads through to error messages for preset-level diagnostics.
+
+### Changed
+
+- **`JwtAuthProvider` constructor narrows on the `kind` tag.** The 0.16.0
+  comment documenting the narrowing's unsoundness is replaced with an honest
+  comment explaining the now-sound behavior. The RFC 9728 § 3.1 derivation logic
+  is unchanged.
+
+- **`loadAuthConfig()` constructs DU variants explicitly.** Instead of building
+  a flat object with `domain?` / `issuer?` fields, it switches on the provider
+  and returns the correctly-shaped variant. Runtime checks for `domain` /
+  `issuer` stay — the YAML/env boundary is untyped.
+
+- **`createAuthProviderFromConfig()` drops non-null assertions.** The DU
+  narrowing on `config.provider` makes `config.domain` / `config.issuer` typed
+  as required in their respective branches.
+
+- **Preset bridge sets the `kind` tag explicitly.** `buildJwtAuthProvider` (née
+  `buildJwtProvider`) passes `kind: "url"` or `kind: "opaque"` to the
+  `JwtAuthProvider` constructor based on the detected case. Preset callers never
+  see the tag — it's encapsulated in the bridge.
+
+### Removed
+
+- **`AuthOptions.resource`, `AuthOptions.authorizationServers`,
+  `AuthOptions.scopesSupported`.** Vestigial from pre-0.15 auto-construction
+  path — never read by `McpApp`. See BREAKING (3) above for migration.
+
+- **Non-null assertions in `createAuthProviderFromConfig`.** Were
+  `config.domain!` / `config.issuer!`, now typed as required by the DU.
 
 ## [0.16.1] - 2026-04-11
 

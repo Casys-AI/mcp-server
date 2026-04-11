@@ -99,6 +99,7 @@ Deno.test("JwtAuthProvider - throws when issuer missing", () => {
   assertThrows(
     () =>
       new JwtAuthProvider({
+        kind: "opaque",
         issuer: "",
         audience: "aud",
         resource: "opaque",
@@ -114,6 +115,7 @@ Deno.test("JwtAuthProvider - throws when audience missing", () => {
   assertThrows(
     () =>
       new JwtAuthProvider({
+        kind: "opaque",
         issuer: "https://issuer.example.com",
         audience: "",
         resource: "opaque",
@@ -129,6 +131,7 @@ Deno.test("JwtAuthProvider - throws when resource missing", () => {
   assertThrows(
     () =>
       new JwtAuthProvider({
+        kind: "opaque",
         issuer: "https://issuer.example.com",
         audience: "aud",
         resource: "",
@@ -144,6 +147,7 @@ Deno.test("JwtAuthProvider - throws when authorizationServers empty", () => {
   assertThrows(
     () =>
       new JwtAuthProvider({
+        kind: "opaque",
         issuer: "https://issuer.example.com",
         audience: "aud",
         resource: "opaque",
@@ -157,6 +161,7 @@ Deno.test("JwtAuthProvider - throws when authorizationServers empty", () => {
 
 Deno.test("JwtAuthProvider - constructs with valid options", () => {
   const provider = new JwtAuthProvider({
+    kind: "url",
     issuer: "https://issuer.example.com",
     audience: "https://my-mcp.example.com",
     resource: httpsUrl("https://my-mcp.example.com"),
@@ -168,6 +173,7 @@ Deno.test("JwtAuthProvider - constructs with valid options", () => {
 
 Deno.test("JwtAuthProvider - getResourceMetadata returns correct data", () => {
   const provider = new JwtAuthProvider({
+    kind: "url",
     issuer: "https://issuer.example.com",
     audience: "https://my-mcp.example.com",
     resource: httpsUrl("https://my-mcp.example.com"),
@@ -191,6 +197,7 @@ Deno.test("JwtAuthProvider - getResourceMetadata returns correct data", () => {
 
 Deno.test("JwtAuthProvider - verifyToken returns null for garbage token", async () => {
   const provider = new JwtAuthProvider({
+    kind: "url",
     issuer: "https://issuer.example.com",
     audience: "https://my-mcp.example.com",
     resource: httpsUrl("https://my-mcp.example.com"),
@@ -203,6 +210,7 @@ Deno.test("JwtAuthProvider - verifyToken returns null for garbage token", async 
 
 Deno.test("JwtAuthProvider - verifyToken returns null for expired JWT format", async () => {
   const provider = new JwtAuthProvider({
+    kind: "url",
     issuer: "https://issuer.example.com",
     audience: "https://my-mcp.example.com",
     resource: httpsUrl("https://my-mcp.example.com"),
@@ -314,6 +322,7 @@ Deno.test("JwtAuthProvider - verifies valid JWT from local JWKS", async () => {
   const jwks = await startLocalJwksServer();
   try {
     const provider = new JwtAuthProvider({
+      kind: "url",
       issuer: jwks.issuer,
       audience: "https://my-mcp.example.com",
       resource: httpsUrl("https://my-mcp.example.com"),
@@ -341,6 +350,7 @@ Deno.test("JwtAuthProvider - rejects JWT with wrong audience", async () => {
   const jwks = await startLocalJwksServer();
   try {
     const provider = new JwtAuthProvider({
+      kind: "url",
       issuer: jwks.issuer,
       audience: "https://my-mcp.example.com",
       resource: httpsUrl("https://my-mcp.example.com"),
@@ -364,6 +374,7 @@ Deno.test("JwtAuthProvider - rejects expired JWT", async () => {
   const jwks = await startLocalJwksServer();
   try {
     const provider = new JwtAuthProvider({
+      kind: "url",
       issuer: jwks.issuer,
       audience: "https://my-mcp.example.com",
       resource: httpsUrl("https://my-mcp.example.com"),
@@ -391,6 +402,7 @@ Deno.test("JwtAuthProvider - extracts scopes from 'scope' claim (space-separated
   const jwks = await startLocalJwksServer();
   try {
     const provider = new JwtAuthProvider({
+      kind: "url",
       issuer: jwks.issuer,
       audience: "https://my-mcp.example.com",
       resource: httpsUrl("https://my-mcp.example.com"),
@@ -415,6 +427,7 @@ Deno.test("JwtAuthProvider - extracts scopes from 'scp' claim (array)", async ()
   const jwks = await startLocalJwksServer();
   try {
     const provider = new JwtAuthProvider({
+      kind: "url",
       issuer: jwks.issuer,
       audience: "https://my-mcp.example.com",
       resource: httpsUrl("https://my-mcp.example.com"),
@@ -439,6 +452,7 @@ Deno.test("JwtAuthProvider - returns empty scopes when no scope/scp claim", asyn
   const jwks = await startLocalJwksServer();
   try {
     const provider = new JwtAuthProvider({
+      kind: "url",
       issuer: jwks.issuer,
       audience: "https://my-mcp.example.com",
       resource: httpsUrl("https://my-mcp.example.com"),
@@ -463,6 +477,7 @@ Deno.test("JwtAuthProvider - extracts clientId from azp claim", async () => {
   const jwks = await startLocalJwksServer();
   try {
     const provider = new JwtAuthProvider({
+      kind: "url",
       issuer: jwks.issuer,
       audience: "https://my-mcp.example.com",
       resource: httpsUrl("https://my-mcp.example.com"),
@@ -487,6 +502,7 @@ Deno.test("JwtAuthProvider - subject defaults to 'unknown' when no sub claim", a
   const jwks = await startLocalJwksServer();
   try {
     const provider = new JwtAuthProvider({
+      kind: "url",
       issuer: jwks.issuer,
       audience: "https://my-mcp.example.com",
       resource: httpsUrl("https://my-mcp.example.com"),

@@ -129,19 +129,30 @@ export interface AuthInfo {
 }
 
 /**
- * Auth configuration for the server.
+ * Auth configuration slot for {@link McpAppOptions.auth}.
+ *
+ * 0.17.0: slimmed to a single `provider` field. Previously exposed
+ * `authorizationServers`, `resource`, and `scopesSupported` fields that
+ * were NEVER read by `McpApp` at runtime (only `provider` was consumed at
+ * `mcp-app.ts:1061`). Those fields were vestigial from a pre-0.15 design
+ * where `McpApp` could auto-construct a `JwtAuthProvider` from its own
+ * `auth:` option; that auto-construction path was removed when
+ * `createAuthProviderFromConfig` took over YAML/env provider construction,
+ * but the dead fields stayed in the interface. 0.17.0 deletes them as part
+ * of the auth-module cleanup (Casys-AI/mcp-server#13).
+ *
+ * The interface is kept (rather than reducing `McpAppOptions.auth` to a
+ * bare `AuthProvider`) so that future additions like pipeline-level auth
+ * hooks have a named extension point without another BC break.
  */
 export interface AuthOptions {
-  /** Authorization servers that issue valid tokens */
-  authorizationServers: string[];
-
-  /** Resource identifier for this MCP server (used in WWW-Authenticate header) */
-  resource: string;
-
-  /** Scopes supported by this server */
-  scopesSupported?: string[];
-
-  /** Custom auth provider (overrides default JWT validation) */
+  /**
+   * The `AuthProvider` that validates bearer tokens and produces RFC 9728
+   * metadata. Construct via {@link JwtAuthProvider}, any of the preset
+   * factories (`createGitHubAuthProvider`, `createGoogleAuthProvider`,
+   * `createAuth0AuthProvider`, `createOIDCAuthProvider`), or a custom
+   * `AuthProvider` subclass for non-JWT token schemes.
+   */
   provider: AuthProvider;
 }
 

@@ -337,8 +337,6 @@ Deno.test("HTTP + Auth - 401 without token", async () => {
     logger: () => {},
     auth: {
       provider: new MockAuthProvider({ subject: "user-1", scopes: ["read"] }),
-      authorizationServers: ["https://auth.example.com"],
-      resource: "https://my-mcp.example.com",
     },
   });
 
@@ -382,8 +380,6 @@ Deno.test("HTTP + Auth - 200 with valid token", async () => {
     logger: () => {},
     auth: {
       provider: new MockAuthProvider({ subject: "user-1", scopes: ["read"] }),
-      authorizationServers: ["https://auth.example.com"],
-      resource: "https://my-mcp.example.com",
     },
   });
 
@@ -430,8 +426,6 @@ Deno.test("HTTP + Auth - 401 with invalid token", async () => {
     logger: () => {},
     auth: {
       provider: new MockAuthProvider(null), // verifyToken returns null
-      authorizationServers: ["https://auth.example.com"],
-      resource: "https://my-mcp.example.com",
     },
   });
 
@@ -477,8 +471,6 @@ Deno.test("HTTP + Auth - RFC 9728 endpoint returns metadata", async () => {
     logger: () => {},
     auth: {
       provider: new MockAuthProvider({ subject: "user-1", scopes: [] }),
-      authorizationServers: ["https://auth.example.com"],
-      resource: "https://my-mcp.example.com",
     },
   });
 
@@ -578,8 +570,6 @@ Deno.test("HTTP + Auth - scope enforcement 403", async () => {
     logger: () => {},
     auth: {
       provider: new MockAuthProvider({ subject: "user-1", scopes: ["read"] }), // only "read"
-      authorizationServers: ["https://auth.example.com"],
-      resource: "https://my-mcp.example.com",
     },
   });
 
@@ -629,8 +619,6 @@ Deno.test("HTTP + Auth - tools/list requires token (no auth bypass)", async () =
     logger: () => {},
     auth: {
       provider: new MockAuthProvider({ subject: "user-1", scopes: ["read"] }),
-      authorizationServers: ["https://auth.example.com"],
-      resource: "https://my-mcp.example.com",
     },
   });
 
@@ -690,8 +678,6 @@ Deno.test("HTTP + Auth - initialize does NOT require token", async () => {
     logger: () => {},
     auth: {
       provider: new MockAuthProvider({ subject: "user-1", scopes: [] }),
-      authorizationServers: ["https://auth.example.com"],
-      resource: "https://my-mcp.example.com",
     },
   });
 
@@ -830,6 +816,7 @@ Deno.test("tryHttpsUrl — returns null on empty string (no throw)", () => {
 
 Deno.test("JwtAuthProvider — auto-derives resource_metadata_url from HttpsUrl resource", () => {
   const provider = new JwtAuthProvider({
+    kind: "url",
     issuer: "https://idp.example.com",
     audience: "https://api.example.com",
     resource: httpsUrl("https://api.example.com"),
@@ -844,6 +831,7 @@ Deno.test("JwtAuthProvider — auto-derives resource_metadata_url from HttpsUrl 
 
 Deno.test("JwtAuthProvider — uses explicit resourceMetadataUrl for opaque resource", () => {
   const provider = new JwtAuthProvider({
+    kind: "opaque",
     issuer: "https://idp.example.com",
     audience: "367545125829670172",
     resource: "367545125829670172",
@@ -864,6 +852,7 @@ Deno.test("JwtAuthProvider — trailing slash on HttpsUrl resource is stripped b
   // (trailing slash added by `new URL().toString()`). The constructor must
   // strip it before appending `/.well-known/...` to avoid a double slash.
   const provider = new JwtAuthProvider({
+    kind: "url",
     issuer: "https://idp.example.com",
     audience: "https://api.example.com",
     resource: httpsUrl("https://api.example.com/"),
@@ -895,6 +884,7 @@ Deno.test("JwtAuthProvider — trailing slash on HttpsUrl resource is stripped b
 
 Deno.test("JwtAuthProvider — RFC 9728 § 3.1: path component inserted after well-known (not before)", () => {
   const provider = new JwtAuthProvider({
+    kind: "url",
     issuer: "https://idp.example.com",
     audience: "https://api.example.com/v1/mcp",
     resource: httpsUrl("https://api.example.com/v1/mcp"),
@@ -908,6 +898,7 @@ Deno.test("JwtAuthProvider — RFC 9728 § 3.1: path component inserted after we
 
 Deno.test("JwtAuthProvider — RFC 9728 § 3.1: path with trailing slash preserved in metadata URL", () => {
   const provider = new JwtAuthProvider({
+    kind: "url",
     issuer: "https://idp.example.com",
     audience: "https://api.example.com/v1/mcp/",
     resource: httpsUrl("https://api.example.com/v1/mcp/"),
@@ -921,6 +912,7 @@ Deno.test("JwtAuthProvider — RFC 9728 § 3.1: path with trailing slash preserv
 
 Deno.test("JwtAuthProvider — RFC 9728 § 3.1: query string preserved on derivation", () => {
   const provider = new JwtAuthProvider({
+    kind: "url",
     issuer: "https://idp.example.com",
     audience: "https://api.example.com/v1/mcp?tenant=acme",
     resource: httpsUrl("https://api.example.com/v1/mcp?tenant=acme"),
@@ -934,6 +926,7 @@ Deno.test("JwtAuthProvider — RFC 9728 § 3.1: query string preserved on deriva
 
 Deno.test("JwtAuthProvider — RFC 9728 § 3.1: query-only resource (no path) places well-known at root", () => {
   const provider = new JwtAuthProvider({
+    kind: "url",
     issuer: "https://idp.example.com",
     audience: "https://api.example.com?tenant=acme",
     resource: httpsUrl("https://api.example.com?tenant=acme"),
@@ -947,6 +940,7 @@ Deno.test("JwtAuthProvider — RFC 9728 § 3.1: query-only resource (no path) pl
 
 Deno.test("JwtAuthProvider — RFC 9728 § 3.1: deeply nested path preserved", () => {
   const provider = new JwtAuthProvider({
+    kind: "url",
     issuer: "https://idp.example.com",
     audience: "https://api.example.com/api/v2/tenants/acme/mcp",
     resource: httpsUrl("https://api.example.com/api/v2/tenants/acme/mcp"),

@@ -35,10 +35,14 @@ const VALID_PROVIDERS: AuthProviderName[] = [
  *   - `"github"` / `"google"`: base only
  *   - `"auth0"`: base + required `domain`
  *   - `"oidc"`: base + required `issuer`, optional `jwksUri`
- * This lifts the current runtime checks in `loadAuthConfig()` (lines 157-168)
+ * This lifts the current runtime checks in `loadAuthConfig()` (lines ~167-178)
  * to the type level, matching what 0.16.0 did for `JwtAuthProviderOptions`.
- * See `CHANGELOG.md` [Unreleased] section and
- * `memory/project_mcp_server_016_deferred.md` for the deferred-work anchor.
+ *
+ * Tracked in:
+ *   - GitHub issue: https://github.com/Casys-AI/mcp-server/issues/11 (primary)
+ *   - `CHANGELOG.md` [Unreleased] section
+ * Hard trigger: do this refactor the next time a new provider preset is added
+ * (per 0.16.0 type-design review recommendation — don't let it slip past 0.17.0).
  */
 export interface AuthConfig {
   provider: AuthProviderName;

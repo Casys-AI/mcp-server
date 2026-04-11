@@ -4,22 +4,47 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
 
 ## [Unreleased]
 
-### Planned for 0.17.0
+### Deferred from 0.16.0 review — tracked as GitHub issues
 
-- **`AuthConfig` discriminated union (deferred from 0.16.0).** Lift the current
-  runtime `loadAuthConfig()` validation (checks like
-  `config.provider === "auth0"
-  && !config.domain`) into a type-level
-  discriminated union on the `provider` tag — matching what 0.16.0 did for
-  `JwtAuthProviderOptions`. Each variant encodes which provider-specific fields
-  are required:
+All four items below were identified during the 0.16.0 type-design review but
+deferred to keep the PR focused. They're canonically tracked as GitHub issues on
+`Casys-AI/mcp-server`; the bullets here are kept in sync but the issues are the
+authoritative state.
+
+- **[#11](https://github.com/Casys-AI/mcp-server/issues/11) — `AuthConfig`
+  discriminated union on `provider` tag (→ 0.17.0, main deferred scope).** Lift
+  the current runtime `loadAuthConfig()` validation (checks like
+  `config.provider === "auth0" && !config.domain`) into a type-level DU matching
+  what 0.16.0 did for `JwtAuthProviderOptions`. Each variant encodes
+  provider-specific required fields:
   - `"github"` / `"google"`: base only
   - `"auth0"`: base + required `domain`
   - `"oidc"`: base + required `issuer`, optional `jwksUri`
 
   The runtime checks stay as defense-in-depth for YAML/env input, but TS callers
   of `AuthConfig` get compile-time safety. See `src/auth/config.ts:AuthConfig`
-  for the TODO anchor pointing here.
+  for the TODO anchor pointing here. **Hard trigger**: do this refactor the next
+  time a new provider preset is added, per the 0.16.0 type-design-analyzer
+  recommendation.
+
+- **[#12](https://github.com/Casys-AI/mcp-server/issues/12) —
+  `JwtAuthProviderOptions` branch disjointness.** The DU branches overlap
+  structurally because `HttpsUrl extends string` — a caller annotating their
+  constant as `OpaqueResource` with an `HttpsUrl`-branded `resource` type-checks
+  even though it's semantically misleading. No runtime bug, but either document
+  or add a `kind` discriminant tag. Bundle with #11 for consistency.
+
+- **[#13](https://github.com/Casys-AI/mcp-server/issues/13) — `AuthOptions`
+  still has raw-string URL fields.** `types.ts:AuthOptions` (`resource: string`,
+  `authorizationServers: string[]`) wasn't touched by 0.16.0 because it's the
+  public `McpApp` constructor-option interface, not the `JwtAuthProvider` API.
+  Either brand the fields to match `ProtectedResourceMetadata` or delete it if
+  dead. Dilutes the "HttpsUrl everywhere" story.
+
+- **[#14](https://github.com/Casys-AI/mcp-server/issues/14) — Export
+  `buildJwtProvider` as public API.** The bridge helper in `presets.ts`
+  (raw-string → DU translation) would be useful to 3rd-party OIDC provider
+  implementations. Non-breaking addition, could ship in any minor bump.
 
 ## [0.16.0] - 2026-04-11
 

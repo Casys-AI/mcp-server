@@ -8,7 +8,13 @@
 import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { AuthProvider } from "./provider.ts";
 import { JwtAuthProvider } from "./jwt-provider.ts";
-import type { AuthInfo, ProtectedResourceMetadata } from "./types.ts";
+import {
+  type AuthInfo,
+  httpsUrl,
+  type ProtectedResourceMetadata,
+  tryHttpsUrl,
+} from "./types.ts";
+import { createGoogleAuthProvider } from "./presets.ts";
 import {
   AuthError,
   createAuthMiddleware,
@@ -51,11 +57,14 @@ class MockAuthProvider extends AuthProvider {
   }
 
   getResourceMetadata(): ProtectedResourceMetadata {
+    // 0.16.0: both URL fields are HttpsUrl branded — construct via
+    // `httpsUrl()` so the brand is enforced at the type layer.
     return {
       resource: "https://mock.example.com",
-      resource_metadata_url:
+      resource_metadata_url: httpsUrl(
         "https://mock.example.com/.well-known/oauth-protected-resource",
-      authorization_servers: ["https://auth.example.com"],
+      ),
+      authorization_servers: [httpsUrl("https://auth.example.com")],
       bearer_methods_supported: ["header"],
     };
   }
@@ -486,7 +495,11 @@ Deno.test("HTTP + Auth - RFC 9728 endpoint returns metadata", async () => {
     assertEquals(res.status, 200);
     const metadata = await res.json();
     assertEquals(metadata.resource, "https://mock.example.com");
-    assertEquals(metadata.authorization_servers, ["https://auth.example.com"]);
+    // 0.16.0: MockAuthProvider now wraps auth servers via httpsUrl(),
+    // which normalizes to include a trailing slash for host-only URLs.
+    assertEquals(metadata.authorization_servers, [
+      "https://auth.example.com/",
+    ]);
     assertEquals(metadata.bearer_methods_supported, ["header"]);
   } finally {
     await http.shutdown();
@@ -709,19 +722,122 @@ Deno.test("HTTP + Auth - initialize does NOT require token", async () => {
 });
 
 // ============================================
-// JwtAuthProvider — resource_metadata_url resolution (0.15.0+)
+// httpsUrl() factory — 0.16.0 branded URL validation
 // ============================================
 
-Deno.test("JwtAuthProvider — factory auto-derives resource_metadata_url from URL resource", () => {
+Deno.test("httpsUrl — accepts valid HTTPS URL and returns branded type", () => {
+  const url = httpsUrl("https://api.example.com");
+  // Runtime: normalized by `new URL().toString()` → appends trailing slash
+  assertEquals(url as string, "https://api.example.com/");
+});
+
+Deno.test("httpsUrl — accepts valid http:// URL (local dev)", () => {
+  const url = httpsUrl("http://localhost:8003/mcp");
+  assertEquals(url as string, "http://localhost:8003/mcp");
+});
+
+Deno.test("httpsUrl — normalizes uppercase HTTPS scheme to lowercase (RFC 3986)", () => {
+  // RFC 3986 § 3.1 says scheme comparison is case-insensitive.
+  // `new URL()` normalizes to lowercase on `.toString()`.
+  const url = httpsUrl("HTTPS://api.example.com");
+  assertEquals(url as string, "https://api.example.com/");
+});
+
+Deno.test("httpsUrl — trims leading/trailing whitespace before parsing", () => {
+  // YAML keys with trailing whitespace or env vars with stray padding
+  // must not produce unparseable URLs.
+  const url = httpsUrl("  https://api.example.com  ");
+  assertEquals(url as string, "https://api.example.com/");
+});
+
+Deno.test("httpsUrl — throws on empty string", () => {
+  assertThrows(
+    () => httpsUrl(""),
+    Error,
+    "empty or whitespace-only",
+  );
+});
+
+Deno.test("httpsUrl — throws on whitespace-only string", () => {
+  assertThrows(
+    () => httpsUrl("   "),
+    Error,
+    "empty or whitespace-only",
+  );
+});
+
+Deno.test("httpsUrl — throws on non-URL string", () => {
+  assertThrows(
+    () => httpsUrl("not a url"),
+    Error,
+    "not a parseable URL",
+  );
+});
+
+Deno.test("httpsUrl — throws on relative path", () => {
+  assertThrows(
+    () => httpsUrl("/.well-known/oauth-protected-resource"),
+    Error,
+    "not a parseable URL",
+  );
+});
+
+Deno.test("httpsUrl — throws on non-HTTP(S) scheme (javascript:)", () => {
+  assertThrows(
+    () => httpsUrl("javascript:alert(1)"),
+    Error,
+    "must use http:// or https://",
+  );
+});
+
+Deno.test("httpsUrl — throws on non-HTTP(S) scheme (ftp:)", () => {
+  assertThrows(
+    () => httpsUrl("ftp://files.example.com/"),
+    Error,
+    "must use http:// or https://",
+  );
+});
+
+Deno.test("httpsUrl — error message includes offending value for debugging", () => {
+  try {
+    httpsUrl("definitely-not-a-url");
+    throw new Error("should have thrown");
+  } catch (err) {
+    // `JSON.stringify`-ed so quotes/newlines/specials don't break log parsing
+    assert((err as Error).message.includes('"definitely-not-a-url"'));
+  }
+});
+
+Deno.test("tryHttpsUrl — returns HttpsUrl on valid input", () => {
+  const url = tryHttpsUrl("https://api.example.com");
+  assert(url !== null);
+  assertEquals(url as string, "https://api.example.com/");
+});
+
+Deno.test("tryHttpsUrl — returns null on opaque identifier (no throw)", () => {
+  // OIDC project ID used as JWT audience per RFC 9728 § 2 — not an URL.
+  const url = tryHttpsUrl("367545125829670172");
+  assertEquals(url, null);
+});
+
+Deno.test("tryHttpsUrl — returns null on empty string (no throw)", () => {
+  assertEquals(tryHttpsUrl(""), null);
+});
+
+// ============================================
+// JwtAuthProvider — resource_metadata_url resolution (0.16.0 DU)
+// ============================================
+
+Deno.test("JwtAuthProvider — auto-derives resource_metadata_url from HttpsUrl resource", () => {
   const provider = new JwtAuthProvider({
     issuer: "https://idp.example.com",
     audience: "https://api.example.com",
-    resource: "https://api.example.com",
-    authorizationServers: ["https://idp.example.com"],
+    resource: httpsUrl("https://api.example.com"),
+    authorizationServers: [httpsUrl("https://idp.example.com")],
   });
   const metadata = provider.getResourceMetadata();
   assertEquals(
-    metadata.resource_metadata_url,
+    metadata.resource_metadata_url as string,
     "https://api.example.com/.well-known/oauth-protected-resource",
   );
 });
@@ -731,82 +847,194 @@ Deno.test("JwtAuthProvider — uses explicit resourceMetadataUrl for opaque reso
     issuer: "https://idp.example.com",
     audience: "367545125829670172",
     resource: "367545125829670172",
-    authorizationServers: ["https://idp.example.com"],
-    resourceMetadataUrl:
+    authorizationServers: [httpsUrl("https://idp.example.com")],
+    resourceMetadataUrl: httpsUrl(
       "https://my-tenant.example.com/mcp/.well-known/oauth-protected-resource",
+    ),
   });
   const metadata = provider.getResourceMetadata();
   assertEquals(
-    metadata.resource_metadata_url,
+    metadata.resource_metadata_url as string,
     "https://my-tenant.example.com/mcp/.well-known/oauth-protected-resource",
   );
 });
 
-Deno.test("JwtAuthProvider — throws when resource is opaque and resourceMetadataUrl is missing", () => {
+Deno.test("JwtAuthProvider — trailing slash on HttpsUrl resource is stripped before derivation", () => {
+  // `httpsUrl("https://api.example.com")` normalizes to `"https://api.example.com/"`
+  // (trailing slash added by `new URL().toString()`). The constructor must
+  // strip it before appending `/.well-known/...` to avoid a double slash.
+  const provider = new JwtAuthProvider({
+    issuer: "https://idp.example.com",
+    audience: "https://api.example.com",
+    resource: httpsUrl("https://api.example.com/"),
+    authorizationServers: [httpsUrl("https://idp.example.com")],
+  });
+  assertEquals(
+    provider.getResourceMetadata().resource_metadata_url as string,
+    "https://api.example.com/.well-known/oauth-protected-resource",
+  );
+});
+
+// ============================================
+// JwtAuthProvider — RFC 9728 § 3.1 metadata URL derivation
+// ============================================
+//
+// These tests exercise the non-root-path code path that was silently broken
+// prior to 0.16.0. The bug: `${resource}/.well-known/oauth-protected-resource`
+// appended the well-known suffix AFTER the path, but RFC 9728 § 3.1 requires
+// the suffix to be inserted BETWEEN the host and the path component:
+//
+//   "If the resource identifier value contains a path or query component,
+//    any terminating slash (/) following the host component MUST be removed
+//    before inserting /.well-known/ and the well-known URI path suffix
+//    between the host component and the path and/or query components."
+//
+// The bug survived 0.15.x because all existing tests used root-path resources
+// (https://host or https://host/) where both approaches produce identical
+// output. It was caught by the 0.16.0 code review.
+
+Deno.test("JwtAuthProvider — RFC 9728 § 3.1: path component inserted after well-known (not before)", () => {
+  const provider = new JwtAuthProvider({
+    issuer: "https://idp.example.com",
+    audience: "https://api.example.com/v1/mcp",
+    resource: httpsUrl("https://api.example.com/v1/mcp"),
+    authorizationServers: [httpsUrl("https://idp.example.com")],
+  });
+  assertEquals(
+    provider.getResourceMetadata().resource_metadata_url as string,
+    "https://api.example.com/.well-known/oauth-protected-resource/v1/mcp",
+  );
+});
+
+Deno.test("JwtAuthProvider — RFC 9728 § 3.1: path with trailing slash preserved in metadata URL", () => {
+  const provider = new JwtAuthProvider({
+    issuer: "https://idp.example.com",
+    audience: "https://api.example.com/v1/mcp/",
+    resource: httpsUrl("https://api.example.com/v1/mcp/"),
+    authorizationServers: [httpsUrl("https://idp.example.com")],
+  });
+  assertEquals(
+    provider.getResourceMetadata().resource_metadata_url as string,
+    "https://api.example.com/.well-known/oauth-protected-resource/v1/mcp/",
+  );
+});
+
+Deno.test("JwtAuthProvider — RFC 9728 § 3.1: query string preserved on derivation", () => {
+  const provider = new JwtAuthProvider({
+    issuer: "https://idp.example.com",
+    audience: "https://api.example.com/v1/mcp?tenant=acme",
+    resource: httpsUrl("https://api.example.com/v1/mcp?tenant=acme"),
+    authorizationServers: [httpsUrl("https://idp.example.com")],
+  });
+  assertEquals(
+    provider.getResourceMetadata().resource_metadata_url as string,
+    "https://api.example.com/.well-known/oauth-protected-resource/v1/mcp?tenant=acme",
+  );
+});
+
+Deno.test("JwtAuthProvider — RFC 9728 § 3.1: query-only resource (no path) places well-known at root", () => {
+  const provider = new JwtAuthProvider({
+    issuer: "https://idp.example.com",
+    audience: "https://api.example.com?tenant=acme",
+    resource: httpsUrl("https://api.example.com?tenant=acme"),
+    authorizationServers: [httpsUrl("https://idp.example.com")],
+  });
+  assertEquals(
+    provider.getResourceMetadata().resource_metadata_url as string,
+    "https://api.example.com/.well-known/oauth-protected-resource?tenant=acme",
+  );
+});
+
+Deno.test("JwtAuthProvider — RFC 9728 § 3.1: deeply nested path preserved", () => {
+  const provider = new JwtAuthProvider({
+    issuer: "https://idp.example.com",
+    audience: "https://api.example.com/api/v2/tenants/acme/mcp",
+    resource: httpsUrl("https://api.example.com/api/v2/tenants/acme/mcp"),
+    authorizationServers: [httpsUrl("https://idp.example.com")],
+  });
+  assertEquals(
+    provider.getResourceMetadata().resource_metadata_url as string,
+    "https://api.example.com/.well-known/oauth-protected-resource/api/v2/tenants/acme/mcp",
+  );
+});
+
+// Note: the 0.15.1 runtime validation tests (empty/whitespace/invalid/
+// non-HTTP(S)/trailing-whitespace/uppercase) have been lifted to the
+// `httpsUrl()` factory tests above. In 0.16.0, the constructor can't
+// receive an invalid URL through `JwtAuthProviderOptions` at the type
+// level — the compiler rejects raw strings for `HttpsUrl`-typed fields.
+// The bridge-layer test (opaque resource + missing metadata) is in
+// presets_bridge_test (see below in this file).
+
+// ============================================
+// Preset bridge layer — 0.16.0 raw-string → DU translation
+// ============================================
+
+Deno.test("preset bridge — createGoogleAuthProvider accepts URL resource without explicit metadata", () => {
+  const provider = createGoogleAuthProvider({
+    audience: "https://my-mcp.example.com",
+    resource: "https://my-mcp.example.com",
+  });
+  assertEquals(
+    provider.getResourceMetadata().resource_metadata_url as string,
+    "https://my-mcp.example.com/.well-known/oauth-protected-resource",
+  );
+});
+
+Deno.test("preset bridge — opaque resource without resourceMetadataUrl throws with clear error", () => {
+  // When YAML/env supplies an opaque `resource` (e.g., OIDC project ID) but
+  // forgets `resourceMetadataUrl`, the preset bridge must throw at construction
+  // with a message naming the preset and suggesting the fix. Prior to 0.16.0
+  // this throw came from JwtAuthProvider's constructor; now it comes from the
+  // bridge layer because the DU constructor can't accept that state.
   assertThrows(
     () =>
-      new JwtAuthProvider({
-        issuer: "https://idp.example.com",
+      createGoogleAuthProvider({
         audience: "367545125829670172",
         resource: "367545125829670172",
-        authorizationServers: ["https://idp.example.com"],
       }),
     Error,
     "resourceMetadataUrl is required",
   );
 });
 
-// ============================================
-// JwtAuthProvider — 0.15.1 runtime validation hardening
-// ============================================
-
-Deno.test("JwtAuthProvider — empty-string resourceMetadataUrl is treated as absent (0.15.1)", () => {
-  // YAML key with no value or an env var misconfigured to empty should
-  // behave identically to the key being omitted — fall through to
-  // auto-derivation for URL `resource`. Previously the truthy check on
-  // `options.resourceMetadataUrl` would silently accept `""` and produce
-  // `"://host"` in the WWW-Authenticate header. 0.15.1 trims + checks
-  // for non-empty instead.
-  const provider = new JwtAuthProvider({
-    issuer: "https://idp.example.com",
+Deno.test("preset bridge — empty-string resourceMetadataUrl treated as absent (YAML fall-through)", () => {
+  // A YAML key with no value or env var expanded to empty must behave
+  // identically to omitting the key — fall through to auto-derivation for
+  // URL `resource`. The bridge trims before truthy-check so whitespace-only
+  // values are also absent.
+  const provider = createGoogleAuthProvider({
     audience: "https://api.example.com",
     resource: "https://api.example.com",
-    authorizationServers: ["https://idp.example.com"],
     resourceMetadataUrl: "",
   });
   assertEquals(
-    provider.getResourceMetadata().resource_metadata_url,
+    provider.getResourceMetadata().resource_metadata_url as string,
     "https://api.example.com/.well-known/oauth-protected-resource",
   );
 });
 
-Deno.test("JwtAuthProvider — whitespace-only resourceMetadataUrl is also treated as absent (0.15.1)", () => {
-  const provider = new JwtAuthProvider({
-    issuer: "https://idp.example.com",
+Deno.test("preset bridge — whitespace-only resourceMetadataUrl also treated as absent", () => {
+  const provider = createGoogleAuthProvider({
     audience: "https://api.example.com",
     resource: "https://api.example.com",
-    authorizationServers: ["https://idp.example.com"],
     resourceMetadataUrl: "   ",
   });
   assertEquals(
-    provider.getResourceMetadata().resource_metadata_url,
+    provider.getResourceMetadata().resource_metadata_url as string,
     "https://api.example.com/.well-known/oauth-protected-resource",
   );
 });
 
-Deno.test("JwtAuthProvider — invalid URL in resourceMetadataUrl throws at construction (0.15.1)", () => {
-  // Prior to 0.15.1 the constructor stored the explicit value verbatim
-  // without `new URL()`-parsing. A caller passing a relative path or a
-  // non-URL string would silently produce a broken WWW-Authenticate
-  // header at runtime — exactly the class of bug 0.15.0 was meant to
-  // eliminate (just transferred to the constructor layer).
+Deno.test("preset bridge — invalid resourceMetadataUrl throws via httpsUrl() propagation", () => {
+  // The preset bridge wraps `resourceMetadataUrl` through `httpsUrl()`, so
+  // `new URL()` parsing errors surface at construction time with a clear
+  // message. This replaces the 0.15.1 constructor-level validation.
   assertThrows(
     () =>
-      new JwtAuthProvider({
-        issuer: "https://idp.example.com",
+      createGoogleAuthProvider({
         audience: "367545125829670172",
         resource: "367545125829670172",
-        authorizationServers: ["https://idp.example.com"],
         resourceMetadataUrl: "not a url",
       }),
     Error,
@@ -814,14 +1042,12 @@ Deno.test("JwtAuthProvider — invalid URL in resourceMetadataUrl throws at cons
   );
 });
 
-Deno.test("JwtAuthProvider — non-HTTP(S) scheme in resourceMetadataUrl is rejected (0.15.1)", () => {
+Deno.test("preset bridge — javascript: scheme in resourceMetadataUrl rejected via httpsUrl()", () => {
   assertThrows(
     () =>
-      new JwtAuthProvider({
-        issuer: "https://idp.example.com",
+      createGoogleAuthProvider({
         audience: "367545125829670172",
         resource: "367545125829670172",
-        authorizationServers: ["https://idp.example.com"],
         resourceMetadataUrl: "javascript:alert(1)",
       }),
     Error,
@@ -829,37 +1055,27 @@ Deno.test("JwtAuthProvider — non-HTTP(S) scheme in resourceMetadataUrl is reje
   );
 });
 
-Deno.test("JwtAuthProvider — trailing whitespace in URL resource is trimmed before derivation (0.15.1)", () => {
-  // Previously `"https://foo.com   ".replace(/\/$/, "") + "/.well-known/..."`
-  // produced `"https://foo.com   /.well-known/..."` — unparseable. 0.15.1
-  // adds `.trim()` before the path append AND runs the derived value
-  // through `validateAbsoluteHttpUrl` as a belt-and-suspenders check.
-  const provider = new JwtAuthProvider({
-    issuer: "https://idp.example.com",
+Deno.test("preset bridge — trailing whitespace in URL resource is trimmed via tryHttpsUrl()", () => {
+  // `tryHttpsUrl()` calls `httpsUrl()` internally which trims before parsing,
+  // so `"https://api.example.com   "` is accepted as a URL resource (not
+  // opaque) and auto-derives cleanly.
+  const provider = createGoogleAuthProvider({
     audience: "https://api.example.com",
     resource: "https://api.example.com   ",
-    authorizationServers: ["https://idp.example.com"],
   });
   assertEquals(
-    provider.getResourceMetadata().resource_metadata_url,
+    provider.getResourceMetadata().resource_metadata_url as string,
     "https://api.example.com/.well-known/oauth-protected-resource",
   );
 });
 
-Deno.test("JwtAuthProvider — uppercase HTTPS scheme is accepted and normalized (0.15.1)", () => {
-  // RFC 3986 says scheme comparison is case-insensitive, so `HTTPS://foo.com`
-  // is a valid URL. Prior to 0.15.1 the `/^https?:\/\//` regex was
-  // case-sensitive and would have thrown on uppercase schemes as if they
-  // were opaque URIs. 0.15.1 uses the `i` flag + delegates to `new URL()`
-  // which normalizes the scheme to lowercase.
-  const provider = new JwtAuthProvider({
-    issuer: "https://idp.example.com",
+Deno.test("preset bridge — uppercase HTTPS in resource normalized to lowercase", () => {
+  const provider = createGoogleAuthProvider({
     audience: "HTTPS://api.example.com",
     resource: "HTTPS://api.example.com",
-    authorizationServers: ["https://idp.example.com"],
   });
   assertEquals(
-    provider.getResourceMetadata().resource_metadata_url,
+    provider.getResourceMetadata().resource_metadata_url as string,
     "https://api.example.com/.well-known/oauth-protected-resource",
   );
 });

@@ -4,6 +4,234 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
 
 ## [Unreleased]
 
+### Planned for 0.17.0
+
+- **`AuthConfig` discriminated union (deferred from 0.16.0).** Lift the current
+  runtime `loadAuthConfig()` validation (checks like
+  `config.provider === "auth0"
+  && !config.domain`) into a type-level
+  discriminated union on the `provider` tag — matching what 0.16.0 did for
+  `JwtAuthProviderOptions`. Each variant encodes which provider-specific fields
+  are required:
+  - `"github"` / `"google"`: base only
+  - `"auth0"`: base + required `domain`
+  - `"oidc"`: base + required `issuer`, optional `jwksUri`
+
+  The runtime checks stay as defense-in-depth for YAML/env input, but TS callers
+  of `AuthConfig` get compile-time safety. See `src/auth/config.ts:AuthConfig`
+  for the TODO anchor pointing here.
+
+## [0.16.0] - 2026-04-11
+
+### Fixed
+
+- **RFC 9728 § 3.1 compliance: metadata URL derivation for non-root paths.**
+  When a caller's `resource` had a path or query component (e.g.,
+  `"https://api.example.com/v1/mcp"`), the naive 0.15.x derivation appended
+  `/.well-known/oauth-protected-resource` AFTER the full path, producing
+  `"https://api.example.com/v1/mcp/.well-known/oauth-protected-resource"` — a
+  404 for any client following RFC 9728 discovery. The correct output inserts
+  the well-known suffix BETWEEN the host and the path:
+  `"https://api.example.com/.well-known/oauth-protected-resource/v1/mcp"`. The
+  bug survived 0.15.x because all existing tests exercised root-path resources
+  (where both approaches produce identical output); it was caught during the
+  0.16.0 code review. Query strings and deeply nested paths are now covered by 5
+  new regression tests in `auth_test.ts`. Fragments are dropped per RFC 3986 §
+  3.5.
+
+### Added
+
+- **`HttpsUrl` branded type.** New nominal type in `src/auth/types.ts`
+  representing a string validated as an absolute HTTP(S) URL. Constructed
+  exclusively via the new `httpsUrl(raw)` factory, which:
+  1. Trims leading/trailing whitespace
+  2. Parses via `new URL()` (lowercases the scheme — accepts `HTTPS://...`)
+  3. Rejects non-HTTP(S) schemes (`javascript:`, `ftp:`, relative paths, …)
+  4. Throws on empty / whitespace-only input
+  5. Returns the normalized URL string with the brand applied
+
+  Also exports `tryHttpsUrl(raw): HttpsUrl | null` — the non-throwing variant
+  used by the preset bridge layer to distinguish URL resources from opaque URIs
+  without exception handling.
+
+- **`JwtAuthProviderOptions` discriminated union.** Replaces the flat interface
+  with two branches enforcing metadata-URL presence at compile time:
+  - `JwtAuthProviderOptionsUrlResource`: `resource: HttpsUrl`,
+    `resourceMetadataUrl?: HttpsUrl` (optional, auto-derived).
+  - `JwtAuthProviderOptionsOpaqueResource`: `resource: string` (opaque),
+    `resourceMetadataUrl: HttpsUrl` (REQUIRED).
+
+  TypeScript narrows based on which branch accepts the call-site fields. A
+  caller that passes a raw string for `resource` without `resourceMetadataUrl`
+  gets a compile error telling them to either wrap via `httpsUrl()` or supply
+  the metadata URL explicitly.
+
+- **`OIDCPresetOptions` type.** Preset-style interface for
+  `createOIDCAuthProvider` that accepts raw `string` fields (like the other
+  three presets). The bridge helper inside `presets.ts` wraps them through
+  `httpsUrl()` before reaching the `JwtAuthProvider` constructor.
+
+- **`httpsUrl()` / `tryHttpsUrl()` test coverage.** 14 new unit tests in
+  `src/auth/auth_test.ts` covering the factory's validation matrix (valid HTTPS,
+  valid HTTP, uppercase scheme normalization, whitespace trimming, empty /
+  whitespace-only rejection, non-URL rejection, relative-path rejection,
+  `javascript:` / `ftp:` scheme rejection, error message formatting,
+  `tryHttpsUrl` success / opaque / empty handling).
+
+### Changed
+
+- **`ProtectedResourceMetadata.resource_metadata_url`** now typed as `HttpsUrl`
+  (was `string`). The invariant is structurally enforced — producers construct
+  the value via `httpsUrl()` instead of relying on a runtime validator in
+  `JwtAuthProvider`'s constructor.
+
+- **`ProtectedResourceMetadata.authorization_servers`** now typed as
+  `HttpsUrl[]` (was `string[]`). Downstream consumers can rely on each entry
+  being parseable without re-validation.
+
+- **`AuthProvider` subclasses** must now return `HttpsUrl`-branded values from
+  `getResourceMetadata()`. Construct via `httpsUrl()` or import the brand type
+  from `@casys/mcp-server`.
+
+- **`JwtAuthProvider` constructor simplified.** All URL validation has been
+  lifted to the `httpsUrl()` factory call sites. The constructor no longer
+  performs runtime URL parsing, whitespace trimming, or scheme checking — the
+  type system guarantees that any field requiring those properties is already
+  validated. The 0.15.1 `validateAbsoluteHttpUrl` helper has been removed (dead
+  code).
+
+- **Preset factories bridge raw strings → branded DU.** Each preset
+  (`createGitHubAuthProvider`, `createGoogleAuthProvider`,
+  `createAuth0AuthProvider`, `createOIDCAuthProvider`) centralizes
+  raw-to-branded translation through a private `buildJwtProvider` helper that
+  handles the URL-vs-opaque resource detection, auth server validation, and
+  empty-metadata-URL fall-through in one place.
+
+- **`authorization_servers` values are now normalized.** `httpsUrl()` delegates
+  parsing to `new URL().toString()`, which appends a trailing slash to host-only
+  URLs (`"https://foo.com"` → `"https://foo.com/"`). Tests comparing these
+  values as raw strings must adjust their expectations.
+
+### Removed
+
+- **`JwtAuthProvider`'s private `validateAbsoluteHttpUrl` helper.** The logic
+  has been moved to the public `httpsUrl()` factory in `types.ts`, where it
+  belongs on the brand constructor instead of a runtime guard.
+
+- **0.15.1 runtime validation tests for constructor-level URL checks.** These
+  tests (empty-string `resourceMetadataUrl`, whitespace-only, invalid URL,
+  non-HTTP(S) scheme, trailing whitespace in `resource`, uppercase scheme) have
+  been re-homed:
+  - Factory-level validation → `httpsUrl()` tests in `auth_test.ts`
+  - Fall-through behavior (YAML empty key) → preset bridge tests in
+    `auth_test.ts`
+
+### BREAKING
+
+This is a **minor version bump with breaking changes** — semver-permitted before
+1.0, but migration is required.
+
+1. **Direct `new JwtAuthProvider(...)` callers must wrap URL fields.** Every
+   `resource`, `authorizationServers[i]`, and `resourceMetadataUrl` that was a
+   raw string in 0.15.x must now be wrapped in `httpsUrl()`:
+
+   ```typescript
+   // Before (0.15.x)
+   new JwtAuthProvider({
+     issuer: "https://idp.example.com",
+     audience: "https://api.example.com",
+     resource: "https://api.example.com",
+     authorizationServers: ["https://idp.example.com"],
+   });
+
+   // After (0.16.0)
+   import { httpsUrl, JwtAuthProvider } from "@casys/mcp-server";
+   new JwtAuthProvider({
+     issuer: "https://idp.example.com",
+     audience: "https://api.example.com",
+     resource: httpsUrl("https://api.example.com"),
+     authorizationServers: [httpsUrl("https://idp.example.com")],
+   });
+   ```
+
+2. **`createOIDCAuthProvider` signature changed.** Previously accepted
+   `JwtAuthProviderOptions` directly; now accepts the new `OIDCPresetOptions`
+   with raw `string` fields. Migration: drop any `httpsUrl()` wrappers — the
+   preset handles it internally.
+
+   ```typescript
+   // Before (0.15.x) — JwtAuthProviderOptions direct
+   createOIDCAuthProvider({
+     issuer: "https://idp.example.com",
+     audience: "https://api.example.com",
+     resource: "https://api.example.com",
+     authorizationServers: ["https://idp.example.com"],
+   });
+
+   // After (0.16.0) — same call-site, still works with raw strings
+   createOIDCAuthProvider({
+     issuer: "https://idp.example.com",
+     audience: "https://api.example.com",
+     resource: "https://api.example.com",
+     // authorizationServers optional, defaults to [issuer]
+   });
+   ```
+
+3. **Custom `AuthProvider` subclasses must return `HttpsUrl`-branded values**
+   from `getResourceMetadata()`. Previously `string` / `string[]`:
+
+   ```typescript
+   // Before (0.15.x)
+   getResourceMetadata(): ProtectedResourceMetadata {
+     return {
+       resource: "https://foo.com",
+       resource_metadata_url: "https://foo.com/.well-known/oauth-protected-resource",
+       authorization_servers: ["https://idp.example.com"],
+       bearer_methods_supported: ["header"],
+     };
+   }
+
+   // After (0.16.0)
+   getResourceMetadata(): ProtectedResourceMetadata {
+     return {
+       resource: "https://foo.com",  // stays string — RFC 9728 § 2 allows opaque
+       resource_metadata_url: httpsUrl(
+         "https://foo.com/.well-known/oauth-protected-resource",
+       ),
+       authorization_servers: [httpsUrl("https://idp.example.com")],
+       bearer_methods_supported: ["header"],
+     };
+   }
+   ```
+
+4. **`ProtectedResourceMetadata.authorization_servers` values now include
+   trailing slashes** for host-only URLs due to `new URL().toString()`
+   normalization. Downstream code comparing these values as raw strings must
+   adjust: `"https://foo.com"` becomes `"https://foo.com/"`. The JSON payload
+   served at `/.well-known/oauth-protected-resource` contains the normalized
+   form — OIDC clients that trim trailing slashes are unaffected, but strict
+   string matchers should update.
+
+### Migration path
+
+Most callers go through `createAuthProviderFromConfig()` or one of the presets
+(`createGitHubAuthProvider`, `createGoogleAuthProvider`,
+`createAuth0AuthProvider`, `createOIDCAuthProvider`) and will not need any
+changes — the preset bridge layer accepts raw strings and wraps them internally.
+Only direct `new JwtAuthProvider(...)` callers and custom `AuthProvider`
+subclasses need the updates above.
+
+### Why
+
+0.14.x had a class of bugs where `WWW-Authenticate` headers could be produced
+with `"://host/.well-known/..."` when the caller mis-set `resource`. 0.15.0
+closed it with a required `resource_metadata_url` field on the metadata type.
+0.15.1 added runtime validation in the `JwtAuthProvider` constructor. 0.16.0
+lifts the invariant to the type layer: raw strings for URL fields are now a
+compile error, and the runtime validator is removed as dead code. The bug is
+closed three times: structurally (type), behaviorally (runtime at factory), and
+by the 14 new `httpsUrl()` unit tests covering every validation path.
+
 ## [0.15.1] - 2026-04-11
 
 ### Fixed

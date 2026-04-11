@@ -307,6 +307,12 @@ Deno.test("loadAuthConfig - YAML without auth section returns null", async () =>
 // createAuthProviderFromConfig
 // ============================================
 
+// Note (0.16.0): `authorization_servers` and `resource_metadata_url` are
+// now `HttpsUrl` branded, normalized via `new URL().toString()`. Host-only
+// URLs gain a trailing slash (e.g., `"https://foo.com"` → `"https://foo.com/"`),
+// and we cast back to `string[]` / `string` on the assertion side to compare
+// structurally — the brand has no runtime presence.
+
 Deno.test("createAuthProviderFromConfig - github creates JwtAuthProvider", () => {
   const config: AuthConfig = {
     provider: "github",
@@ -316,8 +322,8 @@ Deno.test("createAuthProviderFromConfig - github creates JwtAuthProvider", () =>
   const provider = createAuthProviderFromConfig(config);
   assert(provider instanceof JwtAuthProvider);
   const metadata = provider.getResourceMetadata();
-  assertEquals(metadata.authorization_servers, [
-    "https://token.actions.githubusercontent.com",
+  assertEquals(metadata.authorization_servers as string[], [
+    "https://token.actions.githubusercontent.com/",
   ]);
 });
 
@@ -330,7 +336,9 @@ Deno.test("createAuthProviderFromConfig - google creates JwtAuthProvider", () =>
   const provider = createAuthProviderFromConfig(config);
   assert(provider instanceof JwtAuthProvider);
   const metadata = provider.getResourceMetadata();
-  assertEquals(metadata.authorization_servers, ["https://accounts.google.com"]);
+  assertEquals(metadata.authorization_servers as string[], [
+    "https://accounts.google.com/",
+  ]);
 });
 
 Deno.test("createAuthProviderFromConfig - auth0 creates JwtAuthProvider with domain", () => {
@@ -343,7 +351,7 @@ Deno.test("createAuthProviderFromConfig - auth0 creates JwtAuthProvider with dom
   const provider = createAuthProviderFromConfig(config);
   assert(provider instanceof JwtAuthProvider);
   const metadata = provider.getResourceMetadata();
-  assertEquals(metadata.authorization_servers, [
+  assertEquals(metadata.authorization_servers as string[], [
     "https://my-tenant.auth0.com/",
   ]);
 });
@@ -358,7 +366,9 @@ Deno.test("createAuthProviderFromConfig - oidc creates JwtAuthProvider with issu
   const provider = createAuthProviderFromConfig(config);
   assert(provider instanceof JwtAuthProvider);
   const metadata = provider.getResourceMetadata();
-  assertEquals(metadata.authorization_servers, ["https://my-idp.example.com"]);
+  assertEquals(metadata.authorization_servers as string[], [
+    "https://my-idp.example.com/",
+  ]);
 });
 
 Deno.test("createAuthProviderFromConfig - passes scopesSupported to metadata", () => {
@@ -389,8 +399,9 @@ Deno.test("createAuthProviderFromConfig - forwards resourceMetadataUrl for opaqu
   const provider = createAuthProviderFromConfig(config);
   assert(provider instanceof JwtAuthProvider);
   const metadata = provider.getResourceMetadata();
+  // Explicit path URL — `new URL().toString()` does not add a trailing slash.
   assertEquals(
-    metadata.resource_metadata_url,
+    metadata.resource_metadata_url as string,
     "https://my-tenant.example.com/mcp/.well-known/oauth-protected-resource",
   );
 });

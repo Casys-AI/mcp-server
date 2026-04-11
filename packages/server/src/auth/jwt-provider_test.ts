@@ -16,6 +16,7 @@ import {
   createGoogleAuthProvider,
   createOIDCAuthProvider,
 } from "./presets.ts";
+import { httpsUrl } from "./types.ts";
 
 // ============================================
 // Helper: Local JWKS server for real JWT tests
@@ -83,6 +84,16 @@ async function startLocalJwksServer(): Promise<LocalJwks> {
 // ============================================
 // JwtAuthProvider - Construction & Fail-Fast
 // ============================================
+//
+// In 0.16.0 the `JwtAuthProviderOptions` type is a discriminated union that
+// rejects raw strings for URL-typed fields at compile time. The fail-fast
+// tests below therefore provide a dummy `resourceMetadataUrl` (branded
+// via `httpsUrl()`) so that the test subject — the runtime falsy checks
+// in the constructor (`!options.issuer`, etc.) — remains reachable.
+
+const DUMMY_METADATA_URL = httpsUrl(
+  "https://dummy.example.com/.well-known/oauth-protected-resource",
+);
 
 Deno.test("JwtAuthProvider - throws when issuer missing", () => {
   assertThrows(
@@ -90,8 +101,9 @@ Deno.test("JwtAuthProvider - throws when issuer missing", () => {
       new JwtAuthProvider({
         issuer: "",
         audience: "aud",
-        resource: "res",
-        authorizationServers: ["https://auth.example.com"],
+        resource: "opaque",
+        authorizationServers: [httpsUrl("https://auth.example.com")],
+        resourceMetadataUrl: DUMMY_METADATA_URL,
       }),
     Error,
     "issuer is required",
@@ -104,8 +116,9 @@ Deno.test("JwtAuthProvider - throws when audience missing", () => {
       new JwtAuthProvider({
         issuer: "https://issuer.example.com",
         audience: "",
-        resource: "res",
-        authorizationServers: ["https://auth.example.com"],
+        resource: "opaque",
+        authorizationServers: [httpsUrl("https://auth.example.com")],
+        resourceMetadataUrl: DUMMY_METADATA_URL,
       }),
     Error,
     "audience is required",
@@ -119,7 +132,8 @@ Deno.test("JwtAuthProvider - throws when resource missing", () => {
         issuer: "https://issuer.example.com",
         audience: "aud",
         resource: "",
-        authorizationServers: ["https://auth.example.com"],
+        authorizationServers: [httpsUrl("https://auth.example.com")],
+        resourceMetadataUrl: DUMMY_METADATA_URL,
       }),
     Error,
     "resource is required",
@@ -132,8 +146,9 @@ Deno.test("JwtAuthProvider - throws when authorizationServers empty", () => {
       new JwtAuthProvider({
         issuer: "https://issuer.example.com",
         audience: "aud",
-        resource: "res",
+        resource: "opaque",
         authorizationServers: [],
+        resourceMetadataUrl: DUMMY_METADATA_URL,
       }),
     Error,
     "at least one authorizationServer",
@@ -144,8 +159,8 @@ Deno.test("JwtAuthProvider - constructs with valid options", () => {
   const provider = new JwtAuthProvider({
     issuer: "https://issuer.example.com",
     audience: "https://my-mcp.example.com",
-    resource: "https://my-mcp.example.com",
-    authorizationServers: ["https://issuer.example.com"],
+    resource: httpsUrl("https://my-mcp.example.com"),
+    authorizationServers: [httpsUrl("https://issuer.example.com")],
     scopesSupported: ["read", "write"],
   });
   assert(provider instanceof JwtAuthProvider);
@@ -155,19 +170,20 @@ Deno.test("JwtAuthProvider - getResourceMetadata returns correct data", () => {
   const provider = new JwtAuthProvider({
     issuer: "https://issuer.example.com",
     audience: "https://my-mcp.example.com",
-    resource: "https://my-mcp.example.com",
+    resource: httpsUrl("https://my-mcp.example.com"),
     authorizationServers: [
-      "https://auth1.example.com",
-      "https://auth2.example.com",
+      httpsUrl("https://auth1.example.com"),
+      httpsUrl("https://auth2.example.com"),
     ],
     scopesSupported: ["read", "admin"],
   });
 
   const metadata = provider.getResourceMetadata();
-  assertEquals(metadata.resource, "https://my-mcp.example.com");
-  assertEquals(metadata.authorization_servers, [
-    "https://auth1.example.com",
-    "https://auth2.example.com",
+  // `resource` normalizes via httpsUrl() → trailing slash added
+  assertEquals(metadata.resource as string, "https://my-mcp.example.com/");
+  assertEquals(metadata.authorization_servers.map((u) => u as string), [
+    "https://auth1.example.com/",
+    "https://auth2.example.com/",
   ]);
   assertEquals(metadata.scopes_supported, ["read", "admin"]);
   assertEquals(metadata.bearer_methods_supported, ["header"]);
@@ -177,8 +193,8 @@ Deno.test("JwtAuthProvider - verifyToken returns null for garbage token", async 
   const provider = new JwtAuthProvider({
     issuer: "https://issuer.example.com",
     audience: "https://my-mcp.example.com",
-    resource: "https://my-mcp.example.com",
-    authorizationServers: ["https://issuer.example.com"],
+    resource: httpsUrl("https://my-mcp.example.com"),
+    authorizationServers: [httpsUrl("https://issuer.example.com")],
   });
 
   const result = await provider.verifyToken("not-a-valid-jwt");
@@ -189,8 +205,8 @@ Deno.test("JwtAuthProvider - verifyToken returns null for expired JWT format", a
   const provider = new JwtAuthProvider({
     issuer: "https://issuer.example.com",
     audience: "https://my-mcp.example.com",
-    resource: "https://my-mcp.example.com",
-    authorizationServers: ["https://issuer.example.com"],
+    resource: httpsUrl("https://my-mcp.example.com"),
+    authorizationServers: [httpsUrl("https://issuer.example.com")],
   });
 
   // A structurally valid but unsigned/invalid JWT
@@ -202,6 +218,10 @@ Deno.test("JwtAuthProvider - verifyToken returns null for expired JWT format", a
 // ============================================
 // Presets
 // ============================================
+//
+// Presets accept raw `string` fields per `PresetOptions` — the bridge
+// layer inside `presets.ts` wraps them through `httpsUrl()` before
+// passing to the branded `JwtAuthProvider` constructor.
 
 Deno.test("createGitHubAuthProvider - sets correct issuer", () => {
   const provider = createGitHubAuthProvider({
@@ -210,10 +230,11 @@ Deno.test("createGitHubAuthProvider - sets correct issuer", () => {
   });
 
   const metadata = provider.getResourceMetadata();
-  assertEquals(metadata.authorization_servers, [
-    "https://token.actions.githubusercontent.com",
+  assertEquals(metadata.authorization_servers.map((u) => u as string), [
+    "https://token.actions.githubusercontent.com/",
   ]);
-  assertEquals(metadata.resource, "https://my-mcp.example.com");
+  // `resource` normalized to add trailing slash by `httpsUrl()`
+  assertEquals(metadata.resource as string, "https://my-mcp.example.com/");
   assertEquals(metadata.bearer_methods_supported, ["header"]);
 });
 
@@ -224,7 +245,9 @@ Deno.test("createGoogleAuthProvider - sets correct issuer", () => {
   });
 
   const metadata = provider.getResourceMetadata();
-  assertEquals(metadata.authorization_servers, ["https://accounts.google.com"]);
+  assertEquals(metadata.authorization_servers.map((u) => u as string), [
+    "https://accounts.google.com/",
+  ]);
 });
 
 Deno.test("createAuth0AuthProvider - sets correct issuer from domain", () => {
@@ -235,7 +258,7 @@ Deno.test("createAuth0AuthProvider - sets correct issuer from domain", () => {
   });
 
   const metadata = provider.getResourceMetadata();
-  assertEquals(metadata.authorization_servers, [
+  assertEquals(metadata.authorization_servers.map((u) => u as string), [
     "https://my-tenant.auth0.com/",
   ]);
 });
@@ -262,10 +285,25 @@ Deno.test("createOIDCAuthProvider - generic provider with custom issuer", () => 
   });
 
   const metadata = provider.getResourceMetadata();
-  assertEquals(metadata.authorization_servers, [
-    "https://custom-idp.example.com",
+  assertEquals(metadata.authorization_servers.map((u) => u as string), [
+    "https://custom-idp.example.com/",
   ]);
-  assertEquals(metadata.resource, "https://my-mcp.example.com");
+  assertEquals(metadata.resource as string, "https://my-mcp.example.com/");
+});
+
+Deno.test("createOIDCAuthProvider - defaults authorizationServers to [issuer]", () => {
+  // 0.16.0: when `authorizationServers` is omitted in OIDCPresetOptions,
+  // the preset falls back to `[issuer]` — matching the pre-0.16.0 behavior
+  // where `config.ts` explicitly passed `[config.issuer!]`.
+  const provider = createOIDCAuthProvider({
+    issuer: "https://custom-idp.example.com",
+    audience: "https://my-mcp.example.com",
+    resource: "https://my-mcp.example.com",
+  });
+  const metadata = provider.getResourceMetadata();
+  assertEquals(metadata.authorization_servers.map((u) => u as string), [
+    "https://custom-idp.example.com/",
+  ]);
 });
 
 // ============================================
@@ -278,8 +316,8 @@ Deno.test("JwtAuthProvider - verifies valid JWT from local JWKS", async () => {
     const provider = new JwtAuthProvider({
       issuer: jwks.issuer,
       audience: "https://my-mcp.example.com",
-      resource: "https://my-mcp.example.com",
-      authorizationServers: [jwks.issuer],
+      resource: httpsUrl("https://my-mcp.example.com"),
+      authorizationServers: [httpsUrl(jwks.issuer)],
       jwksUri: `${jwks.issuer}/.well-known/jwks.json`,
     });
 
@@ -305,8 +343,8 @@ Deno.test("JwtAuthProvider - rejects JWT with wrong audience", async () => {
     const provider = new JwtAuthProvider({
       issuer: jwks.issuer,
       audience: "https://my-mcp.example.com",
-      resource: "https://my-mcp.example.com",
-      authorizationServers: [jwks.issuer],
+      resource: httpsUrl("https://my-mcp.example.com"),
+      authorizationServers: [httpsUrl(jwks.issuer)],
       jwksUri: `${jwks.issuer}/.well-known/jwks.json`,
     });
 
@@ -328,8 +366,8 @@ Deno.test("JwtAuthProvider - rejects expired JWT", async () => {
     const provider = new JwtAuthProvider({
       issuer: jwks.issuer,
       audience: "https://my-mcp.example.com",
-      resource: "https://my-mcp.example.com",
-      authorizationServers: [jwks.issuer],
+      resource: httpsUrl("https://my-mcp.example.com"),
+      authorizationServers: [httpsUrl(jwks.issuer)],
       jwksUri: `${jwks.issuer}/.well-known/jwks.json`,
     });
 
@@ -355,8 +393,8 @@ Deno.test("JwtAuthProvider - extracts scopes from 'scope' claim (space-separated
     const provider = new JwtAuthProvider({
       issuer: jwks.issuer,
       audience: "https://my-mcp.example.com",
-      resource: "https://my-mcp.example.com",
-      authorizationServers: [jwks.issuer],
+      resource: httpsUrl("https://my-mcp.example.com"),
+      authorizationServers: [httpsUrl(jwks.issuer)],
       jwksUri: `${jwks.issuer}/.well-known/jwks.json`,
     });
 
@@ -379,8 +417,8 @@ Deno.test("JwtAuthProvider - extracts scopes from 'scp' claim (array)", async ()
     const provider = new JwtAuthProvider({
       issuer: jwks.issuer,
       audience: "https://my-mcp.example.com",
-      resource: "https://my-mcp.example.com",
-      authorizationServers: [jwks.issuer],
+      resource: httpsUrl("https://my-mcp.example.com"),
+      authorizationServers: [httpsUrl(jwks.issuer)],
       jwksUri: `${jwks.issuer}/.well-known/jwks.json`,
     });
 
@@ -403,8 +441,8 @@ Deno.test("JwtAuthProvider - returns empty scopes when no scope/scp claim", asyn
     const provider = new JwtAuthProvider({
       issuer: jwks.issuer,
       audience: "https://my-mcp.example.com",
-      resource: "https://my-mcp.example.com",
-      authorizationServers: [jwks.issuer],
+      resource: httpsUrl("https://my-mcp.example.com"),
+      authorizationServers: [httpsUrl(jwks.issuer)],
       jwksUri: `${jwks.issuer}/.well-known/jwks.json`,
     });
 
@@ -427,8 +465,8 @@ Deno.test("JwtAuthProvider - extracts clientId from azp claim", async () => {
     const provider = new JwtAuthProvider({
       issuer: jwks.issuer,
       audience: "https://my-mcp.example.com",
-      resource: "https://my-mcp.example.com",
-      authorizationServers: [jwks.issuer],
+      resource: httpsUrl("https://my-mcp.example.com"),
+      authorizationServers: [httpsUrl(jwks.issuer)],
       jwksUri: `${jwks.issuer}/.well-known/jwks.json`,
     });
 
@@ -451,8 +489,8 @@ Deno.test("JwtAuthProvider - subject defaults to 'unknown' when no sub claim", a
     const provider = new JwtAuthProvider({
       issuer: jwks.issuer,
       audience: "https://my-mcp.example.com",
-      resource: "https://my-mcp.example.com",
-      authorizationServers: [jwks.issuer],
+      resource: httpsUrl("https://my-mcp.example.com"),
+      authorizationServers: [httpsUrl(jwks.issuer)],
       jwksUri: `${jwks.issuer}/.well-known/jwks.json`,
     });
 

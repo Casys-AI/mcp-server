@@ -29,6 +29,16 @@ const VALID_PROVIDERS: AuthProviderName[] = [
 
 /**
  * Parsed auth configuration (after YAML + env merge).
+ *
+ * TODO(0.17.0): convert to a discriminated union on `provider`. Each variant
+ * should encode which provider-specific fields are required:
+ *   - `"github"` / `"google"`: base only
+ *   - `"auth0"`: base + required `domain`
+ *   - `"oidc"`: base + required `issuer`, optional `jwksUri`
+ * This lifts the current runtime checks in `loadAuthConfig()` (lines 157-168)
+ * to the type level, matching what 0.16.0 did for `JwtAuthProviderOptions`.
+ * See `CHANGELOG.md` [Unreleased] section and
+ * `memory/project_mcp_server_016_deferred.md` for the deferred-work anchor.
  */
 export interface AuthConfig {
   provider: AuthProviderName;
@@ -47,9 +57,9 @@ export interface AuthConfig {
    * metadata document is served publicly (RFC 9728 § 3).
    *
    * Required when `resource` is an opaque URI (e.g., an OIDC project ID used
-   * as JWT audience per RFC 9728 § 2) — otherwise `JwtAuthProvider` will
+   * as JWT audience per RFC 9728 § 2) — otherwise preset factories will
    * throw at construction. When `resource` is itself an HTTP(S) URL, this
-   * field is optional and auto-derived by the factory. Mirrors
+   * field is optional and auto-derived by the preset bridge layer. Mirrors
    * `JwtAuthProviderOptions.resourceMetadataUrl`.
    */
   resourceMetadataUrl?: string;

@@ -46,6 +46,33 @@ authoritative state.
   (raw-string → DU translation) would be useful to 3rd-party OIDC provider
   implementations. Non-breaking addition, could ship in any minor bump.
 
+## [0.16.1] - 2026-04-11
+
+### Added
+
+- **`McpApp.name` public readonly field.** The server name (identifier reported
+  to MCP clients in `InitializeResult.serverInfo.name`) is now exposed as
+  `app.name` on every `McpApp` instance. Previously it was only stored in
+  `this.options.name` (private), forcing consumers to either reach into the
+  private field, keep a separate reference, or re-construct the value from their
+  own config. The compose integration test stubs
+  (`packages/compose/stubs/shared.ts`) had been doing `server.name` in a log
+  prefix since inception — a latent type error that was never caught because
+  `deno task check` on `packages/compose` only type-checked `mod.ts`, not the
+  stubs. 0.16.1 fixes the underlying type gap by making the field a first-class
+  part of the public API.
+
+  This completes the `ConcurrentMCPServer` → `McpApp` hard rename started in
+  `b155f7c` (source class) and `def49b2` (tests + stubs) — the final piece was
+  exposing what the old consumers implicitly expected.
+
+### Changed
+
+- **`packages/compose` `check` task now type-checks the stubs.** Previously
+  `"check": "deno check mod.ts"` covered only the public API surface. The new
+  task also type-checks `stubs/stub-*/server.ts` and `stubs/shared.ts` so drift
+  like the pre-0.16.1 `server.name` silent bug is caught in CI before shipping.
+
 ## [0.16.0] - 2026-04-11
 
 ### Fixed

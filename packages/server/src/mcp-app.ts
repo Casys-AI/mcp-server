@@ -189,6 +189,16 @@ async function readBodyWithLimit(
  * ```
  */
 export class McpApp {
+  /**
+   * Server name — the identifier reported to MCP clients in `InitializeResult.serverInfo.name`.
+   *
+   * Exposed as a public readonly field (0.16.1) so consumers can use it for
+   * log prefixes, tracing context, or any UI that wants to echo the server
+   * identity without having to thread `options.name` through their code.
+   * Immutable after construction, same value that appears in the MCP
+   * `initialize` response.
+   */
+  public readonly name: string;
   private mcpServer: McpServer;
   private requestQueue: RequestQueue;
   private rateLimiter: RateLimiter | null = null;
@@ -232,6 +242,7 @@ export class McpApp {
 
   constructor(options: McpAppOptions) {
     this.options = options;
+    this.name = options.name;
 
     // Create SDK MCP server
     this.mcpServer = new McpServer(

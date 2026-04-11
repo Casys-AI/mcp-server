@@ -8,7 +8,7 @@
  * @module lib/server/mod_test
  */
 
-import { assert, assertStrictEquals } from "@std/assert";
+import { assert, assertEquals, assertStrictEquals } from "@std/assert";
 import { ConcurrentMCPServer, McpApp } from "../mod.ts";
 
 Deno.test("retro-compat: ConcurrentMCPServer is the same class as McpApp", () => {
@@ -19,4 +19,19 @@ Deno.test("retro-compat: ConcurrentMCPServer is the same class as McpApp", () =>
   const app = new ConcurrentMCPServer({ name: "test", version: "1.0.0" });
   assert(app instanceof McpApp);
   assert(app instanceof ConcurrentMCPServer);
+});
+
+Deno.test("McpApp.name: public readonly field mirrors options.name (0.16.1)", () => {
+  // 0.16.1 exposed `name` as a public readonly property. Prior to this,
+  // consumers (including the compose test stubs) had to either reach into
+  // private `options.name` or keep a separate reference to the server name
+  // for log prefixes and tracing. The field must:
+  //   1. Be readable on the instance (not static)
+  //   2. Match `options.name` exactly
+  //   3. Survive re-reads (immutable between calls, though readonly is
+  //      a compile-time-only guarantee in JS — we just verify the value)
+  const app = new McpApp({ name: "my-test-server", version: "1.0.0" });
+  assertEquals(app.name, "my-test-server");
+  // Second read confirms stability.
+  assertEquals(app.name, "my-test-server");
 });

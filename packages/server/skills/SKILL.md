@@ -1,7 +1,7 @@
 ---
 name: casys-mcp-server
 description: >
-  Reference skill for @casys/mcp-server (v0.14.0). Trigger when the user imports
+  Reference skill for @casys/mcp-server. Trigger when the user imports
   @casys/mcp-server, builds or extends an MCP server, registers tools or resources,
   configures auth (Google, Auth0, GitHub, OIDC), adds middleware, sets up HTTP or
   STDIO transport, embeds an MCP server in Hono/Fresh/Express, or works with MCP Apps
@@ -14,7 +14,6 @@ description: >
 Hono-style framework for MCP servers. Wraps `@modelcontextprotocol/sdk` with a
 middleware pipeline, auth, concurrency control, and HTTP transport.
 
-- **Version**: 0.14.0
 - **Runtime**: Deno 2+ or Node 20+ (published to JSR)
 - **License**: MIT
 - **Depends on**: `@modelcontextprotocol/sdk@^1.29.0`, `hono@^4`, `jose@^6`
@@ -247,7 +246,7 @@ Wire the provider into McpApp:
 ```typescript
 const app = new McpApp({
   name: "my-server", version: "1.0.0",
-  auth: { provider, authorizationServers: [...], resource: "https://..." },
+  auth: { provider },
 });
 ```
 
@@ -352,8 +351,6 @@ const app = new McpApp({
       audience: "https://my-mcp.example.com",
       resource: "https://my-mcp.example.com",
     }),
-    authorizationServers: ["https://accounts.google.com"],
-    resource: "https://my-mcp.example.com",
   },
 });
 

@@ -1,6 +1,6 @@
 # @casys/mcp-bridge — Reference Skill
 
-**Version:** 0.2.0 | **Registry:** `jsr:@casys/mcp-bridge` | **Runtime:** Deno
+**Registry:** `jsr:@casys/mcp-bridge` | **Runtime:** Deno
 
 Bridge MCP Apps (interactive HTML UIs delivered via the MCP protocol) to messaging platform webviews — Telegram Mini Apps and LINE LIFF.
 

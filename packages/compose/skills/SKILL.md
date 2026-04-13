@@ -1,6 +1,5 @@
 # @casys/mcp-compose — Reference Skill
 
-**Version:** 0.4.0  
 **Registry:** `jsr:@casys/mcp-compose`  
 **Purpose:** Lightweight UI composition library for assembling MCP tool results into multi-panel dashboards.
 

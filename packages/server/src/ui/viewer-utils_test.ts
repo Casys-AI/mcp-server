@@ -53,6 +53,43 @@ Deno.test("resolveViewerDistPath - handles file:// URLs", () => {
   assertEquals(result!.startsWith("/home/user/project/"), true);
 });
 
+Deno.test("resolveViewerDistPath - returns HTTPS URL for remote moduleUrl", () => {
+  const exists = (path: string) =>
+    path.includes("src/ui/dist/invoice-viewer");
+  const result = resolveViewerDistPath(
+    "https://jsr.io/@casys/mcp-einvoice/0.5.2/",
+    "invoice-viewer",
+    exists,
+  );
+  assertEquals(
+    result,
+    "https://jsr.io/@casys/mcp-einvoice/0.5.2/src/ui/dist/invoice-viewer/index.html",
+  );
+});
+
+Deno.test("resolveViewerDistPath - returns null for HTTPS when exists returns false", () => {
+  const exists = () => false;
+  const result = resolveViewerDistPath(
+    "https://jsr.io/@casys/mcp-einvoice/0.5.2/",
+    "invoice-viewer",
+    exists,
+  );
+  assertEquals(result, null);
+});
+
+Deno.test("resolveViewerDistPath - HTTPS falls back to ui-dist candidate", () => {
+  const exists = (path: string) => path.includes("ui-dist/chart");
+  const result = resolveViewerDistPath(
+    "https://cdn.example.com/pkg/1.0.0/",
+    "chart",
+    exists,
+  );
+  assertEquals(
+    result,
+    "https://cdn.example.com/pkg/1.0.0/ui-dist/chart/index.html",
+  );
+});
+
 // ── discoverViewers ──────────────────────────────────────────────
 
 Deno.test("discoverViewers - finds directories containing index.html", () => {

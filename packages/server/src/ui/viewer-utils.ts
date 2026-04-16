@@ -46,6 +46,22 @@ export function resolveViewerDistPath(
   viewerName: string,
   exists: (path: string) => boolean,
 ): string | null {
+  // When consumed from JSR or any remote registry, import.meta.url is an
+  // HTTPS URL. fileUrlToPath() only handles file:// — passing an HTTPS URL
+  // produces a broken UNC-like path ("//jsr.io/..."). Return the raw resolved
+  // URL string instead; the caller's exists/readFile callbacks are responsible
+  // for handling remote URLs (e.g., via fetch()).
+  if (moduleUrl.startsWith("https://") || moduleUrl.startsWith("http://")) {
+    const candidates = [
+      new URL(`./src/ui/dist/${viewerName}/index.html`, moduleUrl).href,
+      new URL(`./ui-dist/${viewerName}/index.html`, moduleUrl).href,
+    ];
+    for (const candidate of candidates) {
+      if (exists(candidate)) return candidate;
+    }
+    return null;
+  }
+
   const candidates = [
     fileUrlToPath(new URL(`./src/ui/dist/${viewerName}/index.html`, moduleUrl)),
     fileUrlToPath(new URL(`./ui-dist/${viewerName}/index.html`, moduleUrl)),

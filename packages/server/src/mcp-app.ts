@@ -2297,7 +2297,8 @@ export interface RegisterViewersConfig {
   prefix: string;
   /** import.meta.url of the consumer's server.ts (for resolving dist paths) */
   moduleUrl: string;
-  /** Check if a filesystem path exists */
+  /** Check if a path or URL exists. Receives a filesystem path for local
+   *  modules (file://) or an HTTPS URL for remote modules (JSR, CDN). */
   exists: (path: string) => boolean;
   /** Read a file and return its content as string */
   readFile: (path: string) => string | Promise<string>;

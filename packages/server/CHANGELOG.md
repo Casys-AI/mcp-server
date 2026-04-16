@@ -4,6 +4,21 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
 
 ## [Unreleased]
 
+## [0.17.3] - 2026-04-16
+
+### Fixed
+
+- **`resolveViewerDistPath` now handles HTTPS module URLs (JSR / remote
+  modules).** When a package is consumed from JSR, `import.meta.url` is an
+  `https://jsr.io/...` URL, not a `file://` URL. The previous code passed it
+  to `fileUrlToPath()`, which only handles `file://` URLs, producing a
+  broken UNC-like path (`//jsr.io/...`) and making every candidate `exists`
+  check fail. The fix adds an early HTTPS branch that returns the raw
+  resolved URL string (via `new URL(...).href`) instead of calling
+  `fileUrlToPath`. The `exists` and `readFile` callbacks receive the HTTPS
+  URL string and are responsible for handling it (e.g., via `fetch()`). The
+  existing `file://` path is unchanged.
+
 ## [0.17.2] - 2026-04-16
 
 ### Fixed

@@ -46,6 +46,7 @@ import {
 import { createScopeMiddleware } from "./auth/scope-middleware.ts";
 import { createAuthProviderFromConfig, loadAuthConfig } from "./auth/config.ts";
 import type { AuthProvider } from "./auth/provider.ts";
+import type { AuthInfo } from "./auth/types.ts";
 import type {
   FetchHandler,
   HttpRateLimitContext,
@@ -618,6 +619,7 @@ export class McpApp {
     args: Record<string, unknown>,
     request?: Request,
     sessionId?: string,
+    preVerifiedAuthInfo?: AuthInfo,
   ): Promise<MiddlewareResult> {
     if (!this.middlewareRunner) {
       throw new Error(
@@ -630,6 +632,10 @@ export class McpApp {
       args,
       request,
       sessionId,
+      // Pass pre-verified authInfo from the HTTP gate so the auth
+      // middleware skips the redundant verifyToken call (avoids JWKS
+      // race conditions on concurrent cold-cache requests).
+      authInfo: preVerifiedAuthInfo,
     };
 
     // OTel span + metrics
@@ -1180,32 +1186,39 @@ export class McpApp {
     // (see `buildMetadataUrl` helper, removed 0.15.0), which produced a
     // broken URL when `resource` was an opaque URI per RFC 9728 § 2
     // (e.g., an OIDC project ID used as JWT audience).
+    // Auth verification for HTTP endpoints. Returns the verified AuthInfo
+    // on success, or an error Response if auth fails. The caller stores
+    // the AuthInfo so the middleware pipeline can skip re-verification.
     const verifyHttpAuth = async (
       request: Request,
-    ): Promise<Response | null> => {
-      if (!this.authProvider) return null;
+    ): Promise<{ authInfo: AuthInfo } | { denied: Response }> => {
+      if (!this.authProvider) return { authInfo: {} as AuthInfo };
 
       const token = extractBearerToken(request);
       if (!token) {
         const metadata = this.authProvider.getResourceMetadata();
-        return createUnauthorizedResponse(
-          metadata.resource_metadata_url,
-          "missing_token",
-          "Authorization header with Bearer token required",
-        );
+        return {
+          denied: createUnauthorizedResponse(
+            metadata.resource_metadata_url,
+            "missing_token",
+            "Authorization header with Bearer token required",
+          ),
+        };
       }
 
       const authInfo = await this.authProvider.verifyToken(token);
       if (!authInfo) {
         const metadata = this.authProvider.getResourceMetadata();
-        return createUnauthorizedResponse(
-          metadata.resource_metadata_url,
-          "invalid_token",
-          "Invalid or expired token",
-        );
+        return {
+          denied: createUnauthorizedResponse(
+            metadata.resource_metadata_url,
+            "invalid_token",
+            "Invalid or expired token",
+          ),
+        };
       }
 
-      return null;
+      return { authInfo };
     };
 
     const checkHttpRateLimit = async (
@@ -1301,8 +1314,8 @@ export class McpApp {
       }
 
       // Auth gate: SSE connections require valid token when auth is configured
-      const authDeniedSse = await verifyHttpAuth(c.req.raw);
-      if (authDeniedSse) return authDeniedSse;
+      const sseAuthResult = await verifyHttpAuth(c.req.raw);
+      if ("denied" in sseAuthResult) return sseAuthResult.denied;
 
       // Validate session if provided
       if (sessionId && !this.sessions.has(sessionId)) {
@@ -1438,9 +1451,11 @@ export class McpApp {
         // response with WWW-Authenticate triggers OAuth discovery in MCP
         // clients (Claude.ai, Cursor). Without this, clients receive a 200 on
         // initialize and never attempt the OAuth/DCR flow.
+        let httpAuthInfo: AuthInfo | undefined;
         if (this.authProvider) {
-          const authDenied = await verifyHttpAuth(c.req.raw);
-          if (authDenied) return authDenied;
+          const authResult = await verifyHttpAuth(c.req.raw);
+          if ("denied" in authResult) return authResult.denied;
+          httpAuthInfo = authResult.authInfo;
         }
 
         // Initialize - create session and return session ID (now auth-verified)
@@ -1529,6 +1544,7 @@ export class McpApp {
               args,
               c.req.raw,
               reqSessionId,
+              httpAuthInfo,
             );
             return c.json({
               jsonrpc: "2.0",

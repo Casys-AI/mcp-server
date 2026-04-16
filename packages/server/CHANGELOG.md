@@ -4,6 +4,19 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
 
 ## [Unreleased]
 
+## [0.17.4] - 2026-04-16
+
+### Fixed
+
+- **Eliminated redundant `verifyToken` call on `tools/call`.** The HTTP-level
+  auth gate (`verifyHttpAuth`) and the middleware pipeline (`createAuthMiddleware`)
+  both called `provider.verifyToken()`, causing two independent JWKS lookups per
+  tool call. On cold cache (after server restart), concurrent requests could race
+  against the JWKS fetch — one call succeeds while the other gets a transient
+  failure swallowed by `catch {} → null → 401`. Fix: `verifyHttpAuth` now returns
+  the verified `AuthInfo`, which is passed to the middleware context.
+  `createAuthMiddleware` skips re-verification when `ctx.authInfo` is already set.
+
 ## [0.17.3] - 2026-04-16
 
 ### Fixed

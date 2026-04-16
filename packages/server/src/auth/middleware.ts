@@ -123,6 +123,13 @@ export function createAuthMiddleware(provider: AuthProvider): Middleware {
       return next();
     }
 
+    // Already authenticated by the HTTP-level gate (verifyHttpAuth).
+    // Skip the redundant verifyToken call to avoid JWKS race conditions
+    // when concurrent requests arrive on a cold cache.
+    if (ctx.authInfo) {
+      return next();
+    }
+
     // 0.15.0+: provider's getResourceMetadata() always returns a valid
     // absolute URL in resource_metadata_url (type system guarantees it).
     // No derivation needed at the middleware level anymore.

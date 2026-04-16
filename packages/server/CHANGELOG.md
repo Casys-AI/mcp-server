@@ -4,6 +4,20 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
 
 ## [Unreleased]
 
+## [0.17.2] - 2026-04-16
+
+### Fixed
+
+- **Auth gate now covers `initialize` method** when `requireAuth: true`.
+  Previously, `initialize` was excluded from auth checking, which prevented MCP
+  clients (Claude.ai, Cursor) from discovering the OAuth flow — they received a
+  200 response instead of the 401 needed to trigger WWW-Authenticate → PRM → AS
+  metadata → DCR discovery.
+
+- **Protocol version bumped to `2025-06-18`** (was `2025-03-26`). The 2025-06-18
+  spec introduced mandatory auth support; clients seeing the old version skip
+  the auth flow entirely.
+
 ## [0.17.1] - 2026-04-16
 
 ### Added
@@ -11,19 +25,19 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
 - **`createAsMetadataHandler`** — framework-agnostic Web Standard handler that
   serves an RFC 8414 Authorization Server Metadata document enriched with
   `registration_endpoint` (RFC 7591). Enables MCP servers behind IdPs without
-  native Dynamic Client Registration (e.g., Zitadel, unconfigured Keycloak,
-  Okta free tier) to advertise a DCR proxy so clients like Claude.ai can
+  native Dynamic Client Registration (e.g., Zitadel, unconfigured Keycloak, Okta
+  free tier) to advertise a DCR proxy so clients like Claude.ai can
   auto-register. See `AsMetadataProxyOptions` for configuration.
-  - Two input forms: `upstreamMetadataUrl` (any AS) or `upstreamIssuer`
-    (OIDC shorthand) — mutually exclusive, validated at construction time
+  - Two input forms: `upstreamMetadataUrl` (any AS) or `upstreamIssuer` (OIDC
+    shorthand) — mutually exclusive, validated at construction time
   - Built-in stale-while-revalidate caching (default 24h TTL) with
     thundering-herd guard on background refreshes
   - Upstream response shape validation (requires JSON object with `issuer`)
   - Injectable `fetch` for testing and advanced use cases (mTLS, retries)
   - Fail-fast validation at construction: URLs, mutual exclusivity, `cacheTtlMs`
   - 405 Method Not Allowed on non-GET/HEAD requests
-  - `extraFields` for overriding upstream metadata — `registration_endpoint`
-    is always preserved regardless of `extraFields` content
+  - `extraFields` for overriding upstream metadata — `registration_endpoint` is
+    always preserved regardless of `extraFields` content
 
 ## [0.17.0] - 2026-04-11
 

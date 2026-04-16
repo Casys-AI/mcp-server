@@ -671,9 +671,13 @@ Deno.test("HTTP + Auth - tools/list requires token (no auth bypass)", async () =
   }
 });
 
-Deno.test("HTTP + Auth - initialize does NOT require token", async () => {
+Deno.test("HTTP + Auth - initialize requires token (MCP spec 2025-06-18)", async () => {
+  // MCP spec 2025-06-18 §4: when requireAuth is configured, the server MUST
+  // return 401 on ALL unauthenticated requests — including initialize.
+  // The 401 + WWW-Authenticate header is what triggers OAuth/DCR discovery
+  // in clients (Claude.ai, Cursor). Returning 200 on initialize breaks the flow.
   const server = new McpApp({
-    name: "test-init-no-auth",
+    name: "test-init-requires-auth",
     version: "1.0.0",
     logger: () => {},
     auth: {
@@ -688,7 +692,7 @@ Deno.test("HTTP + Auth - initialize does NOT require token", async () => {
   const http = await server.startHttp({ port, onListen: () => {} });
 
   try {
-    // initialize WITHOUT token should still work (200)
+    // initialize WITHOUT token must return 401 (triggers OAuth discovery)
     const res = await fetch(`http://localhost:${port}/mcp`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -699,9 +703,35 @@ Deno.test("HTTP + Auth - initialize does NOT require token", async () => {
       }),
     });
 
-    assertEquals(res.status, 200);
-    const data = await res.json();
-    assertEquals(data.result.serverInfo.name, "test-init-no-auth");
+    assertEquals(res.status, 401);
+    assert(
+      res.headers.get("WWW-Authenticate")?.includes("Bearer"),
+      "WWW-Authenticate must be present with Bearer scheme",
+    );
+    await res.body?.cancel();
+
+    // initialize WITH valid token must succeed (200)
+    const resWithToken = await fetch(`http://localhost:${port}/mcp`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer valid-token",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "initialize",
+      }),
+    });
+
+    assertEquals(resWithToken.status, 200);
+    const data = await resWithToken.json();
+    assertEquals(data.result.serverInfo.name, "test-init-requires-auth");
+    assertEquals(
+      data.result.protocolVersion,
+      "2025-06-18",
+      "Protocol version must be 2025-06-18",
+    );
   } finally {
     await http.shutdown();
   }

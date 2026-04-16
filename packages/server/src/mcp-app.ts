@@ -1433,8 +1433,17 @@ export class McpApp {
         const { id, method, params } = body;
         requestId = id ?? null;
 
-        // Initialize - create session and return session ID
-        // Note: initialize is NOT auth-gated (client needs to discover capabilities first)
+        // Auth gate: when requireAuth is configured, ALL requests (including
+        // initialize) must be authenticated per MCP spec 2025-06-18. The 401
+        // response with WWW-Authenticate triggers OAuth discovery in MCP
+        // clients (Claude.ai, Cursor). Without this, clients receive a 200 on
+        // initialize and never attempt the OAuth/DCR flow.
+        if (this.authProvider) {
+          const authDenied = await verifyHttpAuth(c.req.raw);
+          if (authDenied) return authDenied;
+        }
+
+        // Initialize - create session and return session ID (now auth-verified)
         if (method === "initialize") {
           // Per-IP rate limit on initialize to prevent session exhaustion attacks
           const clientIp = getClientIpFromHeaders(c.req.raw.headers);
@@ -1472,7 +1481,7 @@ export class McpApp {
               jsonrpc: "2.0",
               id,
               result: {
-                protocolVersion: "2025-03-26",
+                protocolVersion: "2025-06-18",
                 capabilities: {
                   tools: {},
                   resources: this.resources.size > 0 ? {} : undefined,
@@ -1576,10 +1585,10 @@ export class McpApp {
           }
         }
 
-        // Auth gate: all other methods after initialize require valid token (if auth configured)
-        // (tools/call is handled above via the middleware pipeline which includes auth)
-        const authDenied = await verifyHttpAuth(c.req.raw);
-        if (authDenied) return authDenied;
+        // Auth gate already applied above (covers all methods including tools/call, tools/list, etc.)
+        // Note: tools/call also runs auth again in the middleware pipeline (createAuthMiddleware),
+        // which provides per-tool scope enforcement. The top-level check above is the gate
+        // that triggers OAuth discovery (401 with WWW-Authenticate).
 
         // Tools list
         if (method === "tools/list") {

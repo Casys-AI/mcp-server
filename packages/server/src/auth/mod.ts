@@ -64,6 +64,10 @@ export type {
   PresetOptions,
 } from "./presets.ts";
 
+// AS Metadata Proxy (DCR discovery for IdPs without native RFC 7591)
+export { createAsMetadataHandler } from "./as-metadata-proxy.ts";
+export type { AsMetadataProxyOptions } from "./as-metadata-proxy.ts";
+
 // Config loader (YAML + env)
 export { createAuthProviderFromConfig, loadAuthConfig } from "./config.ts";
 // `AuthConfig` is a discriminated union in 0.17.0 — each variant is also

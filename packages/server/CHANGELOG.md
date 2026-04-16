@@ -4,6 +4,27 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-04-16
+
+### Added
+
+- **`createAsMetadataHandler`** — framework-agnostic Web Standard handler that
+  serves an RFC 8414 Authorization Server Metadata document enriched with
+  `registration_endpoint` (RFC 7591). Enables MCP servers behind IdPs without
+  native Dynamic Client Registration (e.g., Zitadel, unconfigured Keycloak,
+  Okta free tier) to advertise a DCR proxy so clients like Claude.ai can
+  auto-register. See `AsMetadataProxyOptions` for configuration.
+  - Two input forms: `upstreamMetadataUrl` (any AS) or `upstreamIssuer`
+    (OIDC shorthand) — mutually exclusive, validated at construction time
+  - Built-in stale-while-revalidate caching (default 24h TTL) with
+    thundering-herd guard on background refreshes
+  - Upstream response shape validation (requires JSON object with `issuer`)
+  - Injectable `fetch` for testing and advanced use cases (mTLS, retries)
+  - Fail-fast validation at construction: URLs, mutual exclusivity, `cacheTtlMs`
+  - 405 Method Not Allowed on non-GET/HEAD requests
+  - `extraFields` for overriding upstream metadata — `registration_endpoint`
+    is always preserved regardless of `extraFields` content
+
 ## [0.17.0] - 2026-04-11
 
 This release bundles the four deferred items from the 0.16.0 type-design review

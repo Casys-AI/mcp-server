@@ -182,6 +182,10 @@ export {
 } from "./src/auth/mod.ts";
 export type { PresetOptions } from "./src/auth/mod.ts";
 
+// Auth - AS Metadata Proxy (DCR discovery for IdPs without native RFC 7591)
+export { createAsMetadataHandler } from "./src/auth/mod.ts";
+export type { AsMetadataProxyOptions } from "./src/auth/mod.ts";
+
 // Auth - Config (YAML + env)
 export {
   createAuthProviderFromConfig,

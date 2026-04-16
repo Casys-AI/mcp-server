@@ -281,7 +281,11 @@ export class JwtAuthProvider extends AuthProvider {
       }
 
       return authInfo;
-    } catch {
+    } catch (err) {
+      // Log the actual rejection reason so JWKS fetch failures, audience
+      // mismatches, and expiration errors are distinguishable in logs.
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[JwtAuthProvider] Token rejected: ${msg}`);
       return null;
     }
   }

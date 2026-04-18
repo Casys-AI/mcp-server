@@ -9,8 +9,8 @@
  * exercising the real SDK path when an MCP host is available.
  */
 
-import { createMcpApp } from "../../../src/view/mod.ts";
-import type { AppContext, AppHandle } from "../../../src/view/mod.ts";
+import { createMcpApp } from "@casys/mcp-view";
+import type { AppContext, AppHandle } from "@casys/mcp-view";
 import { listView } from "./list-view.ts";
 import { detailView } from "./detail-view.ts";
 import type { AppState } from "./state.ts";

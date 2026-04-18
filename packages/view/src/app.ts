@@ -1,4 +1,3 @@
-/// <reference lib="dom" />
 /**
  * View-side SDK bootstrap: wraps ext-apps `App`, performs the
  * `ui/initialize` handshake via `PostMessageTransport`, then mounts the

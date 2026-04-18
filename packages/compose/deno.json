@@ -1,14 +1,13 @@
 {
   "name": "@casys/mcp-compose",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "exports": {
     ".": "./mod.ts",
     "./core": "./src/core/mod.ts",
     "./sdk": "./src/sdk/mod.ts",
     "./host": "./src/host/mod.ts",
     "./runtime": "./src/runtime/mod.ts",
-    "./deploy": "./src/deploy/mod.ts",
-    "./view": "./src/view/mod.ts"
+    "./deploy": "./src/deploy/mod.ts"
   },
   "publish": {
     "include": ["mod.ts", "src/**/*.ts", "README.md", "LICENSE"],

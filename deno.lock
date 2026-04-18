@@ -869,6 +869,13 @@
           "npm:hono@4",
           "npm:jose@6"
         ]
+      },
+      "packages/view": {
+        "dependencies": [
+          "jsr:@std/assert@1",
+          "npm:@modelcontextprotocol/ext-apps@^1.6.0",
+          "npm:@modelcontextprotocol/sdk@^1.29.0"
+        ]
       }
     }
   }

@@ -1,4 +1,3 @@
-/// <reference lib="dom" />
 /**
  * Memory-based view router for MCP App views.
  *

@@ -2,6 +2,7 @@
   "workspace": [
     "./packages/server",
     "./packages/compose",
-    "./packages/bridge"
+    "./packages/bridge",
+    "./packages/view"
   ]
 }

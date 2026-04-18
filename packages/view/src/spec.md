@@ -1,4 +1,4 @@
-# `@casys/mcp-compose/view` — Specification
+# `@casys/mcp-view` — Specification
 
 ## Overview
 
@@ -106,18 +106,19 @@ re-runs `onEnter → render`. No implicit state diffing.
   types and DOM lib. No `Deno.*`, no `process.*`, no `Buffer`.
 - **ESM-only.** Output of consumers is `<script type="module">` or IIFE bundle;
   we don't ship CJS.
-- Published as sub-entry `@casys/mcp-compose/view` (new `exports` field in
-  `packages/compose/deno.json`).
+- Published as dedicated workspace member `@casys/mcp-view`
+  (`packages/view/`). See `packages/compose/docs/decision-records/0002`
+  addendum for the rationale of the split.
 
 ## Non-goals (MVP)
 
-Explicitly **out of scope** for v0.5.0; may ship later as separate exports:
+Explicitly **out of scope** for v0.1.0; may ship later:
 
 - `sendMessage`, `updateModelContext`, `requestDisplayMode`, `openLink`,
   `downloadFile` wrappers — authors call `ctx.app.<method>` directly.
 - URL-based routing / history API integration.
 - State persistence across teardown.
-- React / Vue / Svelte bindings (future: `@casys/mcp-compose/view-react`).
+- React / Vue / Svelte bindings (future: `@casys/mcp-view-react`, etc.).
 - Data-loader caching, suspense, optimistic updates.
 - Route guards, nested views, layout components.
 - Automatic `ontoolresult` → view refresh wiring. Authors opt in via

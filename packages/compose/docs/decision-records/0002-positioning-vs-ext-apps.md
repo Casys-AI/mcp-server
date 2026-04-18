@@ -57,10 +57,33 @@ Concretely:
   `McpUiPermissions` kept as `@deprecated` aliases for backwards compat.
 - `LATEST_PROTOCOL_VERSION` from ext-apps drives compose's advertised
   `protocolVersion` (re-exported as `MCP_APPS_PROTOCOL_VERSION`).
-- `view/` SDK (v0.5.0) wraps the `App` class — this is the one place the
-  ext-apps runtime class fits, because View-side is genuinely 1-iframe-per-app.
+- The View-side SDK wrapping `App` lives in a **sibling package**
+  `@casys/mcp-view` (`packages/view/`), not in compose — see the
+  addendum below. This keeps compose server-only.
 - Host-side (the event bus in `host/renderer/js/event-bus.ts`) stays
   compose-native because `AppBridge` does not support multi-iframe routing.
+
+### Addendum (2026-04-18) — split of `view/` into its own package
+
+Initial attempt shipped the View-side SDK as `@casys/mcp-compose/view`
+(sub-export of compose). JSR publish rejected triple-slash `/// <reference
+lib="dom" />` directives used to make `HTMLElement`/`Node` resolve. The
+only clean fix was per-package `compilerOptions.lib: ["dom", ...]` — but
+compose is server-side, giving it DOM globals would invite bugs where
+`document.getElementById` is called from code that runs under Deno Deploy.
+
+Resolution: promoted `view/` to a new workspace member `@casys/mcp-view`
+with its own `deno.json` declaring `lib: dom`. The package topology now
+reflects the actual runtime split (browser vs server):
+
+- `@casys/mcp-server` — server
+- `@casys/mcp-compose` — server (multi-iframe host + composition logic)
+- `@casys/mcp-view` — **browser** (View-side SDK, 1-iframe)
+- `@casys/mcp-bridge` — server
+
+No external consumers were affected: the sub-export `@casys/mcp-compose/view`
+never successfully published to JSR (pre-flight rejected it). See
+ADR 0003 for the view-specific non-goals that carry over unchanged.
 
 ## Consequences
 

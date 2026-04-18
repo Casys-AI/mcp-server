@@ -1,17 +1,27 @@
-# ADR 0003: View SDK Non-Goals for v0.5.0
+# ADR 0001: View SDK Non-Goals (v0.1.0)
 
 Date: 2026-04-18  Status: Accepted
 
 ## Context
 
-`@casys/mcp-compose/view` v0.5.0 ships three primitives: `navigate`,
-`callTool`, `capabilities`. The MVP was intentionally minimal to solve one
-concrete pain point: MCP App authors using `sendMessage` (`ui/message`) for
-every in-App navigation, which pollutes the chat thread and triggers the
-Claude prompt-injection warning on every click.
+`@casys/mcp-view` v0.1.0 is the initial release of the View-side SDK for
+MCP Apps. It ships three primitives: `navigate`, `callTool`, `capabilities`.
+
+The MVP was intentionally minimal to solve one concrete pain point: MCP App
+authors using `sendMessage` (`ui/message`) for every in-App navigation,
+which pollutes the chat thread and triggers the Claude prompt-injection
+warning on every click.
+
+The code was first shipped as `@casys/mcp-compose/view` in compose v0.5.0
+but relocated to its own package `@casys/mcp-view` before any JSR publish
+succeeded (see compose ADR 0002 addendum for the rationale — JSR banned
+the `/// <reference lib="dom" />` directives compose used to let View
+sources type-check, and putting `lib: dom` on compose globally would
+invite server-code bugs). This ADR carries over unchanged from the original
+`0003-view-sdk-non-goals-v0.5.md` authored under compose.
 
 Several natural features were **deferred**. This ADR records what and why,
-so the v0.6+ roadmap does not drift into scope creep and so authors reading
+so the v0.2+ roadmap does not drift into scope creep and so authors reading
 the SDK know what's intentionally missing (vs just not yet built).
 
 ## Deferred features
@@ -24,7 +34,7 @@ Accessible via `ctx.app.sendMessage(...)` (escape hatch).
 to reason about a structured action) but encourages the anti-pattern this
 SDK exists to replace. Shipping it in the MVP would make migration from
 `sendMessage` to `callTool` + `navigate` feel optional instead of the
-intended default. The v0.6 wrapper will require an explicit `disclosure`
+intended default. The v0.2 wrapper will require an explicit `disclosure`
 prop whose string gets rendered in the UI before the message is sent — no
 silent chat injection possible through the SDK.
 
@@ -55,8 +65,8 @@ context. Memory-only routing is the right abstraction.
 
 ### 5. React / Vue / Svelte bindings
 
-Planned as separate sub-exports: `@casys/mcp-compose/view-react`,
-`/view-vue`, `/view-svelte`.
+Planned as separate packages: `@casys/mcp-view-react`,
+`@casys/mcp-view-vue`, `@casys/mcp-view-svelte`.
 
 **Deferred rationale:** the vanilla core is the contract; framework
 adapters are thin wrappers that can ship independently without touching
@@ -69,7 +79,7 @@ view names fail at compile time.
 
 **Deferred rationale:** requires adding a second generic parameter to
 `AppHandle` / `AppContext` (`<S, V extends ViewMap<S>>`). Non-trivial
-refactor and a breaking change for early adopters. Target: v0.6 or v1.0
+refactor and a breaking change for early adopters. Target: v0.2 or v1.0
 with a single coordinated break.
 
 ### 7. Automatic `ontoolresult` → view refresh wiring
@@ -81,8 +91,8 @@ Authors opt in via `ctx.app.addEventListener("toolresult", ...)`.
 
 ## Decision
 
-v0.5.0 ships the three primitives above, and nothing else. Every deferred
-feature has a known path to v0.6+ that is non-breaking (optional fields
+v0.1.0 ships the three primitives above, and nothing else. Every deferred
+feature has a known path to v0.2+ that is non-breaking (optional fields
 on existing types).
 
 ## Consequences
@@ -91,12 +101,15 @@ on existing types).
   no behavior is *removed*, only *not promoted*.
 - The public API surface stays small and teachable. Readme / examples can
   cover the full SDK in <20 lines of code.
-- v0.6 planning has a clean list of candidates, each with existing
+- v0.2 planning has a clean list of candidates, each with existing
   rationale captured here.
 
 ## References
 
-- Spec: `packages/compose/src/view/spec.md` §"Non-goals"
-- Ship commit: 504eb45 (v0.5.0 — view/ SDK for SPA MCP Apps)
+- Spec: `packages/view/src/spec.md` §"Non-goals"
+- Original ship commit (as compose sub-export): 504eb45
+  (`feat(compose): 0.5.0 — view/ SDK for SPA MCP Apps`)
+- Split commit: introduced `@casys/mcp-view` as a dedicated workspace
+  member (see compose ADR 0002 addendum).
 - einvoice anti-pattern example:
   `mcp-einvoice/packages/mcp/src/ui/doclist-viewer/src/DoclistContent.tsx:313`

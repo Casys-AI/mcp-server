@@ -12,8 +12,6 @@
  * @module
  */
 
-/// <reference lib="dom" />
-
 import type {
   App,
   McpUiAppCapabilities,

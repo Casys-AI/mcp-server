@@ -1,6 +1,6 @@
 # view-basic
 
-End-to-end integration demo for `@casys/mcp-compose/view`.
+End-to-end integration demo for `@casys/mcp-view`.
 
 Exercises the real handshake + router path with two views (list, detail) and
 SPA navigation via `ctx.navigate(...)` — the pattern that replaces
@@ -10,7 +10,7 @@ and trigger Claude's "the app is trying to speak for you" warning).
 ## Build
 
 ```bash
-deno run --allow-all packages/compose/examples/view-basic/build.ts
+deno run --allow-all packages/view/examples/basic/build.ts
 ```
 
 If your Deno cache was populated by a different user (hardlink EPERM during
@@ -18,7 +18,7 @@ esbuild), override `DENO_DIR`:
 
 ```bash
 DENO_DIR=/tmp/deno-cache deno run --allow-all \
-  packages/compose/examples/view-basic/build.ts
+  packages/view/examples/basic/build.ts
 ```
 
 Produces `dist/index.html`: a self-contained HTML file with CSS and the
@@ -64,4 +64,4 @@ handshake, real `ctx.callTool` available to views.
 - **No Node builtins** were pulled in at runtime — the SDK path to
   `PostMessageTransport` stays DOM-only, as the spec requires.
 - **No `import.meta.url` blockers** encountered: the SDK honours its own
-  bundling rule (see `spec.md` §"Bundling rules").
+  bundling rule (see `src/spec.md` §"Bundling rules").

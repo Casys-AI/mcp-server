@@ -2,15 +2,15 @@
 /**
  * esbuild bundler for the view-basic demo.
  *
- * Bundles src/main.ts (+ its imports of the SDK under
- * ../../src/view/mod.ts) into a single IIFE string, inlines it and
- * src/styles.css into index.html, and writes dist/index.html.
+ * Bundles src/main.ts (+ its imports of `@casys/mcp-view`) into a single
+ * ESM string, inlines it and src/styles.css into index.html, and writes
+ * dist/index.html.
  *
  * No Vite, no chunks, no external files: the artifact is self-contained
  * and can be served as a `ui://` MCP resource or opened directly.
  *
  * Run:
- *   deno run --allow-all packages/compose/examples/view-basic/build.ts
+ *   deno run --allow-all packages/view/examples/basic/build.ts
  */
 
 import * as esbuild from "npm:esbuild@^0.24.0";
@@ -24,8 +24,9 @@ const styles = join(here, "src", "styles.css");
 const outDir = join(here, "dist");
 const outHtml = join(outDir, "index.html");
 
-// Resolve the compose package's deno.json as the import-map root so
-// bare specifiers like `@modelcontextprotocol/ext-apps` resolve.
+// Resolve the view package's deno.json as the import-map root so
+// bare specifiers like `@casys/mcp-view` and `@modelcontextprotocol/ext-apps`
+// resolve.
 const configPath = join(here, "..", "..", "deno.json");
 
 console.log("[build] entry:", entry);

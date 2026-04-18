@@ -246,6 +246,44 @@ When auth is configured, the framework automatically exposes
 `GET /.well-known/oauth-protected-resource` per
 [RFC 9728](https://www.rfc-editor.org/rfc/rfc9728).
 
+### DCR Discovery Proxy (RFC 8414 + RFC 7591)
+
+IdPs without native Dynamic Client Registration (Zitadel, unconfigured
+Keycloak, Okta free tier) don't publish `registration_endpoint` in their
+AS metadata, so MCP clients like Claude.ai or Cursor can't auto-register.
+
+`createAsMetadataHandler` is a framework-agnostic Web Standard handler
+that proxies the upstream RFC 8414 metadata and injects a
+`registration_endpoint` pointing to your own DCR proxy:
+
+```typescript
+// routes/.well-known/oauth-authorization-server.ts (Fresh example)
+import { createAsMetadataHandler } from "@casys/mcp-server";
+
+const handle = createAsMetadataHandler({
+  upstreamIssuer: "https://my-tenant.zitadel.cloud",
+  registrationEndpoint: "https://my-app.example.com/oauth/register",
+  // cacheTtlMs?: 24h default, stale-while-revalidate
+  // extraFields?: override scopes_supported, etc.
+});
+
+export const handler = { GET: (ctx) => handle(ctx.req) };
+```
+
+Then point the PRM at your own host so clients hit the enriched metadata:
+
+```typescript
+authorizationServers: ["https://my-app.example.com"],
+```
+
+The DCR endpoint itself (RFC 7591 `/oauth/register`) is out of scope —
+mount it in your framework and forward to the IdP's admin API.
+
+**Path caveat**: if the MCP server lives at `/mcp`, clients may build
+the discovery URL as
+`<host>/.well-known/oauth-authorization-server/mcp`. Mount the handler
+at the exact path your PRM advertises.
+
 ### Observability
 
 Every tool call emits an **OpenTelemetry span** with rich attributes:

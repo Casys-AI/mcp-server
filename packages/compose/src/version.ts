@@ -18,4 +18,14 @@
  */
 
 /** @casys/mcp-compose package version. */
-export const COMPOSE_VERSION = "0.4.0" as const;
+export const COMPOSE_VERSION = "0.4.1" as const;
+
+/**
+ * MCP Apps protocol version targeted by compose.
+ *
+ * Re-exported from `@modelcontextprotocol/ext-apps` so a single source of
+ * truth drives the `protocolVersion` field advertised in the `ui/initialize`
+ * handshake. Bumping the ext-apps dependency automatically propagates the
+ * new protocol version here.
+ */
+export { LATEST_PROTOCOL_VERSION as MCP_APPS_PROTOCOL_VERSION } from "@modelcontextprotocol/ext-apps";

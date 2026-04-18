@@ -9,7 +9,10 @@
  * @module sdk/ui-meta-builder
  */
 
-import type { McpUiCsp, McpUiPermissions } from "../core/types/mcp-apps.ts";
+import type {
+  McpUiResourceCsp,
+  McpUiResourcePermissions,
+} from "../core/types/mcp-apps.ts";
 
 /**
  * UI metadata fields for `_meta.ui`, combining SEP-1865 standard fields
@@ -23,10 +26,10 @@ export interface UiMetaUi {
   visibility?: Array<"model" | "app">;
 
   /** Content Security Policy configuration. */
-  csp?: McpUiCsp;
+  csp?: McpUiResourceCsp;
 
   /** Permission capabilities the UI may request. */
-  permissions?: McpUiPermissions;
+  permissions?: McpUiResourcePermissions;
 
   /** Domain hint for the UI resource. */
   domain?: string;
@@ -62,10 +65,10 @@ export interface UiMetaOptions {
   visibility?: Array<"model" | "app">;
 
   /** Content Security Policy configuration. */
-  csp?: McpUiCsp;
+  csp?: McpUiResourceCsp;
 
   /** Permission capabilities. */
-  permissions?: McpUiPermissions;
+  permissions?: McpUiResourcePermissions;
 
   /** Domain hint. */
   domain?: string;

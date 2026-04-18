@@ -23,6 +23,7 @@
     "jsr:@std/yaml@1": "1.0.12",
     "jsr:@ts-morph/bootstrap@0.24": "0.24.0",
     "jsr:@ts-morph/common@0.24": "0.24.0",
+    "npm:@modelcontextprotocol/ext-apps@^1.6.0": "1.6.0_@modelcontextprotocol+sdk@1.29.0__zod@4.3.6_zod@4.3.6",
     "npm:@modelcontextprotocol/sdk@^1.29.0": "1.29.0_zod@4.3.6",
     "npm:@opentelemetry/api@^1.9.0": "1.9.0",
     "npm:ajv@^8.17.1": "8.18.0",
@@ -143,6 +144,13 @@
       "integrity": "sha512-txsUW4SQ1iilgE0l9/e9VQWmELXifEFvmdA1j6WFh/aFPj99hIntrSsq/if0UWyGVkmrRPKA1wCeP+UCr1B9Uw==",
       "dependencies": [
         "hono"
+      ]
+    },
+    "@modelcontextprotocol/ext-apps@1.6.0_@modelcontextprotocol+sdk@1.29.0__zod@4.3.6_zod@4.3.6": {
+      "integrity": "sha512-j80Hv9kSALu7luR+DtoYERlRaehu6cY2wlHEjG3h36C98bbYzA/nxOEvtGhhKd2ssCwC0BG3+gdh7y3sE5m0tQ==",
+      "dependencies": [
+        "@modelcontextprotocol/sdk",
+        "zod"
       ]
     },
     "@modelcontextprotocol/sdk@1.29.0_zod@4.3.6": {
@@ -667,6 +675,7 @@
           "jsr:@deno/dnt@0.41",
           "jsr:@std/assert@1",
           "jsr:@std/yaml@1",
+          "npm:@modelcontextprotocol/ext-apps@^1.6.0",
           "npm:@modelcontextprotocol/sdk@^1.29.0",
           "npm:@opentelemetry/api@^1.9.0",
           "npm:ajv@^8.17.1",

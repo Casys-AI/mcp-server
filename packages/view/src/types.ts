@@ -16,6 +16,7 @@ import type {
   App,
   McpUiAppCapabilities,
   McpUiHostCapabilities,
+  McpUiHostContext,
 } from "@modelcontextprotocol/ext-apps";
 import type {
   CallToolResult,
@@ -163,6 +164,19 @@ export interface AppContext<S> {
    * handshake completes.
    */
   readonly capabilities: McpUiHostCapabilities;
+
+  /**
+   * Live host context snapshot (theme, styles, locale, timezone, displayMode,
+   * `toolInfo` about the call that instantiated this App, etc.). Getter —
+   * the returned reference is updated when `ui/notifications/host-context-
+   * changed` fires, so readers always see the current state.
+   *
+   * The SDK automatically applies `theme`, `styles.variables`, and
+   * `styles.css.fonts` to the document on initialize and on every host-
+   * context-changed notification. Read this for the non-styling fields
+   * (`locale`, `timezone`, `displayMode`, `toolInfo`).
+   */
+  readonly hostContext: McpUiHostContext;
 
   /**
    * Shared mutable user state. Authors can mutate fields directly; views

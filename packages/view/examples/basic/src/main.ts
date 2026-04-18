@@ -66,6 +66,7 @@ function bootLocal(root: HTMLElement): AppHandle<AppState> {
     },
     // deno-lint-ignore no-explicit-any
     capabilities: {} as any,
+    hostContext: {},
     state,
     // deno-lint-ignore no-explicit-any
     app: {} as any,

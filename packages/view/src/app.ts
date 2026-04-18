@@ -11,9 +11,15 @@
 
 import {
   App,
+  applyDocumentTheme,
+  applyHostFonts,
+  applyHostStyleVariables,
   PostMessageTransport,
 } from "@modelcontextprotocol/ext-apps";
-import type { McpUiHostCapabilities } from "@modelcontextprotocol/ext-apps";
+import type {
+  McpUiHostCapabilities,
+  McpUiHostContext,
+} from "@modelcontextprotocol/ext-apps";
 
 import type {
   AppConfig,
@@ -70,6 +76,25 @@ export async function createMcpApp<S = Record<string, never>>(
   }
   const capabilities: McpUiHostCapabilities = Object.freeze({ ...hostCaps });
 
+  // Host context: theme, styles, locale, displayMode, etc. Merged mutably
+  // because `ui/notifications/host-context-changed` sends partial updates
+  // the SDK applies on top of the snapshot.
+  let currentHostContext: McpUiHostContext = { ...(app.getHostContext() ?? {}) };
+  // Auto-apply theme + CSS vars + font rules on initial handshake. Idempotent:
+  // authors can override afterwards by calling the same helpers or assigning
+  // their own styles. Opt-out is not exposed: if you want to skip auto-theme,
+  // use your own `new App()` + `connect()` instead of createMcpApp.
+  applyHostContextSideEffects(currentHostContext);
+
+  // Re-apply on host-context-changed. Using addEventListener (not
+  // onhostcontextchanged) so we don't clobber user handlers they may wire
+  // via `ctx.app.onhostcontextchanged = ...`.
+  const onHostContextChanged = (params: McpUiHostContext) => {
+    currentHostContext = { ...currentHostContext, ...params };
+    applyHostContextSideEffects(params);
+  };
+  app.addEventListener("hostcontextchanged", onHostContextChanged);
+
   const router = new Router<S>(config.views, config.root);
 
   // Build the context. `navigate` and `callTool` close over `router` and
@@ -81,6 +106,9 @@ export async function createMcpApp<S = Record<string, never>>(
     callTool: (name, args): Promise<ToolResult> =>
       callServerToolGated(app, capabilities, name, args),
     capabilities,
+    get hostContext() {
+      return currentHostContext;
+    },
     state,
     app,
   };
@@ -101,6 +129,9 @@ export async function createMcpApp<S = Record<string, never>>(
       // Drain pending navigations before closing to avoid tearing down the
       // transport while an onLeave/onEnter hook is still in flight.
       await router.drain();
+      // Unwire the auto-theme listener so we don't leak handlers if the
+      // underlying App is reused by the caller after dispose.
+      app.removeEventListener("hostcontextchanged", onHostContextChanged);
       // Close the transport directly. We avoid `app.close()` because the
       // declared `App` type in ext-apps@1.6.0 does not surface the inherited
       // `Protocol.close` method on its .d.ts surface (TS2339); closing the
@@ -109,6 +140,18 @@ export async function createMcpApp<S = Record<string, never>>(
     },
   };
   return handle;
+}
+
+/**
+ * Apply the theme + CSS variables + font rules from a host context to the
+ * document. Each call is narrow: only the fields present in `ctx` trigger
+ * an application, so partial updates from `host-context-changed` can be
+ * piped through directly.
+ */
+function applyHostContextSideEffects(ctx: McpUiHostContext): void {
+  if (ctx.theme) applyDocumentTheme(ctx.theme);
+  if (ctx.styles?.variables) applyHostStyleVariables(ctx.styles.variables);
+  if (ctx.styles?.css?.fonts) applyHostFonts(ctx.styles.css.fonts);
 }
 
 function validateConfig<S>(config: AppConfig<S>): void {

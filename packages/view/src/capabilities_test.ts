@@ -5,10 +5,8 @@ import type {
 } from "@modelcontextprotocol/ext-apps";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
-import {
-  callServerToolGated,
-  MissingServerToolsCapabilityError,
-} from "./capabilities.ts";
+import { callServerToolGated } from "./capabilities.ts";
+import { MCPViewError } from "./errors.ts";
 
 function fakeApp(
   callServerTool: (params: {
@@ -31,9 +29,10 @@ Deno.test("callServerToolGated throws when serverTools capability absent", () =>
       // Note: sync throw before the Promise is constructed.
       callServerToolGated(app, caps, "do_thing", { x: 1 });
     },
-    MissingServerToolsCapabilityError,
+    MCPViewError,
   );
   // Error message names the tool.
+  assertEquals((err as MCPViewError).code, "MISSING_SERVER_TOOLS_CAPABILITY");
   assertEquals(err.message.includes("do_thing"), true);
   assertEquals(err.message.includes("serverTools"), true);
 });

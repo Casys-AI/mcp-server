@@ -42,7 +42,8 @@
  */
 
 export { createMcpApp, defineView } from "./src/app.ts";
-export { MissingServerToolsCapabilityError } from "./src/capabilities.ts";
+export { MCPViewError } from "./src/errors.ts";
+export type { MCPViewErrorCode } from "./src/errors.ts";
 
 export type {
   AppConfig,

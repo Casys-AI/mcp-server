@@ -7,6 +7,10 @@ Date: 2026-04-18  Status: Accepted
 `@casys/mcp-view` v0.1.0 is the initial release of the View-side SDK for
 MCP Apps. It ships three primitives: `navigate`, `callTool`, `capabilities`.
 
+This package was extracted from @casys/mcp-compose; see
+packages/compose/docs/decision-records/0002-positioning-vs-ext-apps.md
+for the rationale of the split.
+
 The MVP was intentionally minimal to solve one concrete pain point: MCP App
 authors using `sendMessage` (`ui/message`) for every in-App navigation,
 which pollutes the chat thread and triggers the Claude prompt-injection

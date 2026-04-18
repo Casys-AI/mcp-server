@@ -48,6 +48,17 @@ const detailView = defineView<State, { id: string }, Invoice>({
 });
 ```
 
+#### `AppConfig<S>` fields
+
+- `info` — app identity for `ui/initialize`.
+- `root` — DOM element where views mount (required).
+- `views` — map of view name → `ViewDefinition` (at least one required).
+- `initialView` — name of the view to mount first (must be in `views`).
+- `initialArgs?` — args forwarded to `initialView.onEnter`.
+- `initialState?` — initial value of `ctx.state`.
+- `capabilities?` — app-side capabilities (default `{}`).
+- `autoTheme?` — auto-apply host theme/CSS/fonts on handshake and context updates. Default `true`. Set to `false` if the App ships its own complete stylesheet. `ctx.hostContext` remains live regardless.
+
 ### `AppContext<S>` (passed to every view hook)
 
 - `navigate(name, args?)` — switch view, internal only, no MCP traffic.
@@ -80,6 +91,23 @@ ctx.navigate("detail", { id })
 
 Re-render on same view: `navigate(currentView, newArgs)` is allowed and
 re-runs `onEnter → render`. No implicit state diffing.
+
+## Error codes
+
+All errors thrown by the SDK are instances of `MCPViewError` (extends `Error`) with a stable `.code` field. Match on `.code`, not on `.message`.
+
+| Code | Thrown when |
+|---|---|
+| `INVALID_CONFIG_ROOT` | `config.root` is absent or falsy |
+| `INVALID_CONFIG_VIEWS` | `config.views` is empty or missing |
+| `INVALID_CONFIG_INITIAL_VIEW` | `config.initialView` is absent or falsy |
+| `ORPHAN_INITIAL_VIEW` | `config.initialView` names a view not registered in `config.views`; `.data.initialView` + `.data.registered` |
+| `MISSING_RENDER` | A view in `config.views` has no `render` function; `.data.view` |
+| `MISSING_SERVER_TOOLS_CAPABILITY` | `ctx.callTool` called without `serverTools` host capability; `.data.tool` |
+| `HANDSHAKE_NO_CAPABILITIES` | `ui/initialize` handshake returned no host capabilities (malformed host) |
+| `NO_PARENT_WINDOW` | `window.parent` unavailable — SDK not running inside an iframe |
+| `UNKNOWN_VIEW` | `ctx.navigate(name)` with an unregistered name; `.data.view` + `.data.registered` |
+| `ROUTER_NOT_INITIALIZED` | Internal: `Router.goto` called before `setContext` (should never reach user code) |
 
 ## Error contract
 

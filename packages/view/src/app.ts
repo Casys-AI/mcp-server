@@ -30,6 +30,7 @@ import type {
 } from "./types.ts";
 import { Router } from "./router.ts";
 import { callServerToolGated } from "./capabilities.ts";
+import { MCPViewError } from "./errors.ts";
 
 /**
  * Identity function: lets TS infer `S`, `A`, `D` at the call site from the
@@ -69,9 +70,9 @@ export async function createMcpApp<S = Record<string, never>>(
   if (!hostCaps) {
     // Defensive: ext-apps guarantees this is set after connect() resolves,
     // but a malformed host could in theory skip the handshake response.
-    throw new Error(
-      "ui/initialize handshake completed without host capabilities — " +
-        "the host response was malformed.",
+    throw new MCPViewError(
+      "HANDSHAKE_NO_CAPABILITIES",
+      "ui/initialize handshake completed without host capabilities — the host response was malformed.",
     );
   }
   const capabilities: McpUiHostCapabilities = Object.freeze({ ...hostCaps });
@@ -79,66 +80,75 @@ export async function createMcpApp<S = Record<string, never>>(
   // Host context: theme, styles, locale, displayMode, etc. Merged mutably
   // because `ui/notifications/host-context-changed` sends partial updates
   // the SDK applies on top of the snapshot.
+  const autoTheme = config.autoTheme ?? true;
   let currentHostContext: McpUiHostContext = { ...(app.getHostContext() ?? {}) };
-  // Auto-apply theme + CSS vars + font rules on initial handshake. Idempotent:
-  // authors can override afterwards by calling the same helpers or assigning
-  // their own styles. Opt-out is not exposed: if you want to skip auto-theme,
-  // use your own `new App()` + `connect()` instead of createMcpApp.
-  applyHostContextSideEffects(currentHostContext);
+
+  if (autoTheme) applyHostContextSideEffects(currentHostContext);
 
   // Re-apply on host-context-changed. Using addEventListener (not
   // onhostcontextchanged) so we don't clobber user handlers they may wire
-  // via `ctx.app.onhostcontextchanged = ...`.
+  // via `ctx.app.onhostcontextchanged = ...`. The listener is always wired
+  // so `ctx.hostContext` stays current even when autoTheme=false.
   const onHostContextChanged = (params: McpUiHostContext) => {
     currentHostContext = { ...currentHostContext, ...params };
-    applyHostContextSideEffects(params);
+    if (autoTheme) applyHostContextSideEffects(currentHostContext);
   };
   app.addEventListener("hostcontextchanged", onHostContextChanged);
 
-  const router = new Router<S>(config.views, config.root);
+  let handle: AppHandle<S>;
+  try {
+    const router = new Router<S>(config.views, config.root);
 
-  // Build the context. `navigate` and `callTool` close over `router` and
-  // `app` respectively; the same object reference is reused for the whole
-  // app lifetime, as documented in AppHandle.
-  const state = (config.initialState ?? {}) as S;
-  const ctx: AppContext<S> = {
-    navigate: (name, args) => router.goto(name, args),
-    callTool: (name, args): Promise<ToolResult> =>
-      callServerToolGated(app, capabilities, name, args),
-    capabilities,
-    get hostContext() {
-      return currentHostContext;
-    },
-    state,
-    app,
-  };
-  router.setContext(ctx);
+    // Build the context. `navigate` and `callTool` close over `router` and
+    // `app` respectively; the same object reference is reused for the whole
+    // app lifetime, as documented in AppHandle.
+    const state = (config.initialState ?? {}) as S;
+    const ctx: AppContext<S> = {
+      navigate: (name, args) => router.goto(name, args),
+      callTool: (name, args): Promise<ToolResult> =>
+        callServerToolGated(app, capabilities, name, args),
+      capabilities,
+      get hostContext() {
+        return currentHostContext;
+      },
+      state,
+      app,
+    };
+    router.setContext(ctx);
 
-  await router.goto(config.initialView, config.initialArgs);
+    await router.goto(config.initialView, config.initialArgs);
 
-  let disposed = false;
-  const handle: AppHandle<S> = {
-    ctx,
-    get currentView() {
-      return router.currentView;
-    },
-    navigate: (name, args) => router.goto(name, args),
-    dispose: async () => {
-      if (disposed) return;
-      disposed = true;
-      // Drain pending navigations before closing to avoid tearing down the
-      // transport while an onLeave/onEnter hook is still in flight.
-      await router.drain();
-      // Unwire the auto-theme listener so we don't leak handlers if the
-      // underlying App is reused by the caller after dispose.
-      app.removeEventListener("hostcontextchanged", onHostContextChanged);
-      // Close the transport directly. We avoid `app.close()` because the
-      // declared `App` type in ext-apps@1.6.0 does not surface the inherited
-      // `Protocol.close` method on its .d.ts surface (TS2339); closing the
-      // transport triggers the same JSON-RPC teardown path.
-      await transport.close();
-    },
-  };
+    let disposed = false;
+    handle = {
+      ctx,
+      get currentView() {
+        return router.currentView;
+      },
+      navigate: (name, args) => router.goto(name, args),
+      dispose: async () => {
+        if (disposed) return;
+        disposed = true;
+        // Drain pending navigations before closing to avoid tearing down the
+        // transport while an onLeave/onEnter hook is still in flight.
+        try {
+          await router.drain();
+        } finally {
+          // Unwire the auto-theme listener so we don't leak handlers if the
+          // underlying App is reused by the caller after dispose.
+          app.removeEventListener("hostcontextchanged", onHostContextChanged);
+          // Close the transport directly. We avoid `app.close()` because the
+          // declared `App` type in ext-apps@1.6.0 does not surface the inherited
+          // `Protocol.close` method on its .d.ts surface (TS2339); closing the
+          // transport triggers the same JSON-RPC teardown path.
+          await transport.close();
+        }
+      },
+    };
+  } catch (err) {
+    app.removeEventListener("hostcontextchanged", onHostContextChanged);
+    await transport.close().catch(() => {}); // best-effort, rethrowing
+    throw err;
+  }
   return handle;
 }
 
@@ -147,32 +157,60 @@ export async function createMcpApp<S = Record<string, never>>(
  * document. Each call is narrow: only the fields present in `ctx` trigger
  * an application, so partial updates from `host-context-changed` can be
  * piped through directly.
+ *
+ * Exception à la policy "propagate errors" (spec §Error contract) :
+ * ces helpers touchent le DOM ; un crash ici ne doit pas empêcher le
+ * bootstrap/update d'aboutir, on préfère un warn visible.
  */
 function applyHostContextSideEffects(ctx: McpUiHostContext): void {
-  if (ctx.theme) applyDocumentTheme(ctx.theme);
-  if (ctx.styles?.variables) applyHostStyleVariables(ctx.styles.variables);
-  if (ctx.styles?.css?.fonts) applyHostFonts(ctx.styles.css.fonts);
+  try {
+    if (ctx.theme) applyDocumentTheme(ctx.theme);
+  } catch (err) {
+    console.warn("[mcp-view] applyDocumentTheme failed:", err);
+  }
+  try {
+    if (ctx.styles?.variables) applyHostStyleVariables(ctx.styles.variables);
+  } catch (err) {
+    console.warn("[mcp-view] applyHostStyleVariables failed:", err);
+  }
+  try {
+    if (ctx.styles?.css?.fonts) applyHostFonts(ctx.styles.css.fonts);
+  } catch (err) {
+    console.warn("[mcp-view] applyHostFonts failed:", err);
+  }
 }
 
 function validateConfig<S>(config: AppConfig<S>): void {
   if (!config.root) {
-    throw new Error("createMcpApp: `root` is required");
+    throw new MCPViewError("INVALID_CONFIG_ROOT", "createMcpApp: `root` is required");
   }
   if (!config.views || Object.keys(config.views).length === 0) {
-    throw new Error("createMcpApp: `views` must contain at least one view");
+    throw new MCPViewError(
+      "INVALID_CONFIG_VIEWS",
+      "createMcpApp: `views` must contain at least one view",
+    );
   }
   if (!config.initialView) {
-    throw new Error("createMcpApp: `initialView` is required");
+    throw new MCPViewError(
+      "INVALID_CONFIG_INITIAL_VIEW",
+      "createMcpApp: `initialView` is required",
+    );
   }
   if (!config.views[config.initialView]) {
-    throw new Error(
+    throw new MCPViewError(
+      "ORPHAN_INITIAL_VIEW",
       `createMcpApp: initialView "${config.initialView}" is not a registered view. ` +
         `Registered: ${Object.keys(config.views).join(", ")}`,
+      { initialView: config.initialView, registered: Object.keys(config.views) },
     );
   }
   for (const [name, view] of Object.entries(config.views)) {
     if (typeof view.render !== "function") {
-      throw new Error(`View "${name}" is missing a render function`);
+      throw new MCPViewError(
+        "MISSING_RENDER",
+        `View "${name}" is missing a render function`,
+        { view: name },
+      );
     }
   }
 }
@@ -186,7 +224,8 @@ function getParentWindow(): Window {
   // deno-lint-ignore no-explicit-any
   const w = (globalThis as any).window as Window | undefined;
   if (!w || !w.parent) {
-    throw new Error(
+    throw new MCPViewError(
+      "NO_PARENT_WINDOW",
       "createMcpApp: no `window.parent` available. This SDK must run " +
         "inside an iframe hosted by an MCP Apps-compatible client.",
     );

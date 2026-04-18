@@ -1,5 +1,5 @@
 /**
- * Public type surface for `@casys/mcp-compose/view`.
+ * Public type surface for `@casys/mcp-view`.
  *
  * View-side SDK for MCP Apps: bootstraps the ext-apps `App`, performs the
  * `ui/initialize` handshake, and runs a memory-based view router inside the
@@ -253,6 +253,19 @@ export interface AppConfig<S = Record<string, never>> {
    * `ctx.app.oncalltool`.
    */
   capabilities?: McpUiAppCapabilities;
+
+  /**
+   * Auto-apply theme + CSS variables + font rules from host context to the
+   * document on handshake and on every `host-context-changed` notification.
+   *
+   * Default: `true`. Set to `false` if the App manages its own theming (e.g.
+   * ships with its own complete stylesheet that ignores host-provided vars).
+   *
+   * When `false`, `ctx.hostContext` still reflects the live host context —
+   * only the side-effects (calls to `applyDocumentTheme`,
+   * `applyHostStyleVariables`, `applyHostFonts`) are skipped.
+   */
+  autoTheme?: boolean;
 }
 
 // ---------------------------------------------------------------------------

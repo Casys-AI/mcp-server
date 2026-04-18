@@ -14,23 +14,14 @@ import type {
   McpUiHostCapabilities,
 } from "@modelcontextprotocol/ext-apps";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { MCPViewError } from "./errors.ts";
 
-/**
- * Thrown when `ctx.callTool` is invoked but the host did not advertise the
- * `serverTools` capability. Kept as a plain `Error` subclass so authors can
- * match with `instanceof` if they want custom UX, but the default path is
- * just a visible crash.
- */
-export class MissingServerToolsCapabilityError extends Error {
-  constructor(toolName: string) {
-    super(
-      `Cannot call tool "${toolName}": host did not advertise ` +
-        `\`serverTools\` capability during ui/initialize. ` +
-        `Either the host does not support server tool calls, or the ` +
-        `MCP server is not reachable through this host.`,
-    );
-    this.name = "MissingServerToolsCapabilityError";
-  }
+export function missingServerToolsError(toolName: string): MCPViewError {
+  return new MCPViewError(
+    "MISSING_SERVER_TOOLS_CAPABILITY",
+    `Cannot call tool "${toolName}": host did not advertise \`serverTools\` capability during ui/initialize. Either the host does not support server tool calls, or the MCP server is not reachable through this host.`,
+    { tool: toolName },
+  );
 }
 
 /**
@@ -53,7 +44,7 @@ export function callServerToolGated(
   args?: Record<string, unknown>,
 ): Promise<CallToolResult> {
   if (!capabilities.serverTools) {
-    throw new MissingServerToolsCapabilityError(name);
+    throw missingServerToolsError(name);
   }
   return app.callServerTool({ name, arguments: args });
 }

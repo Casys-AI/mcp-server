@@ -18,6 +18,7 @@
  */
 
 import type { AppContext, ViewMap, ViewOutput } from "./types.ts";
+import { MCPViewError } from "./errors.ts";
 
 /**
  * Internal router state. Constructed by `app.ts`; not exported publicly.
@@ -81,14 +82,19 @@ export class Router<S> {
 
   private async _doGoto(name: string, args: unknown): Promise<void> {
     if (this._context === null) {
-      throw new Error("Router.goto called before setContext");
+      throw new MCPViewError(
+        "ROUTER_NOT_INITIALIZED",
+        "Router.goto called before setContext",
+      );
     }
     const target = this.views[name];
     if (!target) {
-      throw new Error(
+      throw new MCPViewError(
+        "UNKNOWN_VIEW",
         `Unknown view "${name}". Registered views: ${
           Object.keys(this.views).join(", ") || "(none)"
         }`,
+        { view: name, registered: Object.keys(this.views) },
       );
     }
 

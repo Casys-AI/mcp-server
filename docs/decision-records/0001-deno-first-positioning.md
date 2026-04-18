@@ -1,6 +1,6 @@
 # ADR 0001: Deno-First Monorepo Positioning
 
-Date: 2026-04-18  Status: Accepted  Scope: monorepo (server, compose, bridge)
+Date: 2026-04-18  Status: Accepted  Scope: monorepo (server, compose, view, bridge)
 
 ## Context
 
@@ -21,7 +21,7 @@ Several runtime targets were considered during early development:
 
 ## Decision
 
-The monorepo is **Deno-first**:
+The monorepo publishes **4 packages** (`@casys/mcp-server`, `@casys/mcp-compose`, `@casys/mcp-view`, `@casys/mcp-bridge`) and is **Deno-first**:
 
 1. All development, tests, and type-checking run under Deno (`deno task
    test`, `deno task check`, `deno fmt`, `deno lint`).
@@ -33,7 +33,7 @@ The monorepo is **Deno-first**:
 4. Deno Deploy is the canonical cloud target. Other serverless runtimes
    (Workers, AWS Lambda, Vercel Edge) are not supported and not planned.
 5. Browser is not a target at the framework level. The only code that
-   ships browser-side is compose's `view/` SDK for inside-iframe usage —
+   ships browser-side is `@casys/mcp-view` for inside-iframe usage —
    explicitly bundled by consumers via esbuild.
 
 ## Consequences

@@ -83,7 +83,7 @@ reflects the actual runtime split (browser vs server):
 
 No external consumers were affected: the sub-export `@casys/mcp-compose/view`
 never successfully published to JSR (pre-flight rejected it). See
-ADR 0003 for the view-specific non-goals that carry over unchanged.
+packages/view/docs/decision-records/0001-sdk-non-goals-v0.1.md for the view-specific non-goals that carry over unchanged.
 
 ## Consequences
 
@@ -104,5 +104,5 @@ routing. Until then it remains a compose extension.
 
 ## References
 
-- Spec: `packages/compose/src/view/spec.md`
+- Spec: `packages/view/src/spec.md`
 - Bump commit: f670dd8 (v0.4.1 — consume @modelcontextprotocol/ext-apps types)

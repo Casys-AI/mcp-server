@@ -35,8 +35,9 @@ Deno.test("sampleGated rejects when both prompt and messages are missing", async
     throw new Error("should not be called");
   });
   // deno-lint-ignore no-explicit-any
+  const empty = {} as any;
   const err = await assertRejects(
-    () => sampleGated(app, SAMPLING_CAPS, {} as any),
+    () => sampleGated(app, SAMPLING_CAPS, empty),
     MCPViewError,
   );
   assertEquals((err as MCPViewError).code, "INVALID_SAMPLE_ARGS");
@@ -46,13 +47,13 @@ Deno.test("sampleGated rejects when both prompt and messages are provided", asyn
   const app = fakeApp(() => {
     throw new Error("should not be called");
   });
+  const both = {
+    prompt: "hi",
+    messages: [{ role: "user", content: { type: "text", text: "hello" } }],
+    // deno-lint-ignore no-explicit-any
+  } as any;
   const err = await assertRejects(
-    () =>
-      sampleGated(app, SAMPLING_CAPS, {
-        // deno-lint-ignore no-explicit-any
-        prompt: "hi",
-        messages: [{ role: "user", content: { type: "text", text: "hello" } }],
-      } as any),
+    () => sampleGated(app, SAMPLING_CAPS, both),
     MCPViewError,
   );
   assertEquals((err as MCPViewError).code, "INVALID_SAMPLE_ARGS");

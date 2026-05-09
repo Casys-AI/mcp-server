@@ -124,20 +124,16 @@ export class Router<S> {
       }
       // Unregister the previous view's tools after onLeave so that any
       // cleanup the user does there can still call ctx.tools.* on its
-      // own tools. Single batched tools/list_changed sent.
-      if (this._toolRegistry !== null) {
-        await this._toolRegistry.unregisterAll();
-      }
+      // own tools. ext-apps emits tools/list_changed per-tool internally.
+      this._toolRegistry?.unregisterAll();
     }
 
     const data = target.onEnter ? await target.onEnter(this._context, args) : undefined;
 
     // Register tools after onEnter so the user's data-loading code runs
-    // before the host can advertise / call them. A single batched
-    // tools/list_changed notification is sent.
-    if (this._toolRegistry !== null) {
-      await this._toolRegistry.registerForView(target.tools);
-    }
+    // before the host can call them. ext-apps emits tools/list_changed
+    // per-tool internally — no batching at this layer.
+    this._toolRegistry?.registerForView(target.tools);
 
     const output = target.render(this._context, data);
 

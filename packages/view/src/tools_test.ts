@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects, assertThrows } from "@std/assert";
+import { assertEquals, assertThrows } from "@std/assert";
 import type { App, RegisteredAppTool } from "@modelcontextprotocol/ext-apps";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
@@ -26,6 +26,14 @@ function fakeApp(): {
   // deno-lint-ignore no-explicit-any
   const callbacks = new Map<string, (args: any) => Promise<CallToolResult>>();
 
+  // Mirrors ext-apps 1.7.1: registerTool / handle.{enable,disable,update,remove}
+  // each emit `tools/list_changed` automatically (via the internal `D()` lambda
+  // gated on `app.options.tools?.listChanged`). The fake reproduces this so
+  // the wrapper's tests can detect double-notifications.
+  const bumpListChanged = () => {
+    toolListChangedCount++;
+  };
+
   const app = {
     // deno-lint-ignore no-explicit-any
     registerTool(name: string, config: any, cb: any): RegisteredAppTool {
@@ -42,26 +50,31 @@ function fakeApp(): {
         registeredAs: { name, config },
         enable() {
           this.enabled = true;
+          bumpListChanged();
         },
         disable() {
           this.enabled = false;
+          bumpListChanged();
         },
         remove() {
           this.removed = true;
           callbacks.delete(name);
+          bumpListChanged();
         },
         // deno-lint-ignore no-explicit-any
         update(updates: any) {
           Object.assign(this, updates);
+          bumpListChanged();
         },
         // deno-lint-ignore no-explicit-any
         handler: cb as any,
       } as FakeRegisteredAppTool;
       registered.push(handle);
+      bumpListChanged();
       return handle;
     },
     sendToolListChanged() {
-      toolListChangedCount++;
+      bumpListChanged();
       return Promise.resolve();
     },
     // deno-lint-ignore no-explicit-any
@@ -98,7 +111,7 @@ function fakeContext<S>(state: S): AppContext<S> {
       enable: () => {},
       disable: () => {},
       update: () => {},
-      remove: () => Promise.resolve(),
+      remove: () => {},
     },
     // deno-lint-ignore no-explicit-any
     app: {} as any,
@@ -128,19 +141,19 @@ Deno.test("viewsDeclareTools returns true when at least one view has tools", () 
 
 // ---- ToolRegistry: lifecycle ----------------------------------------------
 
-Deno.test("registerForView is a no-op when tools map is undefined or empty", async () => {
+Deno.test("registerForView is a no-op when tools map is undefined or empty", () => {
   const fake = fakeApp();
   const reg = new ToolRegistry(fake.app);
   reg.setContext(fakeContext({}));
 
-  await reg.registerForView(undefined);
-  await reg.registerForView({});
+  reg.registerForView(undefined);
+  reg.registerForView({});
 
   assertEquals(fake.registered.length, 0);
   assertEquals(fake.toolListChangedCount, 0);
 });
 
-Deno.test("registerForView throws if called before setContext", async () => {
+Deno.test("registerForView throws if called before setContext", () => {
   const fake = fakeApp();
   const reg = new ToolRegistry(fake.app);
 
@@ -148,19 +161,19 @@ Deno.test("registerForView throws if called before setContext", async () => {
     foo: { description: "x", handler: () => ({ content: [] } as CallToolResult) },
   };
 
-  const err = await assertRejects(
+  const err = assertThrows(
     () => reg.registerForView(tools),
     MCPViewError,
   );
   assertEquals((err as MCPViewError).code, "ROUTER_NOT_INITIALIZED");
 });
 
-Deno.test("registerForView registers each tool and emits a single tools/list_changed", async () => {
+Deno.test("registerForView delegates to ext-apps' registerTool (no extra notification)", () => {
   const fake = fakeApp();
   const reg = new ToolRegistry(fake.app);
   reg.setContext(fakeContext({}));
 
-  await reg.registerForView({
+  reg.registerForView({
     foo: { description: "Foo", handler: () => ({ content: [] } as CallToolResult) },
     bar: {
       description: "Bar",
@@ -173,34 +186,38 @@ Deno.test("registerForView registers each tool and emits a single tools/list_cha
   assertEquals(fake.registered[0].registeredAs.name, "foo");
   assertEquals(fake.registered[1].registeredAs.name, "bar");
   assertEquals(fake.registered[1].registeredAs.config.title, "Bar Tool");
-  // Single batched notification, not one per tool.
-  assertEquals(fake.toolListChangedCount, 1);
-});
-
-Deno.test("unregisterAll removes every handle and emits one tools/list_changed", async () => {
-  const fake = fakeApp();
-  const reg = new ToolRegistry(fake.app);
-  reg.setContext(fakeContext({}));
-
-  await reg.registerForView({
-    foo: { description: "x", handler: () => ({ content: [] } as CallToolResult) },
-    bar: { description: "y", handler: () => ({ content: [] } as CallToolResult) },
-  });
-  assertEquals(fake.toolListChangedCount, 1);
-
-  await reg.unregisterAll();
-
-  assertEquals(fake.registered.every((h) => h.removed), true);
-  // 1 (register) + 1 (unregister batch).
+  // ext-apps emits one tools/list_changed per registerTool call (its own
+  // internal D() lambda); the wrapper does NOT add an extra batched one.
+  // Two registers → exactly 2 notifications, not 3.
   assertEquals(fake.toolListChangedCount, 2);
 });
 
-Deno.test("unregisterAll is a no-op when nothing is registered", async () => {
+Deno.test("unregisterAll removes every handle without adding a batched notification", () => {
   const fake = fakeApp();
   const reg = new ToolRegistry(fake.app);
   reg.setContext(fakeContext({}));
 
-  await reg.unregisterAll();
+  reg.registerForView({
+    foo: { description: "x", handler: () => ({ content: [] } as CallToolResult) },
+    bar: { description: "y", handler: () => ({ content: [] } as CallToolResult) },
+  });
+  // 2 registers → 2 notifications.
+  assertEquals(fake.toolListChangedCount, 2);
+
+  reg.unregisterAll();
+
+  assertEquals(fake.registered.every((h) => h.removed), true);
+  // 2 registers + 2 removes (each handle.remove() emits) = 4. The wrapper
+  // does NOT add a 5th batched notification.
+  assertEquals(fake.toolListChangedCount, 4);
+});
+
+Deno.test("unregisterAll is a no-op when nothing is registered", () => {
+  const fake = fakeApp();
+  const reg = new ToolRegistry(fake.app);
+  reg.setContext(fakeContext({}));
+
+  reg.unregisterAll();
   assertEquals(fake.toolListChangedCount, 0);
 });
 
@@ -214,7 +231,7 @@ Deno.test("registered handler receives the AppContext and forwards args", async 
   const ctx = fakeContext<State>({ count: 42 });
   reg.setContext(ctx);
 
-  await reg.registerForView({
+  reg.registerForView({
     inc: {
       description: "increment",
       handler: (innerCtx, args) => {
@@ -233,11 +250,11 @@ Deno.test("registered handler receives the AppContext and forwards args", async 
 
 // ---- ToolsHandle: enable / disable / update / remove ---------------------
 
-Deno.test("ctx.tools.disable / enable flip the underlying handle's enabled flag", async () => {
+Deno.test("ctx.tools.disable / enable flip the underlying handle's enabled flag", () => {
   const fake = fakeApp();
   const reg = new ToolRegistry(fake.app);
   reg.setContext(fakeContext({}));
-  await reg.registerForView({
+  reg.registerForView({
     foo: { description: "x", handler: () => ({ content: [] } as CallToolResult) },
   });
 
@@ -247,11 +264,11 @@ Deno.test("ctx.tools.disable / enable flip the underlying handle's enabled flag"
   assertEquals(fake.registered[0].enabled, true);
 });
 
-Deno.test("ctx.tools.update mutates description without touching schemas", async () => {
+Deno.test("ctx.tools.update mutates description without touching schemas", () => {
   const fake = fakeApp();
   const reg = new ToolRegistry(fake.app);
   reg.setContext(fakeContext({}));
-  await reg.registerForView({
+  reg.registerForView({
     foo: { description: "old", handler: () => ({ content: [] } as CallToolResult) },
   });
 
@@ -260,25 +277,28 @@ Deno.test("ctx.tools.update mutates description without touching schemas", async
   assertEquals((fake.registered[0] as any).description, "new");
 });
 
-Deno.test("ctx.tools.remove drops the handle and emits tools/list_changed", async () => {
+Deno.test("ctx.tools.remove drops the handle (ext-apps emits tools/list_changed itself)", () => {
   const fake = fakeApp();
   const reg = new ToolRegistry(fake.app);
   reg.setContext(fakeContext({}));
-  await reg.registerForView({
+  reg.registerForView({
     foo: { description: "x", handler: () => ({ content: [] } as CallToolResult) },
   });
   const beforeCount = fake.toolListChangedCount;
 
-  await reg.remove("foo");
+  reg.remove("foo");
 
   assertEquals(fake.registered[0].removed, true);
+  // The fake's handle.remove() bumps the counter (mirroring ext-apps); the
+  // wrapper does NOT call sendToolListChanged itself anymore. So beforeCount
+  // + 1 (from the underlying remove), not + 2.
   assertEquals(fake.toolListChangedCount, beforeCount + 1);
   // After removal, ctx.tools.disable("foo") must throw UNKNOWN_TOOL.
   const err = assertThrows(() => reg.disable("foo"), MCPViewError);
   assertEquals((err as MCPViewError).code, "UNKNOWN_TOOL");
 });
 
-Deno.test("ctx.tools.{enable,disable,update,remove} throw UNKNOWN_TOOL on unknown name", async () => {
+Deno.test("ctx.tools.{enable,disable,update,remove} throw UNKNOWN_TOOL on unknown name", () => {
   const fake = fakeApp();
   const reg = new ToolRegistry(fake.app);
   reg.setContext(fakeContext({}));
@@ -293,6 +313,6 @@ Deno.test("ctx.tools.{enable,disable,update,remove} throw UNKNOWN_TOOL on unknow
   );
   assertEquals((updateErr as MCPViewError).code, "UNKNOWN_TOOL");
 
-  const removeErr = await assertRejects(() => reg.remove("nope"), MCPViewError);
+  const removeErr = assertThrows(() => reg.remove("nope"), MCPViewError);
   assertEquals((removeErr as MCPViewError).code, "UNKNOWN_TOOL");
 });

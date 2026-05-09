@@ -38,7 +38,7 @@ function fakeContext<S>(state: S): AppContext<S> {
       enable: () => {},
       disable: () => {},
       update: () => {},
-      remove: () => Promise.resolve(),
+      remove: () => {},
     },
     app: {} as App,
   };

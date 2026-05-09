@@ -73,12 +73,14 @@ export interface ViewToolDef<
 
 /**
  * Public surface of `ctx.tools`. Forwards to ext-apps' per-tool handle
- * methods and emits `tools/list_changed` after mutations that affect the
- * advertised list (`remove`, `update` of name-visible fields).
+ * methods. Every operation triggers a `tools/list_changed` notification
+ * upstream (ext-apps emits it from its own `enable`/`disable`/`update`/`remove`
+ * implementations whenever `tools.listChanged` is advertised), so the
+ * wrapper adds no extra wire traffic.
  *
  * `enable` / `disable` flip a tool's `enabled` flag — disabled tools stay
- * registered but reject calls until re-enabled. Useful for "save when dirty"
- * patterns.
+ * registered but are filtered out of `tools/list` until re-enabled. Useful
+ * for "save when dirty" patterns.
  *
  * Throws `MCPViewError("UNKNOWN_TOOL")` when the named tool is not currently
  * registered by the active view.
@@ -94,7 +96,7 @@ export interface ToolsHandle {
       annotations: ToolAnnotations;
     }>,
   ): void;
-  remove(name: string): Promise<void>;
+  remove(name: string): void;
 }
 
 /**
@@ -118,15 +120,20 @@ export class ToolRegistry<S> implements ToolsHandle {
   }
 
   /**
-   * Register every tool from a view's `tools` map. Sends a single
-   * `tools/list_changed` notification at the end (batched).
+   * Register every tool from a view's `tools` map.
+   *
+   * Note: ext-apps `App.registerTool` emits `tools/list_changed` itself
+   * (provided the app advertised `tools.listChanged`), so this method does
+   * not batch or add an extra notification. Hosts will see N notifications
+   * for N tools — the wire chatter is acceptable here because tool maps
+   * are small and a transition is rare.
    *
    * The wrapper passed to ext-apps injects `ctx` ahead of the validated
    * args, matching `ViewToolDef.handler`.
    */
-  async registerForView(
+  registerForView(
     tools: Record<string, ViewToolDef<S, StandardSchemaV1 | undefined>> | undefined,
-  ): Promise<void> {
+  ): void {
     if (!tools || Object.keys(tools).length === 0) return;
     if (this.context === null) {
       throw new MCPViewError(
@@ -155,21 +162,21 @@ export class ToolRegistry<S> implements ToolsHandle {
       );
       this.handles.set(name, handle);
     }
-    await this.app.sendToolListChanged();
   }
 
   /**
-   * Remove every tool registered for the current view. Single batched
-   * `tools/list_changed` notification at the end. No-op when nothing is
-   * currently registered (skips the network round-trip).
+   * Remove every tool registered for the current view.
+   *
+   * Note: ext-apps `RegisteredAppTool.remove()` emits `tools/list_changed`
+   * itself, so this method does not add an extra notification. No-op when
+   * nothing is currently registered.
    */
-  async unregisterAll(): Promise<void> {
+  unregisterAll(): void {
     if (this.handles.size === 0) return;
     for (const handle of this.handles.values()) {
       handle.remove();
     }
     this.handles.clear();
-    await this.app.sendToolListChanged();
   }
 
   // ---- ToolsHandle methods (exposed on ctx.tools) -------------------------
@@ -197,11 +204,11 @@ export class ToolRegistry<S> implements ToolsHandle {
     this.requireHandle(name).update(updates);
   }
 
-  async remove(name: string): Promise<void> {
+  remove(name: string): void {
     const handle = this.requireHandle(name);
     handle.remove();
     this.handles.delete(name);
-    await this.app.sendToolListChanged();
+    // ext-apps emits tools/list_changed from RegisteredAppTool.remove() itself.
   }
 
   private requireHandle(name: string): RegisteredAppTool {

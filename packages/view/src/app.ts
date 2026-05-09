@@ -62,12 +62,14 @@ export async function createMcpApp<S = Record<string, never>>(
     ? { ...baseCaps, tools: { listChanged: true, ...(baseCaps.tools ?? {}) } }
     : baseCaps;
 
-  // Forward ext-apps AppOptions opt-ins. Each field is set only when the
-  // user provided it, so the ext-apps defaults remain authoritative for
-  // anything left unspecified — guards against an ext-apps default flip
-  // turning into a silent regression on our side.
+  // Forward ext-apps AppOptions opt-ins. When the user opted into nothing,
+  // we pass no third arg so ext-apps' default-parameter assignment runs in
+  // full — passing `{}` would clobber `autoResize: true` because the
+  // 1.7.1 constructor uses a default-parameter assignment, not a merge.
   const appOptions = buildAppOptions(config);
-  const app = new App(config.info, finalCaps, appOptions);
+  const app = appOptions
+    ? new App(config.info, finalCaps, appOptions)
+    : new App(config.info, finalCaps);
 
   const parent = getParentWindow();
   const transport = new PostMessageTransport(parent, parent);
@@ -115,7 +117,7 @@ export async function createMcpApp<S = Record<string, never>>(
       navigate: (name, args) => router.goto(name, args),
       callTool: (name, args): Promise<ToolResult> =>
         callServerToolGated(app, capabilities, name, args),
-      sample: (args) => sampleGated<S>(app, capabilities, args),
+      sample: (args) => sampleGated(app, capabilities, args),
       capabilities,
       get hostContext() {
         return currentHostContext;
@@ -145,6 +147,15 @@ export async function createMcpApp<S = Record<string, never>>(
         try {
           await router.drain();
         } finally {
+          // Unregister any tools the active view still has registered, so a
+          // caller that reuses the underlying `App` after dispose() doesn't
+          // see stale view-side tools advertised. Best-effort: failures here
+          // must not block transport teardown.
+          try {
+            toolRegistry.unregisterAll();
+          } catch (err) {
+            console.warn("[mcp-view] toolRegistry.unregisterAll on dispose failed:", err);
+          }
           // Unwire the auto-theme listener so we don't leak handlers if the
           // underlying App is reused by the caller after dispose.
           app.removeEventListener("hostcontextchanged", onHostContextChanged);
@@ -246,17 +257,34 @@ function getParentWindow(): Window {
 }
 
 /**
- * Build the ext-apps `AppOptions` payload from `AppConfig`. Each field is
- * forwarded only when the user opted in — leaving an option `undefined` on
- * the resulting object lets the ext-apps default win, so we don't bake our
- * own assumptions about ext-apps' defaults into our public surface.
+ * Build the ext-apps `AppOptions` payload from `AppConfig`. Returns
+ * `undefined` when the user opted into nothing, so the caller can skip the
+ * third constructor arg entirely and let the ext-apps default-parameter
+ * assignment apply (`{ autoResize: true }`). Returning `{}` would silently
+ * disable `autoResize` because ext-apps' 1.7.1 constructor uses a default
+ * parameter, not a per-field merge.
+ *
+ * When at least one option is set, we mirror the ext-apps defaults for the
+ * other fields so that, for example, `{ strict: true }` doesn't accidentally
+ * disable `autoResize`. The mirrored defaults are documented inline; if
+ * ext-apps changes them in a future version, this list must move with it.
  */
 function buildAppOptions<S>(
   config: AppConfig<S>,
-): { strict?: boolean; allowUnsafeEval?: boolean; autoResize?: boolean } {
-  const opts: { strict?: boolean; allowUnsafeEval?: boolean; autoResize?: boolean } = {};
-  if (config.strict !== undefined) opts.strict = config.strict;
-  if (config.allowUnsafeEval !== undefined) opts.allowUnsafeEval = config.allowUnsafeEval;
-  if (config.autoResize !== undefined) opts.autoResize = config.autoResize;
-  return opts;
+): { strict?: boolean; allowUnsafeEval?: boolean; autoResize?: boolean } | undefined {
+  const anySet = config.strict !== undefined ||
+    config.allowUnsafeEval !== undefined ||
+    config.autoResize !== undefined;
+  if (!anySet) return undefined;
+
+  // ext-apps 1.7.1 defaults (mirror these here so partial opt-ins don't
+  // accidentally drop the unset fields):
+  //   autoResize: true
+  //   strict: false              (ext-apps warns instead of throwing)
+  //   allowUnsafeEval: false     (ext-apps applies z.config({ jitless: true }))
+  return {
+    autoResize: config.autoResize ?? true,
+    ...(config.strict !== undefined && { strict: config.strict }),
+    ...(config.allowUnsafeEval !== undefined && { allowUnsafeEval: config.allowUnsafeEval }),
+  };
 }

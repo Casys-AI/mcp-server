@@ -91,7 +91,7 @@ export interface SampleResult {
  * check guards against `as any` casts), checks the host capability, then
  * forwards to ext-apps with sensible defaults.
  */
-export async function sampleGated<S>(
+export async function sampleGated(
   app: App,
   capabilities: McpUiHostCapabilities,
   args: SampleArgs,
@@ -137,9 +137,6 @@ export async function sampleGated<S>(
     model: raw.model,
     raw,
   };
-  // S unused at runtime; kept on the signature so downstream wrappers can
-  // close over the App's state generic without fighting the type system.
-  void (null as unknown as S);
 }
 
 /**

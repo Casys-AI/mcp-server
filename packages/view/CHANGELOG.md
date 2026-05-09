@@ -25,13 +25,11 @@ unchanged. Bump is minor to surface the new public surface.
   the response — empty for multimodal/tool-use), `stopReason`, `model`, and `raw` (the full ext-apps
   response for callers that need fidelity).
 
-- **`defineView({ tools })` + `ctx.tools`** — wraps `App.registerTool` and
-  `App.sendToolListChanged`. Lets a View expose tools that the host (and its agent) can discover and
-  call, inverting the usual MCP flow. Two layers:
+- **`defineView({ tools })` + `ctx.tools`** — wraps `App.registerTool`. Lets a View expose tools
+  that the host (and its agent) can discover and call, inverting the usual MCP flow. Two layers:
 
   1. **Declarative on `defineView({ tools })`** — tools are auto-registered after `onEnter` and
-     removed before the next view's `onEnter`. Each transition emits a single batched
-     `tools/list_changed` notification (one for the unregister, one after the new view's register).
+     removed before the next view's `onEnter`, so each view sees only its own tools while mounted.
   2. **Imperative on `ctx.tools`** — `enable(name)`, `disable(name)`,
      `update(name, { title?, description?, annotations? })`, `remove(name)`. Use this for runtime
      availability ("save when dirty"); flipping `enabled` is cheaper than recreating the view.
@@ -42,6 +40,12 @@ unchanged. Bump is minor to surface the new public surface.
   `createMcpApp` auto-advertises `tools.listChanged: true` on the App capabilities when at least one
   view declares tools, merging with any user-supplied capabilities. Without this, ext-apps refuses
   `registerTool` calls.
+
+  Notifications: ext-apps' own `RegisteredAppTool.{enable,disable,update,remove}` and `registerTool`
+  each emit `tools/list_changed` internally (gated on the advertised `tools.listChanged`
+  capability). The wrapper does not add an extra batched notification on top, so the wire chatter
+  matches what ext-apps already produces. `dispose()` calls `unregisterAll()` so a caller that
+  reuses the underlying `App` after dispose doesn't see stale view-side tools advertised.
 
 - **`AppConfig.strict?: boolean`** — forwarded to ext-apps `AppOptions.strict`. Throws on detected
   misuse (host-bound methods called before `connect()`, one-shot handlers registered after
@@ -55,9 +59,12 @@ unchanged. Bump is minor to surface the new public surface.
   `ResizeObserver` that reports iframe size changes. Ext-apps default is `true`; set `false` for
   fixed-aspect-ratio embeds.
 
-  Each option is forwarded to ext-apps only when the user supplies it, so the ext-apps defaults
-  remain authoritative for anything unspecified — guards against an ext-apps default flip turning
-  into a silent regression here.
+  When _no_ option is set, `createMcpApp` calls the ext-apps `App` constructor without a third arg
+  so ext-apps' own default-parameter assignment runs in full. When _at least one_ option is set, the
+  wrapper mirrors ext-apps' defaults for the unset fields — partial opt-ins (e.g. only
+  `strict: true`) don't accidentally drop `autoResize`'s default-true behaviour, which would happen
+  if we naively passed `{ strict: true }` because ext-apps 1.7.1's constructor uses a
+  default-parameter assignment, not a per-field merge.
 
 ### Added (errors)
 

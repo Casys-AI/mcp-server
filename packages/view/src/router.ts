@@ -49,9 +49,11 @@ export class Router<S> {
   /**
    * Inject the tool registry. Optional: when absent, view-declared tools
    * are silently skipped (used by router_test which doesn't exercise the
-   * tools surface). When present, the router calls `unregisterAll()`
-   * before each `onLeave` and `registerForView(target.tools)` after each
-   * `onEnter`, so the host sees only the active view's tools.
+   * tools surface). When present, the router calls `unregisterAll()` after
+   * the previous view's `onLeave` (so user cleanup can still touch
+   * `ctx.tools.*` on its own tools) and `registerForView(target.tools)`
+   * after the target's `onEnter` (so data-loading runs before the host can
+   * call them). Net effect: the host sees only the active view's tools.
    */
   setToolRegistry(registry: ToolRegistry<S>): void {
     this._toolRegistry = registry;

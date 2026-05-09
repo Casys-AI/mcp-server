@@ -1,7 +1,10 @@
 /**
  * View-side tool registration: lets a View expose tools that the host
- * (and its agent) can call. Wraps `App.registerTool` /
- * `App.sendToolListChanged` from `@modelcontextprotocol/ext-apps` 1.7.0.
+ * (and its agent) can call. Wraps `App.registerTool` from
+ * `@modelcontextprotocol/ext-apps` 1.7.0. We do *not* call
+ * `sendToolListChanged` ourselves — ext-apps emits it from each
+ * `registerTool` / `RegisteredAppTool.{enable,disable,update,remove}`
+ * call internally, gated on the advertised `tools.listChanged` capability.
  *
  * Two layers:
  *

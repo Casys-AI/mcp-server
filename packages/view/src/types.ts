@@ -112,8 +112,13 @@ export interface ViewDefinition<S, A = void, D = void> extends ViewLifecycle<S, 
   /**
    * Tools this view exposes to the host (and its agent) while mounted.
    * Auto-registered after `onEnter` resolves and removed before the next
-   * view's `onEnter` runs. The host sees a single `tools/list_changed`
-   * notification per transition (batched).
+   * view's `onEnter` runs.
+   *
+   * Notifications: ext-apps emits `tools/list_changed` from each
+   * `registerTool` and `RegisteredAppTool.remove` call internally — the
+   * wrapper does not batch on top, so the host sees one notification per
+   * tool per transition. Tool maps are typically small (a few entries) so
+   * the wire chatter is acceptable.
    *
    * For dynamic availability ("save" only when a form is dirty), use
    * `ctx.tools.disable(name)` / `enable(name)` rather than re-creating

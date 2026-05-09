@@ -4,18 +4,33 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
 
 ## [Unreleased]
 
+## [0.17.5] - 2026-04-16
+
+### Fixed
+
+- **JWT rejection now logs the reason instead of swallowing it.** The bare
+  `catch {}` in `verifyToken` (jwt-provider.ts) returned `null` for _all_
+  errors, so JWKS fetch failures, audience mismatches, signature errors, and
+  token expiration were indistinguishable in production logs. Operators looking
+  at a 401 had no signal to differentiate "wrong audience" from "JWKS
+  unreachable" from "token genuinely invalid". The actual error message is now
+  written to `console.error` before mapping back to the `401` response,
+  preserving the existing external behaviour while making the failure mode
+  diagnosable.
+
 ## [0.17.4] - 2026-04-16
 
 ### Fixed
 
 - **Eliminated redundant `verifyToken` call on `tools/call`.** The HTTP-level
-  auth gate (`verifyHttpAuth`) and the middleware pipeline (`createAuthMiddleware`)
-  both called `provider.verifyToken()`, causing two independent JWKS lookups per
-  tool call. On cold cache (after server restart), concurrent requests could race
-  against the JWKS fetch — one call succeeds while the other gets a transient
-  failure swallowed by `catch {} → null → 401`. Fix: `verifyHttpAuth` now returns
-  the verified `AuthInfo`, which is passed to the middleware context.
-  `createAuthMiddleware` skips re-verification when `ctx.authInfo` is already set.
+  auth gate (`verifyHttpAuth`) and the middleware pipeline
+  (`createAuthMiddleware`) both called `provider.verifyToken()`, causing two
+  independent JWKS lookups per tool call. On cold cache (after server restart),
+  concurrent requests could race against the JWKS fetch — one call succeeds
+  while the other gets a transient failure swallowed by `catch {} → null → 401`.
+  Fix: `verifyHttpAuth` now returns the verified `AuthInfo`, which is passed to
+  the middleware context. `createAuthMiddleware` skips re-verification when
+  `ctx.authInfo` is already set.
 
 ## [0.17.3] - 2026-04-16
 
@@ -23,14 +38,13 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
 
 - **`resolveViewerDistPath` now handles HTTPS module URLs (JSR / remote
   modules).** When a package is consumed from JSR, `import.meta.url` is an
-  `https://jsr.io/...` URL, not a `file://` URL. The previous code passed it
-  to `fileUrlToPath()`, which only handles `file://` URLs, producing a
-  broken UNC-like path (`//jsr.io/...`) and making every candidate `exists`
-  check fail. The fix adds an early HTTPS branch that returns the raw
-  resolved URL string (via `new URL(...).href`) instead of calling
-  `fileUrlToPath`. The `exists` and `readFile` callbacks receive the HTTPS
-  URL string and are responsible for handling it (e.g., via `fetch()`). The
-  existing `file://` path is unchanged.
+  `https://jsr.io/...` URL, not a `file://` URL. The previous code passed it to
+  `fileUrlToPath()`, which only handles `file://` URLs, producing a broken
+  UNC-like path (`//jsr.io/...`) and making every candidate `exists` check fail.
+  The fix adds an early HTTPS branch that returns the raw resolved URL string
+  (via `new URL(...).href`) instead of calling `fileUrlToPath`. The `exists` and
+  `readFile` callbacks receive the HTTPS URL string and are responsible for
+  handling it (e.g., via `fetch()`). The existing `file://` path is unchanged.
 
 ## [0.17.2] - 2026-04-16
 

@@ -4,6 +4,85 @@ All notable changes to `@casys/mcp-compose` will be documented in this file.
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-05-09
+
+Maintenance release: align with upstream `@modelcontextprotocol/ext-apps` 1.7.x.
+
+### Changed
+
+- **Bump `@modelcontextprotocol/ext-apps` `^1.6.0` → `^1.7.1`** — picks up `App.registerTool()` /
+  `sendToolListChanged()` (View-side WebMCP-style tool exposure), `App.createSamplingMessage()`, and
+  handshake-ordering guards (warn-or-throw via `AppOptions.strict`). Compose only consumes ext-apps
+  **types** (see 0.4.1), so the new runtime defaults — notably `allowUnsafeEval: false` with
+  `z.config({ jitless: true })` enforced inside the `App` constructor — do not alter compose host
+  behaviour. They do affect `@casys/mcp-view`, which wraps the runtime class; cross-check the view
+  changelog if you embed both.
+
+- **Transitive: `zod` `4.3.6` → `4.4.3`** in `deno.lock`. Single zod family preserved (no duplicate
+  zod tree). Pulled in via the ext-apps re-resolution.
+
+## [0.5.1] - 2026-04-19
+
+Maintenance release: housekeeping after splitting `view/` into its own workspace package
+(`@casys/mcp-view`). The `compose/view` sub-export was preserved as a re-export shim, so existing
+`@casys/mcp-compose/view` consumers keep working unchanged.
+
+## [0.5.0] - 2026-04-18
+
+### Added
+
+- **New sub-export `@casys/mcp-compose/view`: a View-side SDK for SPA MCP Apps.** Lets MCP App
+  authors build single-page apps with internal routing instead of `sendMessage(ui/message)`, which
+  pollutes the chat thread and triggers Claude's prompt-injection warning. Pattern shifts from
+  `[click row] → sendMessage("show details X") → chat → warning → new card` to
+  `[click row] → ctx.callTool("get_x") → ctx.navigate("detail") → same iframe`.
+
+  Public API (`src/view/`): `createMcpApp({ info, root, views, initialView, … })` bootstraps the
+  `ui/initialize` handshake via ext-apps `App`; `defineView({ onEnter?, render, onLeave? })`
+  expresses view lifecycle; `AppContext { navigate, callTool, capabilities, state, app }` is passed
+  to every hook (`callTool` capability-gated on `host.serverTools`); `AppHandle` exposes router
+  controls and `dispose()`.
+
+  Thin wrapper around the ext-apps `App` runtime class — fits the 1-iframe-per-app model perfectly.
+  Memory-only routing (no URL / history API: iframes have no address bar). Router serialises
+  concurrent `goto()` via promise queue to prevent `onLeave`/`onEnter` interleaving on
+  double-clicks. `_currentView` is invalidated between `onLeave` and `onEnter` so a throwing
+  `onEnter` cannot corrupt router state. Errors propagate: the router never swallows user-code
+  exceptions.
+
+  Non-goals for 0.5.0 (reachable via `ctx.app` escape hatch; first-class wrappers later):
+  `sendMessage`, `updateModelContext`, `requestDisplayMode`, `openLink`, `downloadFile`.
+
+  Example: `packages/compose/examples/view-basic/` — vanilla list+detail App bundled via esbuild
+  into a self-contained ~490KB `index.html`. (No Vite: `import.meta.url` breaks under Vite SSR.)
+
+  16 new view/ tests cover handshake, router, capabilities gate, concurrent navigation, dispose
+  idempotence.
+
+### Known issues
+
+- Bundle weight dominated by `@modelcontextprotocol/sdk` + `zod` pulled transitively through
+  ext-apps — not tree-shakeable. Acceptable for single-page MCP Apps; mitigation deferred.
+
+## [0.4.1] - 2026-04-18
+
+Spec-alignment release: stop redefining types that the official `@modelcontextprotocol/ext-apps`
+spec already publishes. No behaviour changes.
+
+### Changed
+
+- **Consume `@modelcontextprotocol/ext-apps` types directly** — re-export `McpUiToolMeta`,
+  `McpUiResourceMeta`, `McpUiResourceCsp`, `McpUiResourcePermissions` from ext-apps instead of
+  redefining them locally. `McpUiCsp` / `McpUiPermissions` kept as `@deprecated` aliases for
+  backwards compat. `McpToolResult` stays compose-local (loose structural subset).
+  `LATEST_PROTOCOL_VERSION` now re-exported as `MCP_APPS_PROTOCOL_VERSION` from ext-apps so the
+  protocol version advertised in `ui/initialize` follows the dependency automatically (was hardcoded
+  `'2026-01-26'`).
+
+  Why types-only: ext-apps `App`/`AppBridge` runtime classes target a 1-iframe-per-client model
+  incompatible with compose's multi-iframe dashboard architecture. Types-only consumption keeps
+  compose Deno-first and avoids pulling Node>=20 runtime deps.
+
 ## [0.4.0] - 2026-04-08
 
 Cleanup release: removes dead code, fixes version drift, and tightens the MCP Apps host role compose

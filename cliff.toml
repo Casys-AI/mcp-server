@@ -1,0 +1,61 @@
+# git-cliff configuration for the @casys mcp-server monorepo.
+#
+# Per-package draft generation is driven by the `tag_pattern` and `include_paths`
+# fields, set on the CLI via `git cliff --tag-pattern '<pkg>-v.*' \
+# --include-path 'packages/<pkg>/**' --unreleased`. This file holds the shared
+# parser/template config; the per-package filters are applied per invocation
+# (see `packages/<pkg>/deno.json` → `tasks.changelog:draft`).
+#
+# Output is a *draft*. Run `git-cliff` to seed the [Unreleased] section, then
+# edit by hand to add the narrative explanation of *why* the change was made
+# (the format the repo's existing CHANGELOG entries follow). Conventional
+# commits give the *what* for free; the *why* is human work.
+#
+# Docs: https://git-cliff.org/docs/configuration
+
+[changelog]
+header = ""
+trim = true
+# Keep the rendered body close to the manual style: section headings (Added,
+# Fixed, Changed, …) plus bullets that surface the commit subject. Authors
+# expand each bullet by hand before commit.
+body = """
+{% if version %}\
+## [{{ version | trim_start_matches(pat="v") | split(pat="-v") | last }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+## [Unreleased]
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | upper_first }}
+
+{% for commit in commits %}\
+- {{ commit.message | upper_first }} ({{ commit.id | truncate(length=7, end="") }})
+{% endfor %}\
+{% endfor %}\n
+"""
+
+[git]
+conventional_commits = true
+filter_unconventional = false
+split_commits = false
+# Order matters — first match wins.
+commit_parsers = [
+  { message = "^feat", group = "Added" },
+  { message = "^fix", group = "Fixed" },
+  { message = "^perf", group = "Performance" },
+  { message = "^refactor", group = "Changed" },
+  { message = "^docs", group = "Documentation" },
+  { message = "^style", skip = true },
+  { message = "^test", group = "Tests" },
+  { message = "^chore\\(release\\):", skip = true },
+  { message = "^chore\\(deps\\)", group = "Chore" },
+  { message = "^chore", group = "Chore" },
+  { message = "^build", group = "Chore" },
+  { message = "^ci", skip = true },
+  { message = "^revert", group = "Reverted" },
+  { message = "^Merge", skip = true },
+  { message = "^Squashed", skip = true },
+]
+filter_commits = false
+tag_pattern = ".*-v[0-9]+\\.[0-9]+\\.[0-9]+"
+sort_commits = "newest"

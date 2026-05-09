@@ -13,7 +13,10 @@
     "test": "deno test --allow-read src/",
     "check": "deno check mod.ts",
     "lint": "deno lint",
-    "fmt": "deno fmt"
+    "fmt": "deno fmt",
+    "changelog:draft": "git -C ../.. cliff --config cliff.toml --tag-pattern 'view-v.*' --include-path 'packages/view/**' --unreleased",
+    "release:check": "deno task check && deno task lint && deno task test",
+    "release:tag": "deno run -A ../../scripts/release-tag.ts view"
   },
   "fmt": {
     "lineWidth": 100,

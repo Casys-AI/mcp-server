@@ -1,0 +1,78 @@
+name: Release
+
+# Triggered when a scoped tag matching `<package>-v<version>` is pushed.
+# Creates a GitHub Release with the matching CHANGELOG section as the body.
+# Publishing to JSR/npm is still handled by `publish.yml` on push to main —
+# this workflow only handles the human-facing GitHub Release artefact.
+
+on:
+  push:
+    tags:
+      - "server-v*"
+      - "compose-v*"
+      - "bridge-v*"
+      - "view-v*"
+
+jobs:
+  github-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Parse tag
+        id: parse
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          # `<pkg>-v<version>` → split on first `-v`
+          pkg="${TAG%-v*}"
+          version="${TAG#*-v}"
+          if [[ -z "$pkg" || -z "$version" ]]; then
+            echo "::error::Cannot parse tag as <pkg>-v<version>"
+            exit 1
+          fi
+          if [[ ! -f "packages/${pkg}/CHANGELOG.md" ]]; then
+            echo "::error::packages/${pkg}/CHANGELOG.md not found"
+            exit 1
+          fi
+          {
+            echo "pkg=${pkg}"
+            echo "version=${version}"
+            echo "changelog=packages/${pkg}/CHANGELOG.md"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Extract changelog section
+        env:
+          CHANGELOG_FILE: ${{ steps.parse.outputs.changelog }}
+          VERSION: ${{ steps.parse.outputs.version }}
+        run: |
+          # Print the section between `## [<version>]` and the next `## [`.
+          awk -v v="$VERSION" '
+            BEGIN { in_section = 0 }
+            /^## \[/ {
+              if (in_section) exit
+              if ($0 ~ "^## \\[" v "\\]") { in_section = 1; next }
+            }
+            in_section { print }
+          ' "$CHANGELOG_FILE" > release-notes.md
+          if [[ ! -s release-notes.md ]]; then
+            echo "::error::No section for version found in changelog"
+            exit 1
+          fi
+          echo "Extracted $(wc -l < release-notes.md) lines of release notes"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          PKG: ${{ steps.parse.outputs.pkg }}
+          VERSION: ${{ steps.parse.outputs.version }}
+        run: |
+          gh release create "$TAG" \
+            --title "@casys/mcp-${PKG} ${VERSION}" \
+            --notes-file release-notes.md \
+            --verify-tag

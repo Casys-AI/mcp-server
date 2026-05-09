@@ -80,5 +80,47 @@ class and will be removed in v1.0.)
   equivalents. The HTTP layer uses Hono for portable routing.
 - **Dual transport**: STDIO for local/CLI usage, HTTP (Streamable HTTP + SSE)
   for remote. Auth only applies to HTTP transport.
-- **Publishing**: On push to `main`, CI publishes to JSR (via `npx jsr publish`)
-  and npm (via the Node build script). Version is in `deno.json`.
+- **Publishing**: On push to `main`, `.github/workflows/publish.yml` publishes
+  every workspace member to JSR (`npx jsr publish` skips already-published
+  versions) and three of them to npm (`server`, `compose`, `bridge` via dnt;
+  `view` is JSR-only at this stage — see the comment at the bottom of
+  `publish.yml`). Each npm job is idempotent: it queries `npm view <pkg>@<ver>`
+  before publishing, so repeated runs without a version bump exit cleanly
+  instead of masking auth/build/network failures behind `|| echo`.
+
+## Release process
+
+Versioning is **independent per package**. Each package owns its own `deno.json`
+`version`, `CHANGELOG.md`, and (for `compose`) a `src/version.ts` constant whose
+drift is asserted by `version_test.ts`. Bump them together.
+
+Per-package release flow (run from inside `packages/<pkg>/`):
+
+```bash
+# 1. Generate a draft of unreleased entries from conventional commits.
+#    Output is meant to be edited — git-cliff gives you the *what*, you write
+#    the *why* in the narrative style the existing CHANGELOG entries follow.
+deno task changelog:draft
+
+# 2. Edit packages/<pkg>/CHANGELOG.md: promote [Unreleased] → [<version>] and
+#    expand bullets with the rationale, trade-offs, and breaking notes.
+
+# 3. Bump version in packages/<pkg>/deno.json. For compose, also bump
+#    packages/compose/src/version.ts (drift test will catch a miss).
+
+# 4. Run the release pre-flight (lint + check + tests).
+deno task release:check
+
+# 5. Create the annotated tag <pkg>-v<version> locally.
+deno task release:tag
+
+# 6. Push the tag to trigger .github/workflows/release.yml (creates the
+#    GitHub Release with the CHANGELOG section as notes). The actual JSR/npm
+#    publish still rides on push to main, separately.
+git push origin <pkg>-v<version>
+```
+
+Tag format is `<pkg>-v<version>` (e.g. `server-v0.17.6`, `compose-v0.5.2`). This
+is what `release.yml` listens for and what `git-cliff` filters on via the shared
+`cliff.toml` at the repo root. **Do not** create unscoped `vX.Y.Z` tags for
+individual package releases — those are reserved for legacy history.

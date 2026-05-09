@@ -12,7 +12,10 @@
   "tasks": {
     "test": "deno test --allow-net --allow-read --allow-write --allow-env --no-check src/",
     "test:security": "deno test --allow-net --allow-read --allow-env --no-check src/http-security_test.ts",
-    "test:http": "deno test --allow-net --allow-read --allow-env --no-check src/http-server_test.ts src/http-security_test.ts"
+    "test:http": "deno test --allow-net --allow-read --allow-env --no-check src/http-server_test.ts src/http-security_test.ts",
+    "changelog:draft": "git -C ../.. cliff --config cliff.toml --tag-pattern 'server-v.*' --include-path 'packages/server/**' --unreleased",
+    "release:check": "deno task test",
+    "release:tag": "deno run -A ../../scripts/release-tag.ts server"
   },
   "imports": {
     "@modelcontextprotocol/sdk": "npm:@modelcontextprotocol/sdk@^1.29.0",

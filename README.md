@@ -150,10 +150,10 @@ lifecycle handling.
 Deno workspace — cross-package imports resolve automatically.
 
 ```bash
-# Tests
-cd packages/server && deno task test     # 270 tests
-cd packages/compose && deno task test    # 219 tests
-cd packages/bridge && deno task test     # 120 tests
+# Run tests (per package)
+cd packages/server && deno task test
+cd packages/compose && deno task test
+cd packages/bridge && deno task test
 ```
 
 ## License

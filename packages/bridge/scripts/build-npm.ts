@@ -10,6 +10,18 @@
 
 import { build, emptyDir } from "@deno/dnt";
 
+const denoJsonText = await Deno.readTextFile(
+  new URL("../deno.json", import.meta.url),
+);
+const denoJson = JSON.parse(denoJsonText) as { version?: string };
+const VERSION = denoJson.version;
+if (!VERSION) {
+  throw new Error(
+    "[build-npm] failed to read version from packages/bridge/deno.json",
+  );
+}
+console.log(`[build-npm] Version: ${VERSION}`);
+
 await emptyDir("./dist-node");
 
 await build({
@@ -20,7 +32,7 @@ await build({
   },
   package: {
     name: "@casys/mcp-bridge",
-    version: "0.2.0",
+    version: VERSION,
     description:
       "Bridge MCP Apps interactive UIs to messaging platforms (Telegram Mini Apps, LINE LIFF)",
     license: "MIT",

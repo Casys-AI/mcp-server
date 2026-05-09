@@ -30,6 +30,7 @@ function fakeContext<S>(state: S): AppContext<S> {
   return {
     navigate: () => Promise.resolve(),
     callTool: () => Promise.reject(new Error("not used in router tests")),
+    sample: () => Promise.reject(new Error("not used in router tests")),
     capabilities: {} as McpUiHostCapabilities,
     hostContext: {},
     state,

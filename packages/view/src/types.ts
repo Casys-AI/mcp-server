@@ -18,10 +18,11 @@ import type {
   McpUiHostCapabilities,
   McpUiHostContext,
 } from "@modelcontextprotocol/ext-apps";
-import type {
-  CallToolResult,
-  Implementation,
-} from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult, Implementation } from "@modelcontextprotocol/sdk/types.js";
+
+import type { SampleArgs, SampleResult } from "./sample.ts";
+
+export type { SampleArgs, SampleResult } from "./sample.ts";
 
 // ---------------------------------------------------------------------------
 // Rendering primitives
@@ -99,8 +100,7 @@ export interface ViewLifecycle<S, A, D> {
  * @typeParam D - Data produced by `onEnter`. `void`/`undefined` for static
  *   views (no `onEnter`).
  */
-export interface ViewDefinition<S, A = void, D = void>
-  extends ViewLifecycle<S, A, D> {
+export interface ViewDefinition<S, A = void, D = void> extends ViewLifecycle<S, A, D> {
   /**
    * Render the view. Receives the `data` returned by `onEnter` (or
    * `undefined` if none).
@@ -186,8 +186,26 @@ export interface AppContext<S> {
   state: S;
 
   /**
+   * Request an LLM completion from the host (MCP `sampling/createMessage`).
+   *
+   * Capability-gated on `host.capabilities.sampling`. Throws
+   * `MCPViewError("MISSING_SAMPLING_CAPABILITY")` if absent.
+   *
+   * Two forms (mutually exclusive at the type level):
+   * - `{ prompt }` — sugar for a single user message.
+   * - `{ messages }` — explicit multi-turn array.
+   *
+   * Returns `{ text, stopReason, model, raw }`. `text` is the concatenation
+   * of every `type: "text"` block in the response; for multimodal output or
+   * tool-use loops, read `raw` directly or call
+   * `ctx.app.createSamplingMessage(...)` for full control.
+   */
+  sample(args: SampleArgs): Promise<SampleResult>;
+
+  /**
    * Escape hatch: the underlying ext-apps `App` instance. Use for anything
-   * the SDK does not wrap (sendMessage, updateModelContext, event listeners).
+   * the SDK does not wrap (sendMessage, updateModelContext, event listeners,
+   * `createSamplingMessage` with `tools`, raw `registerTool` handles, …).
    */
   readonly app: App;
 }

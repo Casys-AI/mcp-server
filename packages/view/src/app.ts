@@ -16,21 +16,13 @@ import {
   applyHostStyleVariables,
   PostMessageTransport,
 } from "@modelcontextprotocol/ext-apps";
-import type {
-  McpUiHostCapabilities,
-  McpUiHostContext,
-} from "@modelcontextprotocol/ext-apps";
+import type { McpUiHostCapabilities, McpUiHostContext } from "@modelcontextprotocol/ext-apps";
 
-import type {
-  AppConfig,
-  AppContext,
-  AppHandle,
-  ToolResult,
-  ViewDefinition,
-} from "./types.ts";
+import type { AppConfig, AppContext, AppHandle, ToolResult, ViewDefinition } from "./types.ts";
 import { Router } from "./router.ts";
 import { callServerToolGated } from "./capabilities.ts";
 import { MCPViewError } from "./errors.ts";
+import { sampleGated } from "./sample.ts";
 
 /**
  * Identity function: lets TS infer `S`, `A`, `D` at the call site from the
@@ -107,6 +99,7 @@ export async function createMcpApp<S = Record<string, never>>(
       navigate: (name, args) => router.goto(name, args),
       callTool: (name, args): Promise<ToolResult> =>
         callServerToolGated(app, capabilities, name, args),
+      sample: (args) => sampleGated<S>(app, capabilities, args),
       capabilities,
       get hostContext() {
         return currentHostContext;

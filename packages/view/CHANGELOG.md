@@ -7,6 +7,69 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-09
+
+Wraps the four interesting additions of `@modelcontextprotocol/ext-apps` 1.7.0 as first-class
+`@casys/mcp-view` API. All changes are strictly additive — existing 0.2.x code keeps working
+unchanged. Bump is minor to surface the new public surface.
+
+### Added
+
+- **`ctx.sample(args): Promise<SampleResult>`** — wraps `App.createSamplingMessage`. Lets a View ask
+  the host to run an LLM inference on its behalf (auto-titles, summaries, suggestions, …) without
+  round-tripping through a server-side tool. Capability-gated on `host.capabilities.sampling`;
+  throws `MCPViewError("MISSING_SAMPLING_CAPABILITY")` otherwise. `SampleArgs` is a discriminated
+  union: `{ prompt }` (sugar — single user message) | `{ messages }` (explicit multi-turn). Common
+  fields: `systemPrompt`, `maxTokens` (default `1024`), `temperature`, `modelPreferences`,
+  `stopSequences`, `metadata`. Result exposes `text` (concatenation of every `type: "text"` block in
+  the response — empty for multimodal/tool-use), `stopReason`, `model`, and `raw` (the full ext-apps
+  response for callers that need fidelity).
+
+- **`defineView({ tools })` + `ctx.tools`** — wraps `App.registerTool` and
+  `App.sendToolListChanged`. Lets a View expose tools that the host (and its agent) can discover and
+  call, inverting the usual MCP flow. Two layers:
+
+  1. **Declarative on `defineView({ tools })`** — tools are auto-registered after `onEnter` and
+     removed before the next view's `onEnter`. Each transition emits a single batched
+     `tools/list_changed` notification (one for the unregister, one after the new view's register).
+  2. **Imperative on `ctx.tools`** — `enable(name)`, `disable(name)`,
+     `update(name, { title?, description?, annotations? })`, `remove(name)`. Use this for runtime
+     availability ("save when dirty"); flipping `enabled` is cheaper than recreating the view.
+
+  Schema surface is `StandardSchemaV1` (Zod v4, Valibot, ArkType). `update` deliberately does not
+  accept schema changes — swap by removing and re-registering on the next view.
+
+  `createMcpApp` auto-advertises `tools.listChanged: true` on the App capabilities when at least one
+  view declares tools, merging with any user-supplied capabilities. Without this, ext-apps refuses
+  `registerTool` calls.
+
+- **`AppConfig.strict?: boolean`** — forwarded to ext-apps `AppOptions.strict`. Throws on detected
+  misuse (host-bound methods called before `connect()`, one-shot handlers registered after
+  `connect()`) instead of `console.warn`. Default: `false`. Recommended `true` in dev.
+
+- **`AppConfig.allowUnsafeEval?: boolean`** — forwarded to ext-apps `AppOptions.allowUnsafeEval`.
+  Default: `false` (strict CSP via `z.config({ jitless: true })`). Set `true` only when the host's
+  CSP permits `unsafe-eval` and the JIT path is required.
+
+- **`AppConfig.autoResize?: boolean`** — forwarded to ext-apps `AppOptions.autoResize`. Toggles the
+  `ResizeObserver` that reports iframe size changes. Ext-apps default is `true`; set `false` for
+  fixed-aspect-ratio embeds.
+
+  Each option is forwarded to ext-apps only when the user supplies it, so the ext-apps defaults
+  remain authoritative for anything unspecified — guards against an ext-apps default flip turning
+  into a silent regression here.
+
+### Added (errors)
+
+- `MCPViewError` taxonomy gains three codes: `MISSING_SAMPLING_CAPABILITY`, `INVALID_SAMPLE_ARGS`,
+  `UNKNOWN_TOOL`. All follow the existing closed-taxonomy contract (stable `.code`, structured
+  `.data`).
+
+### Tests
+
+- 21 new tests across `sample_test.ts` (8) and `tools_test.ts` (12) plus one compile-time smoke test
+  for the new `AppConfig` options. Total now 51 (up from 30).
+
 ## [0.2.1] - 2026-05-09
 
 Maintenance release: align with upstream `@modelcontextprotocol/ext-apps` 1.7.x.

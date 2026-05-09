@@ -34,6 +34,12 @@ function fakeContext<S>(state: S): AppContext<S> {
     capabilities: {} as McpUiHostCapabilities,
     hostContext: {},
     state,
+    tools: {
+      enable: () => {},
+      disable: () => {},
+      update: () => {},
+      remove: () => Promise.resolve(),
+    },
     app: {} as App,
   };
 }

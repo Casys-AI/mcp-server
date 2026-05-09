@@ -21,8 +21,10 @@ import type {
 import type { CallToolResult, Implementation } from "@modelcontextprotocol/sdk/types.js";
 
 import type { SampleArgs, SampleResult } from "./sample.ts";
+import type { ToolsHandle, ViewToolDef } from "./tools.ts";
 
 export type { SampleArgs, SampleResult } from "./sample.ts";
+export type { InferToolArgs, ToolsHandle, ViewToolDef } from "./tools.ts";
 
 // ---------------------------------------------------------------------------
 // Rendering primitives
@@ -106,6 +108,23 @@ export interface ViewDefinition<S, A = void, D = void> extends ViewLifecycle<S, 
    * `undefined` if none).
    */
   render: ViewRenderer<S, D>;
+
+  /**
+   * Tools this view exposes to the host (and its agent) while mounted.
+   * Auto-registered after `onEnter` resolves and removed before the next
+   * view's `onEnter` runs. The host sees a single `tools/list_changed`
+   * notification per transition (batched).
+   *
+   * For dynamic availability ("save" only when a form is dirty), use
+   * `ctx.tools.disable(name)` / `enable(name)` rather than re-creating
+   * the view.
+   *
+   * Each tool's `handler(ctx, args)` is invoked with the live `AppContext`
+   * and the schema-validated args. Return a `CallToolResult` (the SDK
+   * shape — `{ content: [...], isError? }`).
+   */
+  // deno-lint-ignore no-explicit-any
+  tools?: Record<string, ViewToolDef<S, any>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -201,6 +220,21 @@ export interface AppContext<S> {
    * `ctx.app.createSamplingMessage(...)` for full control.
    */
   sample(args: SampleArgs): Promise<SampleResult>;
+
+  /**
+   * Imperative handle to the tools the current view declared via
+   * `defineView({ tools })`. Use this when availability depends on runtime
+   * state (form dirty, selection size, …) — `disable` / `enable` flip the
+   * advertised availability without unmounting the view.
+   *
+   * `remove(name)` is permanent for the rest of the view's lifetime; the
+   * tool will only come back if the view is re-entered. For schema swaps,
+   * remove and re-register on the next view rather than mutating in place.
+   *
+   * Throws `MCPViewError("UNKNOWN_TOOL")` when the named tool is not
+   * registered by the active view.
+   */
+  readonly tools: ToolsHandle;
 
   /**
    * Escape hatch: the underlying ext-apps `App` instance. Use for anything

@@ -23,6 +23,7 @@ import { Router } from "./router.ts";
 import { callServerToolGated } from "./capabilities.ts";
 import { MCPViewError } from "./errors.ts";
 import { sampleGated } from "./sample.ts";
+import { ToolRegistry, viewsDeclareTools } from "./tools.ts";
 
 /**
  * Identity function: lets TS infer `S`, `A`, `D` at the call site from the
@@ -52,7 +53,16 @@ export async function createMcpApp<S = Record<string, never>>(
 ): Promise<AppHandle<S>> {
   validateConfig(config);
 
-  const app = new App(config.info, config.capabilities ?? {});
+  // Auto-advertise the `tools.listChanged` capability if any view declares
+  // tools — ext-apps refuses registerTool() otherwise. We merge with the
+  // user-supplied capabilities rather than overwriting, so authors keep
+  // full control of unrelated caps.
+  const baseCaps = config.capabilities ?? {};
+  const finalCaps = viewsDeclareTools(config.views)
+    ? { ...baseCaps, tools: { listChanged: true, ...(baseCaps.tools ?? {}) } }
+    : baseCaps;
+
+  const app = new App(config.info, finalCaps);
 
   const parent = getParentWindow();
   const transport = new PostMessageTransport(parent, parent);
@@ -90,6 +100,7 @@ export async function createMcpApp<S = Record<string, never>>(
   let handle: AppHandle<S>;
   try {
     const router = new Router<S>(config.views, config.root);
+    const toolRegistry = new ToolRegistry<S>(app);
 
     // Build the context. `navigate` and `callTool` close over `router` and
     // `app` respectively; the same object reference is reused for the whole
@@ -105,9 +116,12 @@ export async function createMcpApp<S = Record<string, never>>(
         return currentHostContext;
       },
       state,
+      tools: toolRegistry,
       app,
     };
+    toolRegistry.setContext(ctx);
     router.setContext(ctx);
+    router.setToolRegistry(toolRegistry);
 
     await router.goto(config.initialView, config.initialArgs);
 

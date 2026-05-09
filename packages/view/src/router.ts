@@ -18,6 +18,7 @@
  */
 
 import type { AppContext, ViewMap, ViewOutput } from "./types.ts";
+import type { ToolRegistry } from "./tools.ts";
 import { MCPViewError } from "./errors.ts";
 
 /**
@@ -29,6 +30,7 @@ export class Router<S> {
   private _currentView: string | null = null;
   private _context: AppContext<S> | null = null;
   private _queue: Promise<void> = Promise.resolve();
+  private _toolRegistry: ToolRegistry<S> | null = null;
 
   constructor(views: ViewMap<S>, root: HTMLElement) {
     this.views = views;
@@ -42,6 +44,17 @@ export class Router<S> {
    */
   setContext(ctx: AppContext<S>): void {
     this._context = ctx;
+  }
+
+  /**
+   * Inject the tool registry. Optional: when absent, view-declared tools
+   * are silently skipped (used by router_test which doesn't exercise the
+   * tools surface). When present, the router calls `unregisterAll()`
+   * before each `onLeave` and `registerForView(target.tools)` after each
+   * `onEnter`, so the host sees only the active view's tools.
+   */
+  setToolRegistry(registry: ToolRegistry<S>): void {
+    this._toolRegistry = registry;
   }
 
   get currentView(): string {
@@ -109,11 +122,23 @@ export class Router<S> {
       if (prev?.onLeave) {
         await prev.onLeave(this._context);
       }
+      // Unregister the previous view's tools after onLeave so that any
+      // cleanup the user does there can still call ctx.tools.* on its
+      // own tools. Single batched tools/list_changed sent.
+      if (this._toolRegistry !== null) {
+        await this._toolRegistry.unregisterAll();
+      }
     }
 
-    const data = target.onEnter
-      ? await target.onEnter(this._context, args)
-      : undefined;
+    const data = target.onEnter ? await target.onEnter(this._context, args) : undefined;
+
+    // Register tools after onEnter so the user's data-loading code runs
+    // before the host can advertise / call them. A single batched
+    // tools/list_changed notification is sent.
+    if (this._toolRegistry !== null) {
+      await this._toolRegistry.registerForView(target.tools);
+    }
+
     const output = target.render(this._context, data);
 
     mount(this.root, output);

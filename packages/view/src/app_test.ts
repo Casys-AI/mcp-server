@@ -11,6 +11,26 @@ import type { AppConfig } from "./types.ts";
 
 const minimalInfo = { name: "TestApp", version: "0.0.0" };
 
+Deno.test("AppConfig accepts strict, allowUnsafeEval, autoResize options (compile-time)", () => {
+  // Smoke test — the value is asserted, but the real assertion is that this
+  // file type-checks: AppConfig must surface the three new pass-through
+  // fields so consumers can opt in. createMcpApp forwards them to the
+  // ext-apps `App` constructor; verifying the actual forwarding requires a
+  // browser DOM mock and is left to the integration test rig.
+  const cfg: AppConfig<Record<string, never>> = {
+    info: minimalInfo,
+    root: {} as unknown as HTMLElement,
+    views: { home: { render: () => "" } },
+    initialView: "home",
+    strict: true,
+    allowUnsafeEval: false,
+    autoResize: true,
+  };
+  assertEquals(cfg.strict, true);
+  assertEquals(cfg.allowUnsafeEval, false);
+  assertEquals(cfg.autoResize, true);
+});
+
 Deno.test("createMcpApp rejects when initialView is not a registered view", async () => {
   const cfg = {
     info: minimalInfo,

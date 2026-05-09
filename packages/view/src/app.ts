@@ -62,7 +62,12 @@ export async function createMcpApp<S = Record<string, never>>(
     ? { ...baseCaps, tools: { listChanged: true, ...(baseCaps.tools ?? {}) } }
     : baseCaps;
 
-  const app = new App(config.info, finalCaps);
+  // Forward ext-apps AppOptions opt-ins. Each field is set only when the
+  // user provided it, so the ext-apps defaults remain authoritative for
+  // anything left unspecified — guards against an ext-apps default flip
+  // turning into a silent regression on our side.
+  const appOptions = buildAppOptions(config);
+  const app = new App(config.info, finalCaps, appOptions);
 
   const parent = getParentWindow();
   const transport = new PostMessageTransport(parent, parent);
@@ -238,4 +243,20 @@ function getParentWindow(): Window {
     );
   }
   return w.parent;
+}
+
+/**
+ * Build the ext-apps `AppOptions` payload from `AppConfig`. Each field is
+ * forwarded only when the user opted in — leaving an option `undefined` on
+ * the resulting object lets the ext-apps default win, so we don't bake our
+ * own assumptions about ext-apps' defaults into our public surface.
+ */
+function buildAppOptions<S>(
+  config: AppConfig<S>,
+): { strict?: boolean; allowUnsafeEval?: boolean; autoResize?: boolean } {
+  const opts: { strict?: boolean; allowUnsafeEval?: boolean; autoResize?: boolean } = {};
+  if (config.strict !== undefined) opts.strict = config.strict;
+  if (config.allowUnsafeEval !== undefined) opts.allowUnsafeEval = config.allowUnsafeEval;
+  if (config.autoResize !== undefined) opts.autoResize = config.autoResize;
+  return opts;
 }

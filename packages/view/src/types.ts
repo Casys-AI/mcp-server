@@ -318,6 +318,43 @@ export interface AppConfig<S = Record<string, never>> {
    * `applyHostStyleVariables`, `applyHostFonts`) are skipped.
    */
   autoTheme?: boolean;
+
+  /**
+   * Throw on detected ext-apps misuse instead of logging `console.warn`.
+   *
+   * Forwarded to the ext-apps `App` constructor as `AppOptions.strict`.
+   * Currently affects calling host-bound methods (e.g. `callServerTool`,
+   * `sendMessage`) before `connect()` completes the `ui/initialize`
+   * handshake, and registering one-shot event handlers after `connect()`.
+   *
+   * Default: `false` (warn only). Recommended: `true` in dev to surface
+   * ordering bugs early; ext-apps documents that throw will become the
+   * default in a future major release.
+   */
+  strict?: boolean;
+
+  /**
+   * Allow runtime expression compilation (`eval`-class APIs) in ext-apps
+   * internals — currently affects Zod's JIT path only.
+   *
+   * Forwarded to the ext-apps `App` constructor as
+   * `AppOptions.allowUnsafeEval`. Default: `false` — runs under strict CSP
+   * (`z.config({ jitless: true })`) so a host with `Content-Security-Policy:
+   * script-src 'self'` does not crash the app. Set to `true` only when the
+   * host's CSP explicitly allows `unsafe-eval` and the JIT path is needed
+   * for performance.
+   */
+  allowUnsafeEval?: boolean;
+
+  /**
+   * Automatically report iframe size changes to the host via a
+   * `ResizeObserver` watching `document.body` and `document.documentElement`.
+   *
+   * Forwarded to the ext-apps `App` constructor as `AppOptions.autoResize`.
+   * Default (per ext-apps): `true`. Set to `false` if the App manages its
+   * own size negotiation explicitly (e.g. for fixed-aspect-ratio embeds).
+   */
+  autoResize?: boolean;
 }
 
 // ---------------------------------------------------------------------------

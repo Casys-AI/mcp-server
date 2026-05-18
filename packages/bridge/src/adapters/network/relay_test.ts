@@ -49,6 +49,40 @@ Deno.test("relay rejects when no agent is connected", async () => {
   });
 });
 
+Deno.test("relay unregister rejects in-flight calls with a cancellation error", async () => {
+  const relay = new NetworkRelay();
+  relay.registerAgent({
+    tenantId: "tenant_123",
+    targetType: "erpnext",
+    agentId: "agent_1",
+    send: () => new Promise(() => {}),
+  });
+
+  const call = relay.callTool({
+    tenantId: "tenant_123",
+    targetType: "erpnext",
+    toolName: "erpnext.customer_list",
+    arguments: {},
+    actorSubject: null,
+  });
+  const rejection = withTimeout(
+    assertRejects(
+      () => call,
+      NetworkRelayError,
+      "TUNNEL_REQUEST_CANCELLED",
+    ),
+    "in-flight call was not cancelled",
+  );
+
+  relay.unregisterAgent("tenant_123", "erpnext", "agent_1");
+
+  const error = await rejection;
+  assertEquals(error.code, "TUNNEL_REQUEST_CANCELLED");
+  assertEquals(error.context.tenantId, "tenant_123");
+  assertEquals(error.context.targetType, "erpnext");
+  assertEquals(error.context.agentId, "agent_1");
+});
+
 Deno.test("relay keying does not collide when identifiers contain separators", async () => {
   const relay = new NetworkRelay();
   relay.registerAgent({
@@ -96,8 +130,65 @@ Deno.test("relay keying does not collide when identifiers contain separators", a
   );
 });
 
-Deno.test("relay runs concurrent calls to the same agent by default", async () => {
+Deno.test("relay rejects concurrent calls to the same agent by default", async () => {
   const relay = new NetworkRelay();
+  let resolveFirst!: (value: void) => void;
+  const firstSendComplete = new Promise<void>((resolve) => {
+    resolveFirst = resolve;
+  });
+
+  relay.registerAgent({
+    tenantId: "tenant_123",
+    targetType: "erpnext",
+    agentId: "agent_1",
+    send: async (message) => {
+      await firstSendComplete;
+      return {
+        type: "tool.result",
+        requestId: message.requestId,
+        result: { ok: true },
+      };
+    },
+  });
+
+  const firstCall = relay.callTool({
+    tenantId: "tenant_123",
+    targetType: "erpnext",
+    toolName: "erpnext.customer_list",
+    arguments: {},
+    actorSubject: null,
+  });
+
+  let secondCall: Promise<unknown> | undefined;
+  try {
+    const error = await withTimeout(
+      assertRejects(
+        () => {
+          secondCall = relay.callTool({
+            tenantId: "tenant_123",
+            targetType: "erpnext",
+            toolName: "erpnext.customer_get",
+            arguments: {},
+            actorSubject: null,
+          });
+          return secondCall;
+        },
+        NetworkRelayError,
+        "TUNNEL_AGENT_BUSY",
+      ),
+      "second concurrent call was accepted",
+    );
+    assertEquals(error.code, "TUNNEL_AGENT_BUSY");
+  } finally {
+    resolveFirst();
+    await Promise.allSettled([firstCall, secondCall]);
+  }
+
+  assertEquals(await firstCall, { ok: true });
+});
+
+Deno.test("relay parallel strategy runs concurrent calls to the same agent", async () => {
+  const relay = new NetworkRelay({ concurrencyStrategy: "parallel" });
   const calls: string[] = [];
 
   relay.registerAgent({
@@ -183,16 +274,39 @@ Deno.test("relay reject strategy rejects concurrent calls to the same agent", as
   assertEquals(await firstCall, { ok: true });
 });
 
-Deno.test("relay times out stuck agents and clears busy state", async () => {
+function withTimeout<T>(promise: Promise<T>, message: string): Promise<T> {
+  let timer: number | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), 20);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer !== undefined) clearTimeout(timer);
+  });
+}
+
+Deno.test("relay keeps agent busy after timeout until send settles", async () => {
   const relay = new NetworkRelay({ requestTimeoutMs: 1 });
-  let shouldHang = true;
+  let finishFirst!: () => void;
+  let firstSignal: AbortSignal | undefined;
+  let calls = 0;
 
   relay.registerAgent({
     tenantId: "tenant_123",
     targetType: "erpnext",
     agentId: "agent_1",
-    send: (message) => {
-      if (shouldHang) return new Promise(() => {});
+    send: (message, options) => {
+      calls++;
+      if (calls === 1) {
+        firstSignal = options?.signal;
+        return new Promise((resolve) => {
+          finishFirst = () =>
+            resolve({
+              type: "tool.result",
+              requestId: message.requestId,
+              result: { late: true },
+            });
+        });
+      }
       return Promise.resolve({
         type: "tool.result",
         requestId: message.requestId,
@@ -201,20 +315,40 @@ Deno.test("relay times out stuck agents and clears busy state", async () => {
     },
   });
 
-  await assertRejects(
-    () =>
-      relay.callTool({
-        tenantId: "tenant_123",
-        targetType: "erpnext",
-        toolName: "erpnext.customer_list",
-        arguments: {},
-        actorSubject: null,
-      }),
-    Error,
-    "TUNNEL_REQUEST_TIMEOUT",
-  );
+  try {
+    const timeout = await assertRejects(
+      () =>
+        relay.callTool({
+          tenantId: "tenant_123",
+          targetType: "erpnext",
+          toolName: "erpnext.customer_list",
+          arguments: {},
+          actorSubject: null,
+        }),
+      NetworkRelayError,
+      "TUNNEL_REQUEST_TIMEOUT",
+    );
+    assertEquals(timeout.code, "TUNNEL_REQUEST_TIMEOUT");
+    assertEquals(firstSignal?.aborted, true);
 
-  shouldHang = false;
+    const busy = await assertRejects(
+      () =>
+        relay.callTool({
+          tenantId: "tenant_123",
+          targetType: "erpnext",
+          toolName: "erpnext.customer_list",
+          arguments: {},
+          actorSubject: null,
+        }),
+      NetworkRelayError,
+      "TUNNEL_AGENT_BUSY",
+    );
+    assertEquals(busy.code, "TUNNEL_AGENT_BUSY");
+  } finally {
+    finishFirst?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
   const result = await relay.callTool({
     tenantId: "tenant_123",
     targetType: "erpnext",
@@ -224,6 +358,45 @@ Deno.test("relay times out stuck agents and clears busy state", async () => {
   });
 
   assertEquals(result, { ok: true });
+});
+
+Deno.test("relay clears busy state after timeout when agent is dropped", async () => {
+  const relay = new NetworkRelay({ requestTimeoutMs: 1 });
+
+  relay.registerAgent({
+    tenantId: "tenant_drop",
+    targetType: "erpnext",
+    agentId: "agent_1",
+    send: () => new Promise(() => {}),
+  });
+
+  await assertRejects(
+    () =>
+      relay.callTool({
+        tenantId: "tenant_drop",
+        targetType: "erpnext",
+        toolName: "erpnext.customer_list",
+        arguments: {},
+        actorSubject: null,
+      }),
+    NetworkRelayError,
+    "TUNNEL_REQUEST_TIMEOUT",
+  );
+
+  relay.unregisterAgent("tenant_drop", "erpnext", "agent_1");
+
+  await assertRejects(
+    () =>
+      relay.callTool({
+        tenantId: "tenant_drop",
+        targetType: "erpnext",
+        toolName: "erpnext.customer_list",
+        arguments: {},
+        actorSubject: null,
+      }),
+    NetworkRelayError,
+    "NO_TUNNEL_AGENT",
+  );
 });
 
 Deno.test("relay ignores stale unregister from replaced agent", async () => {

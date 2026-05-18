@@ -111,8 +111,8 @@ export type { LiffSdk, LineAdapterConfig } from "./adapters/line/types.ts";
 
 // Adapters — Network tunnel
 export {
-  allowInsecureNetworkAgentHelloForTests,
   attachNetworkTunnelSocket,
+  NETWORK_PROTOCOL_VERSION,
   NetworkRelay,
   NetworkRelayError,
   NetworkTunnelClient,
@@ -131,16 +131,20 @@ export type {
   NetworkRelayErrorCode,
   NetworkRelayOptions,
   NetworkToolCallHandler,
+  NetworkToolCallHandlerOptions,
   NetworkToolCallRequest,
   NetworkToolCallResponse,
   NetworkTransportAuth,
   NetworkTunnelClientOptions,
+  NetworkTunnelCloseReason,
+  NetworkTunnelReconnectOptions,
   NetworkTunnelSocket,
   NetworkTunnelTransport,
   NetworkWebSocketFactory,
   NetworkWebSocketFactoryOptions,
   NetworkWebSocketLike,
   RegisteredNetworkAgent,
+  RegisteredNetworkAgentSendOptions,
   RelayToolCall,
   WebSocketNetworkTransportOptions,
 } from "./adapters/network/mod.ts";

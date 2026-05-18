@@ -1,8 +1,8 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import type { NetworkMessage } from "./types.ts";
-import { NetworkRelay } from "./relay.ts";
+import { NETWORK_PROTOCOL_VERSION, type NetworkMessage } from "./types.ts";
+import { NetworkRelay, NetworkRelayError } from "./relay.ts";
+import { allowInsecureNetworkAgentHelloForTests } from "./_test-fixtures.ts";
 import {
-  allowInsecureNetworkAgentHelloForTests,
   attachNetworkTunnelSocket,
   type NetworkTunnelSocket,
 } from "./socket-relay.ts";
@@ -40,6 +40,7 @@ Deno.test("attachNetworkTunnelSocket registers agent and routes tool calls", asy
 
   socket.receive({
     type: "agent.hello",
+    protocolVersion: NETWORK_PROTOCOL_VERSION,
     tenantId: "tenant_route_1",
     targetType: "erpnext",
     agentId: "agent_1",
@@ -49,6 +50,7 @@ Deno.test("attachNetworkTunnelSocket registers agent and routes tool calls", asy
 
   assertEquals(socket.sent.at(-1), {
     type: "agent.ready",
+    protocolVersion: NETWORK_PROTOCOL_VERSION,
     tenantId: "tenant_route_1",
     targetType: "erpnext",
     agentId: "agent_1",
@@ -78,6 +80,167 @@ Deno.test("attachNetworkTunnelSocket registers agent and routes tool calls", asy
   assertEquals(await resultPromise, { ok: true });
 });
 
+Deno.test("attachNetworkTunnelSocket rejects in-flight calls when socket closes", async () => {
+  const relay = new NetworkRelay();
+  const socket = new FakeTunnelSocket();
+  attachNetworkTunnelSocket({
+    relay,
+    socket,
+    tenantId: "tenant_disconnect",
+    authorizeAgentHello: allowInsecureNetworkAgentHelloForTests,
+  });
+
+  socket.receive({
+    type: "agent.hello",
+    protocolVersion: NETWORK_PROTOCOL_VERSION,
+    tenantId: "tenant_disconnect",
+    targetType: "erpnext",
+    agentId: "agent_1",
+    keyVersion: 1,
+  });
+  await Promise.resolve();
+
+  const call = relay.callTool({
+    tenantId: "tenant_disconnect",
+    targetType: "erpnext",
+    toolName: "erpnext.customer_list",
+    arguments: {},
+    actorSubject: null,
+  });
+  await Promise.resolve();
+
+  const toolCall = socket.sent.at(-1);
+  assertEquals(toolCall?.type, "tool.call");
+  const rejection = withTimeout(
+    assertRejects(
+      () => call,
+      NetworkRelayError,
+      "TUNNEL_AGENT_DISCONNECTED",
+    ),
+    "in-flight call was not rejected after socket close",
+  );
+
+  socket.close();
+
+  const error = await rejection;
+  assertEquals(error.code, "TUNNEL_AGENT_DISCONNECTED");
+  assertEquals(error.context.tenantId, "tenant_disconnect");
+  assertEquals(error.context.targetType, "erpnext");
+  assertEquals(error.context.agentId, "agent_1");
+});
+
+Deno.test("attachNetworkTunnelSocket sends cancellation frame when relay timeout aborts call", async () => {
+  const relay = new NetworkRelay({ requestTimeoutMs: 1 });
+  const socket = new FakeTunnelSocket();
+  attachNetworkTunnelSocket({
+    relay,
+    socket,
+    tenantId: "tenant_timeout_abort",
+    authorizeAgentHello: allowInsecureNetworkAgentHelloForTests,
+  });
+
+  socket.receive({
+    type: "agent.hello",
+    protocolVersion: NETWORK_PROTOCOL_VERSION,
+    tenantId: "tenant_timeout_abort",
+    targetType: "erpnext",
+    agentId: "agent_1",
+    keyVersion: 1,
+  });
+  await Promise.resolve();
+
+  const call = relay.callTool({
+    tenantId: "tenant_timeout_abort",
+    targetType: "erpnext",
+    toolName: "erpnext.customer_list",
+    arguments: {},
+    actorSubject: null,
+  });
+  await Promise.resolve();
+
+  const toolCall = socket.sent.at(-1);
+  assertEquals(toolCall?.type, "tool.call");
+  if (toolCall?.type !== "tool.call") {
+    throw new Error("expected tool.call");
+  }
+
+  try {
+    await assertRejects(
+      () => call,
+      NetworkRelayError,
+      "TUNNEL_REQUEST_TIMEOUT",
+    );
+
+    assertEquals(socket.sent.at(-1), {
+      type: "error",
+      requestId: toolCall.requestId,
+      code: "TUNNEL_REQUEST_TIMEOUT",
+      message:
+        "TUNNEL_REQUEST_TIMEOUT: Check the agent connection and retry the tool call.",
+      context: {
+        tenantId: "tenant_timeout_abort",
+        targetType: "erpnext",
+        requestId: toolCall.requestId,
+      },
+    });
+  } finally {
+    socket.close();
+  }
+});
+
+Deno.test("attachNetworkTunnelSocket rejects mismatched protocol version", () => {
+  const relay = new NetworkRelay();
+  const socket = new FakeTunnelSocket();
+  attachNetworkTunnelSocket({
+    relay,
+    socket,
+    tenantId: "tenant_protocol_mismatch",
+    authorizeAgentHello: allowInsecureNetworkAgentHelloForTests,
+  });
+
+  socket.onmessage?.({
+    data: JSON.stringify({
+      type: "agent.hello",
+      protocolVersion: NETWORK_PROTOCOL_VERSION + 1,
+      tenantId: "tenant_protocol_mismatch",
+      targetType: "erpnext",
+      agentId: "agent_1",
+      keyVersion: 1,
+    }),
+  });
+
+  assertEquals(socket.closeCalls, [{
+    code: 4002,
+    reason: "protocol version mismatch",
+  }]);
+});
+
+Deno.test("attachNetworkTunnelSocket rejects missing protocol version", () => {
+  const relay = new NetworkRelay();
+  const socket = new FakeTunnelSocket();
+  attachNetworkTunnelSocket({
+    relay,
+    socket,
+    tenantId: "tenant_protocol_missing",
+    authorizeAgentHello: allowInsecureNetworkAgentHelloForTests,
+  });
+
+  socket.onmessage?.({
+    data: JSON.stringify({
+      type: "agent.hello",
+      tenantId: "tenant_protocol_missing",
+      targetType: "erpnext",
+      agentId: "agent_1",
+      keyVersion: 1,
+    }),
+  });
+
+  assertEquals(socket.closeCalls, [{
+    code: 4002,
+    reason: "protocol version mismatch",
+  }]);
+});
+
 Deno.test("attachNetworkTunnelSocket rejects cross-tenant hello", async () => {
   const relay = new NetworkRelay();
   const socket = new FakeTunnelSocket();
@@ -89,6 +252,7 @@ Deno.test("attachNetworkTunnelSocket rejects cross-tenant hello", async () => {
 
   socket.receive({
     type: "agent.hello",
+    protocolVersion: NETWORK_PROTOCOL_VERSION,
     tenantId: "other_tenant",
     targetType: "erpnext",
     agentId: "agent_1",
@@ -125,6 +289,7 @@ Deno.test("attachNetworkTunnelSocket rejects malformed hello before registration
   socket.onmessage?.({
     data: JSON.stringify({
       type: "agent.hello",
+      protocolVersion: NETWORK_PROTOCOL_VERSION,
       tenantId: "tenant_route_bad",
     }),
   });
@@ -159,6 +324,7 @@ Deno.test("attachNetworkTunnelSocket rejects hello when no authorizer is configu
 
   socket.receive({
     type: "agent.hello",
+    protocolVersion: NETWORK_PROTOCOL_VERSION,
     tenantId: "tenant_route_no_auth",
     targetType: "erpnext",
     agentId: "agent_1",
@@ -198,6 +364,7 @@ Deno.test("attachNetworkTunnelSocket closes when hello authorizer throws", async
 
   socket.receive({
     type: "agent.hello",
+    protocolVersion: NETWORK_PROTOCOL_VERSION,
     tenantId: "tenant_route_auth_error",
     targetType: "erpnext",
     agentId: "agent_1",
@@ -230,6 +397,7 @@ Deno.test("attachNetworkTunnelSocket keeps replacement agent after stale close",
 
   oldSocket.receive({
     type: "agent.hello",
+    protocolVersion: NETWORK_PROTOCOL_VERSION,
     tenantId: "tenant_route_3",
     targetType: "erpnext",
     agentId: "agent_old",
@@ -238,6 +406,7 @@ Deno.test("attachNetworkTunnelSocket keeps replacement agent after stale close",
   await Promise.resolve();
   newSocket.receive({
     type: "agent.hello",
+    protocolVersion: NETWORK_PROTOCOL_VERSION,
     tenantId: "tenant_route_3",
     targetType: "erpnext",
     agentId: "agent_new",
@@ -289,6 +458,7 @@ Deno.test("attachNetworkTunnelSocket keeps reconnect with same agent id after st
 
   oldSocket.receive({
     type: "agent.hello",
+    protocolVersion: NETWORK_PROTOCOL_VERSION,
     tenantId: "tenant_route_reconnect",
     targetType: "erpnext",
     agentId: "agent_same",
@@ -297,6 +467,7 @@ Deno.test("attachNetworkTunnelSocket keeps reconnect with same agent id after st
   await Promise.resolve();
   newSocket.receive({
     type: "agent.hello",
+    protocolVersion: NETWORK_PROTOCOL_VERSION,
     tenantId: "tenant_route_reconnect",
     targetType: "erpnext",
     agentId: "agent_same",
@@ -347,3 +518,13 @@ Deno.test("attachNetworkTunnelSocket closes idle sockets that never send hello",
     reason: "agent hello timeout",
   }]);
 });
+
+function withTimeout<T>(promise: Promise<T>, message: string): Promise<T> {
+  let timer: number | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), 20);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer !== undefined) clearTimeout(timer);
+  });
+}

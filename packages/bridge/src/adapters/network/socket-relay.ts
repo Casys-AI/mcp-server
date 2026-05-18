@@ -4,7 +4,12 @@ import type {
   NetworkToolCallRequest,
   NetworkToolCallResponse,
 } from "./types.ts";
-import type { NetworkRelay } from "./relay.ts";
+import { NETWORK_PROTOCOL_VERSION } from "./types.ts";
+import {
+  type NetworkRelay,
+  NetworkRelayError,
+  type RegisteredNetworkAgentSendOptions,
+} from "./relay.ts";
 
 export interface NetworkTunnelSocket {
   send(data: string): void;
@@ -31,14 +36,12 @@ export type NetworkAgentHelloAuthorizer = (
   message: NetworkAgentHello,
 ) => NetworkAgentHelloAuthorization | Promise<NetworkAgentHelloAuthorization>;
 
-export function allowInsecureNetworkAgentHelloForTests(): NetworkAgentHelloAuthorization {
-  return { ok: true };
-}
-
 interface PendingToolCall {
   readonly resolve: (response: NetworkToolCallResponse) => void;
   readonly reject: (error: Error) => void;
   readonly timer: number;
+  readonly signal?: AbortSignal;
+  readonly onAbort?: () => void;
 }
 
 let nextRegistrationId = 1;
@@ -69,6 +72,10 @@ export function attachNetworkTunnelSocket(
     if (!message) return;
 
     if (message.type === "agent.hello") {
+      if (!hasSupportedProtocolVersion(message)) {
+        args.socket.close(4002, "protocol version mismatch");
+        return;
+      }
       if (!isValidAgentHello(message)) {
         args.socket.close(4002, "invalid agent hello");
         return;
@@ -81,7 +88,7 @@ export function attachNetworkTunnelSocket(
       const waiter = pending.get(message.requestId);
       if (!waiter) return;
       pending.delete(message.requestId);
-      clearTimeout(waiter.timer);
+      cleanupPendingToolCall(waiter);
       waiter.resolve(message);
       return;
     }
@@ -90,7 +97,7 @@ export function attachNetworkTunnelSocket(
       const waiter = pending.get(message.requestId);
       if (!waiter) return;
       pending.delete(message.requestId);
-      clearTimeout(waiter.timer);
+      cleanupPendingToolCall(waiter);
       waiter.reject(new Error(`${message.code}: ${message.message}`));
     }
   };
@@ -104,13 +111,22 @@ export function attachNetworkTunnelSocket(
         registered.targetType,
         registered.agentId,
         registered.registrationId,
+        "disconnected",
       );
       registered = null;
     }
     for (const [requestId, waiter] of pending) {
       pending.delete(requestId);
-      clearTimeout(waiter.timer);
-      waiter.reject(new Error("TUNNEL_SOCKET_CLOSED"));
+      cleanupPendingToolCall(waiter);
+      waiter.reject(
+        new NetworkRelayError({
+          code: "TUNNEL_AGENT_DISCONNECTED",
+          context: {
+            requestId,
+          },
+          recovery: "Reconnect the tunnel agent before retrying the tool call.",
+        }),
+      );
     }
   };
 
@@ -158,8 +174,8 @@ export function attachNetworkTunnelSocket(
         targetType: message.targetType,
         agentId: message.agentId,
         registrationId: registered.registrationId,
-        send: (toolCall) =>
-          sendToolCall(args.socket, pending, toolCall, timeoutMs),
+        send: (toolCall, options) =>
+          sendToolCall(args.socket, pending, toolCall, timeoutMs, options),
       });
       args.socket.send(JSON.stringify(agentReady(message)));
     } finally {
@@ -179,11 +195,17 @@ function isValidAgentHello(
     message.keyVersion > 0;
 }
 
+function hasSupportedProtocolVersion(message: NetworkMessage): boolean {
+  return "protocolVersion" in message &&
+    message.protocolVersion === NETWORK_PROTOCOL_VERSION;
+}
+
 function sendToolCall(
   socket: NetworkTunnelSocket,
   pending: Map<string, PendingToolCall>,
   toolCall: NetworkToolCallRequest,
   timeoutMs: number,
+  options?: RegisteredNetworkAgentSendOptions,
 ): Promise<NetworkToolCallResponse> {
   if (pending.has(toolCall.requestId)) {
     return Promise.reject(
@@ -192,22 +214,97 @@ function sendToolCall(
   }
 
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
+    const signal = options?.signal;
+    const abort = () => {
+      const waiter = pending.get(toolCall.requestId);
+      if (!waiter) return;
       pending.delete(toolCall.requestId);
+      cleanupPendingToolCall(waiter);
+      const error = relayErrorFromAbortSignal(signal, toolCall.requestId);
+      sendCancellationFrame(socket, toolCall.requestId, error);
+      reject(error);
+    };
+    const timer = setTimeout(() => {
+      const waiter = pending.get(toolCall.requestId);
+      pending.delete(toolCall.requestId);
+      if (waiter) cleanupPendingToolCall(waiter);
+      const error = new NetworkRelayError({
+        code: "TUNNEL_REQUEST_TIMEOUT",
+        context: { requestId: toolCall.requestId },
+        recovery: "Check the agent connection and retry the tool call.",
+      });
+      sendCancellationFrame(socket, toolCall.requestId, error);
       reject(
-        new Error(`TUNNEL_TOOL_CALL_TIMEOUT requestId=${toolCall.requestId}`),
+        error,
       );
     }, timeoutMs);
-    pending.set(toolCall.requestId, { resolve, reject, timer });
+    signal?.addEventListener("abort", abort, { once: true });
+    pending.set(toolCall.requestId, {
+      resolve,
+      reject,
+      timer,
+      signal,
+      onAbort: abort,
+    });
+
+    if (signal?.aborted) {
+      abort();
+      return;
+    }
 
     try {
       socket.send(JSON.stringify(toolCall));
     } catch (err) {
       pending.delete(toolCall.requestId);
-      clearTimeout(timer);
+      cleanupPendingToolCall({
+        resolve,
+        reject,
+        timer,
+        signal,
+        onAbort: abort,
+      });
       reject(err instanceof Error ? err : new Error(String(err)));
     }
   });
+}
+
+function cleanupPendingToolCall(waiter: PendingToolCall): void {
+  clearTimeout(waiter.timer);
+  if (waiter.signal && waiter.onAbort) {
+    waiter.signal.removeEventListener("abort", waiter.onAbort);
+  }
+}
+
+function relayErrorFromAbortSignal(
+  signal: AbortSignal | undefined,
+  requestId: string,
+): NetworkRelayError {
+  const reason = signal?.reason;
+  if (reason instanceof NetworkRelayError) return reason;
+  return new NetworkRelayError({
+    code: "TUNNEL_REQUEST_CANCELLED",
+    context: { requestId },
+    recovery: "Retry after the tunnel agent is registered again.",
+  });
+}
+
+function sendCancellationFrame(
+  socket: NetworkTunnelSocket,
+  requestId: string,
+  error: NetworkRelayError,
+): void {
+  try {
+    socket.send(JSON.stringify({
+      type: "error",
+      requestId,
+      code: error.code,
+      message: error.message,
+      context: error.context,
+    }));
+  } catch {
+    // The abort may be caused by the same broken socket; the relay already has
+    // the structured rejection locally.
+  }
 }
 
 function parseNetworkMessage(raw: string): NetworkMessage | null {
@@ -232,6 +329,7 @@ function isNonEmptyString(value: unknown): value is string {
 function agentReady(message: NetworkAgentHello): NetworkMessage {
   return {
     type: "agent.ready",
+    protocolVersion: NETWORK_PROTOCOL_VERSION,
     tenantId: message.tenantId,
     targetType: message.targetType,
     agentId: message.agentId,

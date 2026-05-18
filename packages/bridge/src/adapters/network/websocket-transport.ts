@@ -1,5 +1,8 @@
 import type { NetworkMessage } from "./types.ts";
-import type { NetworkTunnelTransport } from "./client.ts";
+import type {
+  NetworkTunnelCloseReason,
+  NetworkTunnelTransport,
+} from "./client.ts";
 
 type MaybePromise<T> = T | Promise<T>;
 
@@ -9,8 +12,10 @@ export interface NetworkWebSocketLike {
   close(): void;
   onopen: (() => void) | null;
   onmessage: ((event: { data: string }) => void) | null;
-  onerror: (() => void) | null;
-  onclose: (() => void) | null;
+  onerror: ((event?: unknown) => void) | null;
+  onclose:
+    | ((event?: { code?: number; reason?: string }) => void)
+    | null;
 }
 
 export interface NetworkWebSocketFactoryOptions {
@@ -50,6 +55,11 @@ export class WebSocketNetworkTransport implements NetworkTunnelTransport {
   private socket: NetworkWebSocketLike | null = null;
   private readonly messageHandlers: Array<(message: NetworkMessage) => void> =
     [];
+  private readonly openHandlers: Array<() => void> = [];
+  private readonly closeHandlers: Array<
+    (reason: NetworkTunnelCloseReason) => void
+  > = [];
+  private readonly errorHandlers: Array<(error: unknown) => void> = [];
 
   constructor(options: WebSocketNetworkTransportOptions = {}) {
     this.auth = options.auth;
@@ -78,6 +88,10 @@ export class WebSocketNetworkTransport implements NetworkTunnelTransport {
 
   private open(connection: WebSocketConnection): Promise<void> {
     return new Promise((resolve, reject) => {
+      const redactedUrl = redactUrl(
+        connection.url,
+        authQueryParam(this.auth),
+      );
       const socket = this.webSocketFactory(
         connection.url,
         connection.options,
@@ -86,27 +100,34 @@ export class WebSocketNetworkTransport implements NetworkTunnelTransport {
       socket.onopen = () => {
         connected = true;
         this.socket = socket;
+        this.emitOpen();
         resolve();
       };
-      socket.onerror = () => {
-        reject(
-          new Error(
-            `WebSocket network tunnel failed to connect: ${connection.url}`,
-          ),
+      socket.onerror = (event) => {
+        const error = new Error(
+          `WebSocket network tunnel failed to connect: ${redactedUrl}`,
         );
+        this.emitError(event ?? error);
+        if (!connected) {
+          reject(error);
+        }
       };
       socket.onmessage = (event) => {
         this.receive(event.data);
       };
-      socket.onclose = () => {
+      socket.onclose = (event) => {
         if (!connected) {
           reject(
             new Error(
-              `WebSocket network tunnel closed before it connected: ${connection.url}`,
+              `WebSocket network tunnel closed before it connected: ${redactedUrl}`,
             ),
           );
         }
         if (this.socket === socket) this.socket = null;
+        this.emitClose({
+          code: event?.code,
+          reason: event?.reason,
+        });
       };
     });
   }
@@ -120,6 +141,18 @@ export class WebSocketNetworkTransport implements NetworkTunnelTransport {
 
   onMessage(handler: (message: NetworkMessage) => void): void {
     this.messageHandlers.push(handler);
+  }
+
+  onOpen(handler: () => void): void {
+    this.openHandlers.push(handler);
+  }
+
+  onClose(handler: (reason: NetworkTunnelCloseReason) => void): void {
+    this.closeHandlers.push(handler);
+  }
+
+  onError(handler: (error: unknown) => void): void {
+    this.errorHandlers.push(handler);
   }
 
   disconnect(): void {
@@ -138,11 +171,62 @@ export class WebSocketNetworkTransport implements NetworkTunnelTransport {
       // layer can add strict validation once the handshake schema is final.
     }
   }
+
+  private emitOpen(): void {
+    for (const handler of this.openHandlers) handler();
+  }
+
+  private emitClose(reason: NetworkTunnelCloseReason): void {
+    for (const handler of this.closeHandlers) handler(reason);
+  }
+
+  private emitError(error: unknown): void {
+    for (const handler of this.errorHandlers) handler(error);
+  }
 }
 
 interface WebSocketConnection {
   readonly url: string;
   readonly options?: NetworkWebSocketFactoryOptions;
+}
+
+function redactUrl(url: string, queryParam?: string): string {
+  const sensitiveParams = new Set(["access_token", "token"]);
+  const normalizedQueryParam = queryParam?.trim().toLowerCase();
+  if (normalizedQueryParam) {
+    sensitiveParams.add(normalizedQueryParam);
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return url;
+  }
+
+  const paramsToRedact = new Set<string>();
+  for (const [name] of parsed.searchParams) {
+    if (sensitiveParams.has(name.toLowerCase())) {
+      paramsToRedact.add(name);
+    }
+  }
+  if (paramsToRedact.size === 0) {
+    return url;
+  }
+
+  // Keep the endpoint identifiable while replacing bearer token values.
+  for (const name of paramsToRedact) {
+    parsed.searchParams.set(name, "***");
+  }
+  return parsed.toString();
+}
+
+function authQueryParam(
+  auth: NetworkTransportAuth | undefined,
+): string | undefined {
+  return auth?.type === "bearer" && auth.via === "query"
+    ? auth.queryParam
+    : undefined;
 }
 
 function buildConnection(

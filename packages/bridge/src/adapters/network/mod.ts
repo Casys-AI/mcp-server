@@ -1,7 +1,10 @@
 export { NetworkTunnelClient } from "./client.ts";
 export type {
   NetworkToolCallHandler,
+  NetworkToolCallHandlerOptions,
   NetworkTunnelClientOptions,
+  NetworkTunnelCloseReason,
+  NetworkTunnelReconnectOptions,
   NetworkTunnelTransport,
 } from "./client.ts";
 export { NetworkRelay, NetworkRelayError } from "./relay.ts";
@@ -10,12 +13,10 @@ export type {
   NetworkRelayErrorCode,
   NetworkRelayOptions,
   RegisteredNetworkAgent,
+  RegisteredNetworkAgentSendOptions,
   RelayToolCall,
 } from "./relay.ts";
-export {
-  allowInsecureNetworkAgentHelloForTests,
-  attachNetworkTunnelSocket,
-} from "./socket-relay.ts";
+export { attachNetworkTunnelSocket } from "./socket-relay.ts";
 export type {
   AttachNetworkTunnelSocketArgs,
   NetworkAgentHelloAuthorization,
@@ -39,3 +40,4 @@ export type {
   NetworkToolCallRequest,
   NetworkToolCallResponse,
 } from "./types.ts";
+export { NETWORK_PROTOCOL_VERSION } from "./types.ts";

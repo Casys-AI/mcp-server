@@ -2,13 +2,14 @@ import {
   assertEquals,
   assertExists,
   assertRejects,
+  assertStringIncludes,
   assertThrows,
 } from "@std/assert";
 import {
   type NetworkWebSocketFactoryOptions,
   WebSocketNetworkTransport,
 } from "./websocket-transport.ts";
-import type { NetworkMessage } from "./types.ts";
+import { NETWORK_PROTOCOL_VERSION, type NetworkMessage } from "./types.ts";
 
 class FakeWebSocket {
   static readonly OPEN = 1;
@@ -48,6 +49,7 @@ Deno.test("websocket network transport connects and sends JSON messages", async 
 
   transport.send({
     type: "agent.hello",
+    protocolVersion: NETWORK_PROTOCOL_VERSION,
     tenantId: "tenant_123",
     targetType: "erpnext",
     agentId: "agent_1",
@@ -57,6 +59,7 @@ Deno.test("websocket network transport connects and sends JSON messages", async 
   assertEquals(socket?.url, "wss://relay.example.test/mcp/_tunnel");
   assertEquals(JSON.parse(socket?.sent[0] ?? ""), {
     type: "agent.hello",
+    protocolVersion: NETWORK_PROTOCOL_VERSION,
     tenantId: "tenant_123",
     targetType: "erpnext",
     agentId: "agent_1",
@@ -277,5 +280,89 @@ Deno.test("websocket network transport rejects close before open", async () => {
     () => connected,
     Error,
     "closed before it connected",
+  );
+});
+
+Deno.test("websocket network transport redacts default query bearer token from connect errors", async () => {
+  const sockets: FakeWebSocket[] = [];
+  const transport = new WebSocketNetworkTransport({
+    auth: {
+      type: "bearer",
+      token: "secret tunnel token",
+      via: "query",
+    },
+    webSocketFactory: (url) => {
+      const socket = new FakeWebSocket(url);
+      sockets.push(socket);
+      return socket;
+    },
+  });
+
+  const connected = transport.connect(
+    "wss://relay.example.test/mcp/_tunnel?tenant=acme",
+  );
+  const socket = sockets[0];
+  assertExists(socket);
+  socket.onerror?.();
+
+  const error = await assertRejects(() => connected, Error);
+  assertStringIncludes(error.message, "access_token=***");
+  assertEquals(error.message.includes("secret"), false);
+});
+
+Deno.test("websocket network transport redacts custom query bearer token from connect errors", async () => {
+  const sockets: FakeWebSocket[] = [];
+  const transport = new WebSocketNetworkTransport({
+    auth: {
+      type: "bearer",
+      token: "custom tunnel token",
+      via: "query",
+      queryParam: "relay_token",
+    },
+    webSocketFactory: (url) => {
+      const socket = new FakeWebSocket(url);
+      sockets.push(socket);
+      return socket;
+    },
+  });
+
+  const connected = transport.connect(
+    "wss://relay.example.test/mcp/_tunnel?tenant=acme",
+  );
+  const socket = sockets[0];
+  assertExists(socket);
+  socket.onerror?.();
+
+  const error = await assertRejects(() => connected, Error);
+  assertStringIncludes(error.message, "relay_token=***");
+  assertEquals(error.message.includes("custom"), false);
+});
+
+Deno.test("websocket network transport leaves header-auth error URLs unchanged", async () => {
+  const sockets: FakeWebSocket[] = [];
+  const url =
+    "wss://relay.example.test/mcp/_tunnel?tenant=acme&tokenizer=keep&access_token_hint=public";
+  const transport = new WebSocketNetworkTransport({
+    auth: {
+      type: "bearer",
+      token: "header tunnel token",
+      via: "header",
+    },
+    webSocketFactory: (url) => {
+      const socket = new FakeWebSocket(url);
+      sockets.push(socket);
+      return socket;
+    },
+  });
+
+  const connected = transport.connect(url);
+  const socket = sockets[0];
+  assertExists(socket);
+  socket.onerror?.();
+
+  const error = await assertRejects(() => connected, Error);
+  assertStringIncludes(
+    error.message,
+    `WebSocket network tunnel failed to connect: ${url}`,
   );
 });

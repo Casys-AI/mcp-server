@@ -6,6 +6,8 @@
  * MCP tool calls to that agent.
  */
 
+export const NETWORK_PROTOCOL_VERSION = 1;
+
 export type NetworkMessage =
   | NetworkAgentHello
   | NetworkAgentReady
@@ -16,6 +18,7 @@ export type NetworkMessage =
 
 export interface NetworkAgentHello {
   readonly type: "agent.hello";
+  readonly protocolVersion: number;
   readonly tenantId: string;
   readonly targetType: string;
   readonly agentId: string;
@@ -24,6 +27,7 @@ export interface NetworkAgentHello {
 
 export interface NetworkAgentReady {
   readonly type: "agent.ready";
+  readonly protocolVersion: number;
   readonly tenantId: string;
   readonly targetType: string;
   readonly agentId: string;

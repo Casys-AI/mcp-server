@@ -9,6 +9,10 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./adapters/network": {
+      "import": "./dist/adapters/network.js",
+      "types": "./dist/adapters/network.d.ts"
     }
   },
   "scripts": {

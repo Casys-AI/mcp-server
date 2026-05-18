@@ -25,7 +25,10 @@ console.log(`[build-npm] Version: ${VERSION}`);
 await emptyDir("./dist-node");
 
 await build({
-  entryPoints: ["./src/mod.ts"],
+  entryPoints: [
+    "./src/mod.ts",
+    { name: "./adapters/network", path: "./src/adapters/network/mod.ts" },
+  ],
   outDir: "./dist-node",
   shims: {
     deno: false,
@@ -91,6 +94,11 @@ pkg.exports = {
     types: "./esm/mod.d.ts",
     import: "./esm/mod.js",
     require: "./script/mod.js",
+  },
+  "./adapters/network": {
+    types: "./esm/adapters/network.d.ts",
+    import: "./esm/adapters/network.js",
+    require: "./script/adapters/network.js",
   },
 };
 await Deno.writeTextFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n");

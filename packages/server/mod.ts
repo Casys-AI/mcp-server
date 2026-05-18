@@ -92,6 +92,7 @@ export type {
   ToolAnnotations,
   ToolErrorMapper,
   ToolHandler,
+  ToolHandlerContext,
 } from "./src/types.ts";
 
 /**

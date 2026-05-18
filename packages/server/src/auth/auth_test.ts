@@ -212,9 +212,11 @@ Deno.test("createAuthMiddleware - throws AuthError on invalid token", async () =
 });
 
 Deno.test("createAuthMiddleware - injects frozen authInfo on valid token", async () => {
+  const claims = { nested: { flag: true } };
   const provider = new MockAuthProvider({
     subject: "user-1",
     scopes: ["read", "write"],
+    claims,
   });
   const middleware = createAuthMiddleware(provider);
   const ctx: MiddlewareContext = {
@@ -231,6 +233,10 @@ Deno.test("createAuthMiddleware - injects frozen authInfo on valid token", async
   assertEquals(authInfo.subject, "user-1");
   assertEquals(authInfo.scopes, ["read", "write"]);
   assert(Object.isFrozen(ctx.authInfo));
+  assert(Object.isFrozen(authInfo.scopes));
+  assert(Object.isFrozen(authInfo.claims));
+  assert(Object.isFrozen(authInfo.claims?.nested));
+  assertEquals(Object.isFrozen(claims), false);
 });
 
 // ============================================
@@ -414,6 +420,76 @@ Deno.test("HTTP + Auth - 200 with valid token", async () => {
     assertEquals(data.jsonrpc, "2.0");
     const result = JSON.parse(data.result.content[0].text);
     assertEquals(result.hello, "world");
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("HTTP + Auth - passes frozen authInfo to tool handler context", async () => {
+  const seen: Array<{
+    subject?: string;
+    scopes?: string[];
+    frozen: boolean;
+    scopesFrozen: boolean;
+  }> = [];
+  const server = new McpApp({
+    name: "test-auth-context",
+    version: "1.0.0",
+    logger: () => {},
+    auth: {
+      provider: new MockAuthProvider({
+        subject: "user-42",
+        scopes: ["read"],
+      }),
+    },
+  });
+
+  server.registerTool(
+    {
+      name: "context_echo",
+      description: "Echo handler auth context",
+      inputSchema: { type: "object" },
+    },
+    (_args, ctx) => {
+      seen.push({
+        subject: ctx?.authInfo?.subject,
+        scopes: ctx?.authInfo?.scopes,
+        frozen: Object.isFrozen(ctx?.authInfo),
+        scopesFrozen: Object.isFrozen(ctx?.authInfo?.scopes),
+      });
+      return { ok: true };
+    },
+  );
+
+  const listener = Deno.listen({ port: 0 });
+  const port = (listener.addr as Deno.NetAddr).port;
+  listener.close();
+
+  const http = await server.startHttp({ port, onListen: () => {} });
+
+  try {
+    const res = await fetch(`http://localhost:${port}/mcp`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer valid-token",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "context_echo", arguments: {} },
+      }),
+    });
+
+    assertEquals(res.status, 200);
+    await res.json();
+    assertEquals(seen, [{
+      subject: "user-42",
+      scopes: ["read"],
+      frozen: true,
+      scopesFrozen: true,
+    }]);
   } finally {
     await http.shutdown();
   }

@@ -8,6 +8,7 @@
  */
 
 import type { AuthProvider } from "./provider.ts";
+import type { AuthInfo } from "./types.ts";
 import type { Middleware } from "../middleware/types.ts";
 import { isOtelEnabled, recordAuthEvent } from "../observability/otel.ts";
 
@@ -105,6 +106,32 @@ export function createForbiddenResponse(requiredScopes: string[]): Response {
   );
 }
 
+export function freezeAuthInfo(authInfo: AuthInfo): AuthInfo {
+  const scopes = Object.freeze([...authInfo.scopes]) as unknown as string[];
+  const frozen: AuthInfo = {
+    ...authInfo,
+    scopes,
+    ...(authInfo.claims
+      ? {
+        claims: deepFreezeJson(structuredClone(authInfo.claims)) as Record<
+          string,
+          unknown
+        >,
+      }
+      : {}),
+  };
+
+  return Object.freeze(frozen);
+}
+
+function deepFreezeJson<T>(value: T): T {
+  if (typeof value !== "object" || value === null) return value;
+  for (const nested of Object.values(value)) {
+    deepFreezeJson(nested);
+  }
+  return Object.freeze(value);
+}
+
 /**
  * Create an authentication middleware for the MCP pipeline.
  *
@@ -165,9 +192,7 @@ export function createAuthMiddleware(provider: AuthProvider): Middleware {
     }
 
     // Deep-freeze authInfo to prevent mutation by downstream middlewares
-    if (authInfo.claims) Object.freeze(authInfo.claims);
-    if (authInfo.scopes) Object.freeze(authInfo.scopes);
-    ctx.authInfo = Object.freeze(authInfo);
+    ctx.authInfo = freezeAuthInfo(authInfo);
 
     // Propagate resourceMetadataUrl for downstream middlewares (scope-middleware)
     ctx.resourceMetadataUrl = metadataUrl;

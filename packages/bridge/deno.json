@@ -1,8 +1,11 @@
 {
   "name": "@casys/mcp-bridge",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "license": "MIT",
-  "exports": "./src/mod.ts",
+  "exports": {
+    ".": "./src/mod.ts",
+    "./adapters/network": "./src/adapters/network/mod.ts"
+  },
   "publish": {
     "include": [
       "src/**/*.ts",
@@ -17,7 +20,7 @@
     ]
   },
   "tasks": {
-    "test": "deno test --allow-net --allow-read tests/",
+    "test": "deno test --allow-net --allow-read src/ tests/",
     "check": "deno check src/mod.ts",
     "lint": "deno lint",
     "build:npm": "deno run -A scripts/build-npm.ts",

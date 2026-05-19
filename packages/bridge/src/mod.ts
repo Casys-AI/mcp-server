@@ -109,6 +109,46 @@ export { getTelegramWebApp } from "./adapters/telegram/sdk-bridge.ts";
 export { LineAdapter } from "./adapters/line/adapter.ts";
 export type { LiffSdk, LineAdapterConfig } from "./adapters/line/types.ts";
 
+// Adapters — Network tunnel
+export {
+  attachNetworkTunnelSocket,
+  NETWORK_PROTOCOL_VERSION,
+  NetworkRelay,
+  NetworkRelayError,
+  NetworkTunnelClient,
+  WebSocketNetworkTransport,
+} from "./adapters/network/mod.ts";
+export type {
+  AttachNetworkTunnelSocketArgs,
+  NetworkAgentHello,
+  NetworkAgentHelloAuthorization,
+  NetworkAgentHelloAuthorizer,
+  NetworkAgentReady,
+  NetworkError,
+  NetworkHeartbeat,
+  NetworkMessage,
+  NetworkRelayConcurrencyStrategy,
+  NetworkRelayErrorCode,
+  NetworkRelayOptions,
+  NetworkToolCallHandler,
+  NetworkToolCallHandlerOptions,
+  NetworkToolCallRequest,
+  NetworkToolCallResponse,
+  NetworkTransportAuth,
+  NetworkTunnelClientOptions,
+  NetworkTunnelCloseReason,
+  NetworkTunnelReconnectOptions,
+  NetworkTunnelSocket,
+  NetworkTunnelTransport,
+  NetworkWebSocketFactory,
+  NetworkWebSocketFactoryOptions,
+  NetworkWebSocketLike,
+  RegisteredNetworkAgent,
+  RegisteredNetworkAgentSendOptions,
+  RelayToolCall,
+  WebSocketNetworkTransportOptions,
+} from "./adapters/network/mod.ts";
+
 // Resource server
 export { buildCspHeader } from "./resource-server/csp.ts";
 export type { CspOptions } from "./resource-server/csp.ts";

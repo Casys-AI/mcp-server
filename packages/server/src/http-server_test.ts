@@ -186,6 +186,54 @@ Deno.test("startHttp - handles tools/call", async () => {
   }
 });
 
+Deno.test("startHttp - passes execution context to tool handlers", async () => {
+  const seen: Array<{ toolName?: string; hasRequest: boolean }> = [];
+  const server = new McpApp({
+    name: "test-server",
+    version: "1.0.0",
+    logger: () => {},
+  });
+
+  server.registerTool(
+    {
+      name: "context_echo",
+      description: "Echo handler context",
+      inputSchema: { type: "object" },
+    },
+    (_args, ctx) => {
+      seen.push({
+        toolName: ctx?.toolName,
+        hasRequest: ctx?.request instanceof Request,
+      });
+      return { ok: true };
+    },
+  );
+
+  const listener = Deno.listen({ port: 0 });
+  const port = (listener.addr as Deno.NetAddr).port;
+  listener.close();
+
+  const http = await server.startHttp({ port, onListen: () => {} });
+
+  try {
+    const res = await fetch(`http://localhost:${port}/mcp`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "context_echo", arguments: {} },
+      }),
+    });
+
+    await res.json();
+    assertEquals(seen, [{ toolName: "context_echo", hasRequest: true }]);
+  } finally {
+    await http.shutdown();
+  }
+});
+
 Deno.test("startHttp - handles resources/list", async () => {
   const server = new McpApp({
     name: "test-server",

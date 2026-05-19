@@ -42,6 +42,7 @@ import {
   createForbiddenResponse,
   createUnauthorizedResponse,
   extractBearerToken,
+  freezeAuthInfo,
 } from "./auth/middleware.ts";
 import { createScopeMiddleware } from "./auth/scope-middleware.ts";
 import { createAuthProviderFromConfig, loadAuthConfig } from "./auth/config.ts";
@@ -600,7 +601,14 @@ export class McpApp {
       if (!tool) {
         throw new Error(`Unknown tool: ${ctx.toolName}`);
       }
-      return Promise.resolve(tool.handler(ctx.args));
+      return Promise.resolve(tool.handler(ctx.args, {
+        toolName: ctx.toolName,
+        ...(ctx.request ? { request: ctx.request } : {}),
+        ...(typeof ctx.sessionId === "string"
+          ? { sessionId: ctx.sessionId }
+          : {}),
+        ...(ctx.authInfo ? { authInfo: ctx.authInfo as AuthInfo } : {}),
+      }));
     });
   }
 
@@ -1218,7 +1226,7 @@ export class McpApp {
         };
       }
 
-      return { authInfo };
+      return { authInfo: freezeAuthInfo(authInfo) };
     };
 
     const checkHttpRateLimit = async (
@@ -2177,8 +2185,9 @@ export class McpApp {
   private buildToolListing(): Array<Record<string, unknown>> {
     return Array.from(this.tools.values())
       .filter((t) => {
-        const vis = t._meta?.ui?.visibility;
-        if (vis !== undefined && !vis.includes("model")) return false;
+        const vis = (t._meta?.ui as { visibility?: unknown } | undefined)
+          ?.visibility;
+        if (Array.isArray(vis) && !vis.includes("model")) return false;
         return true;
       })
       .map((t) => {

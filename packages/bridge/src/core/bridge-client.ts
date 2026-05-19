@@ -61,9 +61,12 @@ export class BridgeClient {
   private hostContext: HostContext | null = null;
   private started = false;
 
-  // deno-lint-ignore no-explicit-any
   private originalPostMessage:
-    | ((message: any, targetOrigin: string, transfer?: Transferable[]) => void)
+    | ((
+      message: unknown,
+      targetOrigin: string,
+      transfer?: Transferable[],
+    ) => void)
     | null = null;
 
   constructor(options: BridgeClientOptions) {

@@ -439,8 +439,16 @@ export interface MCPTool {
  * };
  * ```
  */
+export interface ToolHandlerContext {
+  readonly toolName: string;
+  readonly request?: Request;
+  readonly sessionId?: string;
+  readonly authInfo?: import("./auth/types.ts").AuthInfo;
+}
+
 export type ToolHandler = (
   args: Record<string, unknown>,
+  ctx?: ToolHandlerContext,
 ) => Promise<unknown> | unknown;
 
 /**

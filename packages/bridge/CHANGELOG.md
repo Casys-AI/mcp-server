@@ -12,68 +12,61 @@ the project adheres to
 
 ### Added
 
-- **New submodule `@casys/mcp-bridge/adapters/network`.** Outbound
-  WebSocket tunnel primitives: agents inside a customer LAN dial a
-  SaaS relay and serve `tool.call` over the resulting socket. Three
-  pieces: `NetworkRelay` (server-side registry + routing),
-  `NetworkTunnelClient` (agent-side handler with reconnect loop) and
-  `WebSocketNetworkTransport` (concrete WS transport supporting
-  bearer header / custom headers; query bearer accepted at the bridge
+- **New submodule `@casys/mcp-bridge/adapters/network`.** Outbound WebSocket
+  tunnel primitives: agents inside a customer LAN dial a SaaS relay and serve
+  `tool.call` over the resulting socket. Three pieces: `NetworkRelay`
+  (server-side registry + routing), `NetworkTunnelClient` (agent-side handler
+  with reconnect loop) and `WebSocketNetworkTransport` (concrete WS transport
+  supporting bearer header / custom headers; query bearer accepted at the bridge
   but redacted from all error output, see below).
 - **`NETWORK_PROTOCOL_VERSION = 1` constant** on the wire contract.
-  `agent.hello` and `agent.ready` frames carry `protocolVersion`;
-  mismatched or missing values close with WS code 4002 "protocol
-  version mismatch". Lets future incompatible changes be rejected
-  deterministically.
-- **`NetworkRelayError` class** with `code`/`context`/`recovery`
-  fields (AX #4 — structured machine-readable errors). Five codes:
-  `NO_TUNNEL_AGENT`, `TUNNEL_AGENT_BUSY`, `TUNNEL_AGENT_DISCONNECTED`,
-  `TUNNEL_REQUEST_CANCELLED`, `TUNNEL_REQUEST_TIMEOUT`. Replaces the
-  previous plain `Error("CODE message")` strings that callers had to
-  grep on.
-- **Per-agent `AbortSignal` end-to-end.** `RegisteredNetworkAgent.send`
-  now accepts `{ signal }`; on relay timeout the controller aborts and
-  a cancellation frame is sent over the socket so the local agent can
-  drop its in-flight work. The agent slot stays "busy" until the send
-  path actually settles, so a timed-out call cannot leak a concurrent
-  slot.
-- **`NetworkTunnelReconnectOptions`** on `NetworkTunnelClient`.
-  Bounded exponential backoff (default initial 1s, cap 60s, ±20%
-  jitter), re-hello on each connect. Terminal close codes (4001 auth /
-  4002 protocol / 4004 no config / 4009 wrong mode) stop the loop and
-  surface a structured error via `onTerminalError`. Recoverable codes
-  (1006-style) retry.
+  `agent.hello` and `agent.ready` frames carry `protocolVersion`; mismatched or
+  missing values close with WS code 4002 "protocol version mismatch". Lets
+  future incompatible changes be rejected deterministically.
+- **`NetworkRelayError` class** with `code`/`context`/`recovery` fields (AX #4 —
+  structured machine-readable errors). Five codes: `NO_TUNNEL_AGENT`,
+  `TUNNEL_AGENT_BUSY`, `TUNNEL_AGENT_DISCONNECTED`, `TUNNEL_REQUEST_CANCELLED`,
+  `TUNNEL_REQUEST_TIMEOUT`. Replaces the previous plain `Error("CODE message")`
+  strings that callers had to grep on.
+- **Per-agent `AbortSignal` end-to-end.** `RegisteredNetworkAgent.send` now
+  accepts `{ signal }`; on relay timeout the controller aborts and a
+  cancellation frame is sent over the socket so the local agent can drop its
+  in-flight work. The agent slot stays "busy" until the send path actually
+  settles, so a timed-out call cannot leak a concurrent slot.
+- **`NetworkTunnelReconnectOptions`** on `NetworkTunnelClient`. Bounded
+  exponential backoff (default initial 1s, cap 60s, ±20% jitter), re-hello on
+  each connect. Terminal close codes (4001 auth / 4002 protocol / 4004 no config
+  / 4009 wrong mode) stop the loop and surface a structured error via
+  `onTerminalError`. Recoverable codes (1006-style) retry.
 
 ### Changed
 
 - **`NetworkRelay` default `concurrencyStrategy` is now `"reject"`**
-  (one-call-at-a-time per agent). The previous default was `"parallel"`
-  which a review surfaced as unsafe — a slow handler could leak
-  concurrent slots and break the relay's per-agent isolation
-  guarantee. Callers that need parallel mode must opt in explicitly
-  via `concurrencyStrategy: "parallel"`. **This is a breaking change
-  for consumers that relied on the parallel default; valid under
+  (one-call-at-a-time per agent). The previous default was `"parallel"` which a
+  review surfaced as unsafe — a slow handler could leak concurrent slots and
+  break the relay's per-agent isolation guarantee. Callers that need parallel
+  mode must opt in explicitly via `concurrencyStrategy: "parallel"`. **This is a
+  breaking change for consumers that relied on the parallel default; valid under
   pre-1.0 semver.**
 - **Pending in-flight calls are now rejected on socket close AND on
-  `unregisterAgent`.** Previously a close mid-call left the awaiting
-  caller hanging on a never-resolving promise. Now both paths reject
-  with structured `TUNNEL_AGENT_DISCONNECTED` / `TUNNEL_REQUEST_CANCELLED`.
-- **Test-only `allowInsecureNetworkAgentHelloForTests` helper** moved
-  from the public exports (`adapters/network/mod.ts` and root
-  `src/mod.ts`) into a non-published `_test-fixtures.ts` fixture file.
-  Production consumers could previously build a relay that accepted
-  any `agent.hello` — that surface is removed.
+  `unregisterAgent`.** Previously a close mid-call left the awaiting caller
+  hanging on a never-resolving promise. Now both paths reject with structured
+  `TUNNEL_AGENT_DISCONNECTED` / `TUNNEL_REQUEST_CANCELLED`.
+- **Test-only `allowInsecureNetworkAgentHelloForTests` helper** moved from the
+  public exports (`adapters/network/mod.ts` and root `src/mod.ts`) into a
+  non-published `_test-fixtures.ts` fixture file. Production consumers could
+  previously build a relay that accepted any `agent.hello` — that surface is
+  removed.
 
 ### Security
 
-- **Query bearer tokens are now redacted from WS error strings.** The
-  transport supports `auth.via: "query"` for environments where headers
-  can't be injected; when this fails (connect refused, close before
-  open) the URL — including any `access_token`/`token` parameter — was
-  previously interpolated into the error message and propagated to
-  caller logs. A new `redactUrl(url, queryParam?)` helper replaces
-  bearer values with `***` before interpolation. Default-strip set:
-  `access_token`, `token`; consumers can pass a custom `queryParam`.
+- **Query bearer tokens are now redacted from WS error strings.** The transport
+  supports `auth.via: "query"` for environments where headers can't be injected;
+  when this fails (connect refused, close before open) the URL — including any
+  `access_token`/`token` parameter — was previously interpolated into the error
+  message and propagated to caller logs. A new `redactUrl(url, queryParam?)`
+  helper replaces bearer values with `***` before interpolation. Default-strip
+  set: `access_token`, `token`; consumers can pass a custom `queryParam`.
 
 ### Fixed
 
@@ -85,19 +78,17 @@ the project adheres to
 
 ### Migration notes
 
-- Consumers that explicitly relied on `concurrencyStrategy: "parallel"`
-  being the default must add it to their `NetworkRelay` options now.
-  Recommended: keep the new `"reject"` default; only opt back into
-  parallel if you have specific reason (and document it).
-- Consumers that imported `allowInsecureNetworkAgentHelloForTests`
-  from `@casys/mcp-bridge` or `@casys/mcp-bridge/adapters/network`
-  must import the helper directly from
-  `@casys/mcp-bridge/adapters/network/_test-fixtures.ts` (test-only;
-  not part of the public API surface).
+- Consumers that explicitly relied on `concurrencyStrategy: "parallel"` being
+  the default must add it to their `NetworkRelay` options now. Recommended: keep
+  the new `"reject"` default; only opt back into parallel if you have specific
+  reason (and document it).
+- Consumers that imported `allowInsecureNetworkAgentHelloForTests` from
+  `@casys/mcp-bridge` or `@casys/mcp-bridge/adapters/network` must import the
+  helper directly from `@casys/mcp-bridge/adapters/network/_test-fixtures.ts`
+  (test-only; not part of the public API surface).
 - The new `protocolVersion` field is REQUIRED on `agent.hello` and
-  `agent.ready`. The bundled `NetworkTunnelClient` sets it
-  automatically; custom clients must set it to
-  `NETWORK_PROTOCOL_VERSION`.
+  `agent.ready`. The bundled `NetworkTunnelClient` sets it automatically; custom
+  clients must set it to `NETWORK_PROTOCOL_VERSION`.
 
 ## [0.2.0] - 2026-03-XX
 

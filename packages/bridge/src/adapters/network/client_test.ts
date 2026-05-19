@@ -167,6 +167,35 @@ Deno.test("network tunnel client stops reconnect loop on terminal close", async 
   assertEquals(transport.connectCalls.length, 1);
 });
 
+Deno.test("network tunnel client treats 4003 close as terminal", async () => {
+  const transport = new FakeTransport();
+  let terminalError: NetworkRelayError | undefined;
+  const client = new NetworkTunnelClient({
+    transport,
+    tenantId: "tenant_123",
+    targetType: "erpnext",
+    agentId: "agent_1",
+    keyVersion: 1,
+    reconnect: { initialDelayMs: 0, maxDelayMs: 0, jitterRatio: 0 },
+    onTerminalError: (error) => {
+      terminalError = error;
+    },
+    handleToolCall: () => Promise.resolve({ ok: true }),
+  });
+
+  await client.start("wss://relay.example.test/mcp/_tunnel");
+  transport.close({ code: 4003, reason: "agent token verifier required" });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assertEquals(terminalError instanceof NetworkRelayError, true);
+  assertEquals(terminalError?.code, "TUNNEL_AGENT_DISCONNECTED");
+  assertEquals(terminalError?.context, {
+    closeCode: 4003,
+    reason: "agent token verifier required",
+  });
+  assertEquals(transport.connectCalls.length, 1);
+});
+
 Deno.test("network tunnel client handles tool calls", async () => {
   const transport = new FakeTransport();
   const client = new NetworkTunnelClient({

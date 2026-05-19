@@ -226,9 +226,16 @@ export class NetworkRelay {
       arguments: input.arguments,
       actorSubject: input.actorSubject,
     };
-    const sendPromise = state.agent.send(toolCall, {
-      signal: abortController.signal,
-    });
+    let sendPromise: Promise<NetworkToolCallResponse>;
+    try {
+      sendPromise = Promise.resolve(state.agent.send(toolCall, {
+        signal: abortController.signal,
+      }));
+    } catch (err) {
+      state.pending.delete(requestId);
+      releaseBusy();
+      throw err;
+    }
     void sendPromise.then(
       () => {
         state.pending.delete(requestId);

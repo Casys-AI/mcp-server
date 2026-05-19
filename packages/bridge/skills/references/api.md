@@ -9,10 +9,11 @@ Version 0.2.0. All exports from `src/mod.ts`.
 Start the HTTP resource server. Returns a `ResourceServer` instance.
 
 ```ts
-function startResourceServer(config: ResourceServerConfig): ResourceServer
+function startResourceServer(config: ResourceServerConfig): ResourceServer;
 ```
 
-**Throws** if `platform === "telegram"` and neither `telegramBotToken` nor `auth` is provided.
+**Throws** if `platform === "telegram"` and neither `telegramBotToken` nor
+`auth` is provided.
 
 ### `ResourceServerConfig`
 
@@ -22,7 +23,7 @@ interface ResourceServerConfig {
   assetDirectories: Record<string, string>;
 
   // Required: platform name used when creating sessions and configuring bridge.js
-  platform: string;  // "telegram" | "line" | any string
+  platform: string; // "telegram" | "line" | any string
 
   // Bridge options (port, CORS, debug)
   options?: BridgeOptions;
@@ -45,11 +46,20 @@ interface ResourceServerConfig {
 
   // Called on every authenticated JSON-RPC message before backend.handleMessage()
   // Return null to fall through to backend
-  onMessage?: (session: BridgeSession, message: McpAppsMessage) => Promise<McpAppsMessage | null>;
+  onMessage?: (
+    session: BridgeSession,
+    message: McpAppsMessage,
+  ) => Promise<McpAppsMessage | null>;
 
   // Custom HTTP route handler for requests not matching built-in paths
   // Return Response, { html, pendingNotifications? }, or null (404)
-  onHttpRequest?: (request: Request) => Promise<Response | { html: string; pendingNotifications?: PendingNotification[] } | null>;
+  onHttpRequest?: (
+    request: Request,
+  ) => Promise<
+    | Response
+    | { html: string; pendingNotifications?: PendingNotification[] }
+    | null
+  >;
 }
 ```
 
@@ -57,9 +67,9 @@ interface ResourceServerConfig {
 
 ```ts
 interface BridgeOptions {
-  resourceServerPort?: number;    // Default: 0 (OS-assigned)
-  allowedOrigins?: readonly string[];  // Default: ["*"]
-  debug?: boolean;                // Default: false
+  resourceServerPort?: number; // Default: 0 (OS-assigned)
+  allowedOrigins?: readonly string[]; // Default: ["*"]
+  debug?: boolean; // Default: false
 }
 ```
 
@@ -67,14 +77,15 @@ interface BridgeOptions {
 
 ```ts
 interface CspOptions {
-  scriptSources?: readonly string[];    // Added to script-src
-  connectSources?: readonly string[];   // Added to connect-src
-  frameAncestors?: readonly string[];   // Added to frame-ancestors
-  allowInline?: boolean;                // Default: true (unsafe-inline)
+  scriptSources?: readonly string[]; // Added to script-src
+  connectSources?: readonly string[]; // Added to connect-src
+  frameAncestors?: readonly string[]; // Added to frame-ancestors
+  allowInline?: boolean; // Default: true (unsafe-inline)
 }
 ```
 
-Default CSP (no options): `default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'`
+Default CSP (no options):
+`default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'`
 
 ---
 
@@ -82,11 +93,11 @@ Default CSP (no options): `default-src 'none'; script-src 'self' 'unsafe-inline'
 
 ```ts
 interface ResourceServer {
-  readonly baseUrl: string;           // e.g. "http://localhost:54321"
-  readonly sessions: SessionStore;    // Live session store
+  readonly baseUrl: string; // e.g. "http://localhost:54321"
+  readonly sessions: SessionStore; // Live session store
 
   // Store a tool result for delivery via ?ref= URL param. Expires in 5 minutes.
-  storeToolResult(result: ToolResultData): string;  // returns ref string
+  storeToolResult(result: ToolResultData): string; // returns ref string
 
   // Retrieve and consume a stored result (single-use).
   consumeToolResult(ref: string): ToolResultData | undefined;
@@ -111,10 +122,11 @@ interface ToolResultData {
 
 ### `buildToolResultFromData(data)`
 
-Converts `ToolResultData` into a `PendingNotification` with method `ui/notifications/tool-result`.
+Converts `ToolResultData` into a `PendingNotification` with method
+`ui/notifications/tool-result`.
 
 ```ts
-function buildToolResultFromData(data: ToolResultData): PendingNotification
+function buildToolResultFromData(data: ToolResultData): PendingNotification;
 ```
 
 ---
@@ -126,7 +138,10 @@ Generic backend for MCP servers exposing an HTTP JSON-RPC endpoint.
 ```ts
 class JsonRpcMcpBackend implements McpBackend {
   constructor(options: JsonRpcMcpBackendOptions);
-  handleMessage(session: BridgeSession, message: McpAppsMessage): Promise<McpAppsMessage | null>;
+  handleMessage(
+    session: BridgeSession,
+    message: McpAppsMessage,
+  ): Promise<McpAppsMessage | null>;
   readResource(uri: string): Promise<string | UiResourceResponse | null>;
 }
 ```
@@ -135,9 +150,9 @@ class JsonRpcMcpBackend implements McpBackend {
 
 ```ts
 interface JsonRpcMcpBackendOptions {
-  endpointUrl: string;                          // Full URL for JSON-RPC POST
-  headers?: Readonly<Record<string, string>>;   // Static request headers
-  fetchFn?: typeof fetch;                       // Custom fetch (testing/custom runtimes)
+  endpointUrl: string; // Full URL for JSON-RPC POST
+  headers?: Readonly<Record<string, string>>; // Static request headers
+  fetchFn?: typeof fetch; // Custom fetch (testing/custom runtimes)
 }
 ```
 
@@ -145,8 +160,14 @@ interface JsonRpcMcpBackendOptions {
 
 ```ts
 interface McpBackend {
-  handleMessage(session: BridgeSession, message: McpAppsMessage): Promise<McpAppsMessage | null>;
-  readResource?(uri: string, request?: Request): Promise<string | UiResourceResponse | null>;
+  handleMessage(
+    session: BridgeSession,
+    message: McpAppsMessage,
+  ): Promise<McpAppsMessage | null>;
+  readResource?(
+    uri: string,
+    request?: Request,
+  ): Promise<string | UiResourceResponse | null>;
 }
 ```
 
@@ -164,7 +185,8 @@ interface UiResourceResponse {
 
 ## `BridgeClient`
 
-Runs inside the webview. Injected automatically by `bridge.js` — only use directly when building custom bridge clients.
+Runs inside the webview. Injected automatically by `bridge.js` — only use
+directly when building custom bridge clients.
 
 ```ts
 class BridgeClient {
@@ -180,12 +202,12 @@ class BridgeClient {
 
 ```ts
 interface BridgeClientOptions {
-  serverUrl: string;              // WebSocket URL of resource server
-  platform: PlatformAdapter;      // Platform adapter instance
-  transport: BridgeTransport;     // Transport (use WebSocketTransport)
-  sessionId: string;              // Session ID from resource server
-  bridgeInfo?: { name: string; version: string };  // Reported in ui/initialize
-  requestTimeoutMs?: number;      // Default: 30000
+  serverUrl: string; // WebSocket URL of resource server
+  platform: PlatformAdapter; // Platform adapter instance
+  transport: BridgeTransport; // Transport (use WebSocketTransport)
+  sessionId: string; // Session ID from resource server
+  bridgeInfo?: { name: string; version: string }; // Reported in ui/initialize
+  requestTimeoutMs?: number; // Default: 30000
 }
 ```
 
@@ -193,44 +215,47 @@ interface BridgeClientOptions {
 
 ## `TelegramPlatformAdapter`
 
-Full `PlatformAdapter` implementation for Telegram Mini Apps. Use with `BridgeClient` for custom client-side bridge setup.
+Full `PlatformAdapter` implementation for Telegram Mini Apps. Use with
+`BridgeClient` for custom client-side bridge setup.
 
 ```ts
 class TelegramPlatformAdapter implements PlatformAdapter {
   readonly name: "telegram";
-  initialize(): Promise<HostContext>;          // calls tg.ready(), tg.expand()
-  getTheme(): "light" | "dark";               // reads tg.colorScheme
-  getContainerDimensions(): ContainerDimensions;  // { width: innerWidth, maxHeight: viewportStableHeight }
-  getAuthData(): Record<string, unknown>;     // { initData, initDataUnsafe, platform, version }
+  initialize(): Promise<HostContext>; // calls tg.ready(), tg.expand()
+  getTheme(): "light" | "dark"; // reads tg.colorScheme
+  getContainerDimensions(): ContainerDimensions; // { width: innerWidth, maxHeight: viewportStableHeight }
+  getAuthData(): Record<string, unknown>; // { initData, initDataUnsafe, platform, version }
   onLifecycleEvent(handler: LifecycleEventHandler): void;
   openLink(url: string): Promise<void>;
-  sendMessage(text: string): Promise<void>;   // calls tg.sendData() — CLOSES the Mini App
+  sendMessage(text: string): Promise<void>; // calls tg.sendData() — CLOSES the Mini App
   destroy(): void;
 }
 ```
 
-Theme mapping from `TelegramThemeParams` to CSS variables (set in `HostContext.styles.variables`):
+Theme mapping from `TelegramThemeParams` to CSS variables (set in
+`HostContext.styles.variables`):
 
-| Telegram param | CSS variable |
-|---|---|
-| `bg_color` | `--color-background-primary` |
-| `secondary_bg_color` | `--color-background-secondary` |
-| `text_color` | `--color-text-primary` |
-| `subtitle_text_color` | `--color-text-secondary` |
-| `section_separator_color` | `--color-border-primary` |
-| `accent_text_color` | `--color-ring-primary` |
-| `hint_color` | `--color-text-hint` |
-| `link_color` | `--color-text-link` |
-| `button_color` | `--color-button-primary` |
-| `button_text_color` | `--color-button-text` |
-| `header_bg_color` | `--color-background-header` |
-| `section_bg_color` | `--color-background-section` |
+| Telegram param            | CSS variable                   |
+| ------------------------- | ------------------------------ |
+| `bg_color`                | `--color-background-primary`   |
+| `secondary_bg_color`      | `--color-background-secondary` |
+| `text_color`              | `--color-text-primary`         |
+| `subtitle_text_color`     | `--color-text-secondary`       |
+| `section_separator_color` | `--color-border-primary`       |
+| `accent_text_color`       | `--color-ring-primary`         |
+| `hint_color`              | `--color-text-hint`            |
+| `link_color`              | `--color-text-link`            |
+| `button_color`            | `--color-button-primary`       |
+| `button_text_color`       | `--color-button-text`          |
+| `header_bg_color`         | `--color-background-header`    |
+| `section_bg_color`        | `--color-background-section`   |
 
 ---
 
 ## `TelegramAdapter`
 
-Minimal postMessage adapter (extends `BasePostMessageAdapter`). Does not handle platform lifecycle, theme, or auth.
+Minimal postMessage adapter (extends `BasePostMessageAdapter`). Does not handle
+platform lifecycle, theme, or auth.
 
 ```ts
 class TelegramAdapter extends BasePostMessageAdapter {
@@ -242,7 +267,8 @@ class TelegramAdapter extends BasePostMessageAdapter {
 
 ## `LineAdapter`
 
-Minimal LINE LIFF adapter (extends `BasePostMessageAdapter`). No LIFF SDK initialization, no auth, no lifecycle events.
+Minimal LINE LIFF adapter (extends `BasePostMessageAdapter`). No LIFF SDK
+initialization, no auth, no lifecycle events.
 
 ```ts
 class LineAdapter extends BasePostMessageAdapter {
@@ -288,13 +314,15 @@ const McpAppsMethod = {
 
 ### `createTelegramAuthHandler(botToken)`
 
-Returns a `BridgeAuthHandler` that validates Telegram `initData` using HMAC-SHA256.
+Returns a `BridgeAuthHandler` that validates Telegram `initData` using
+HMAC-SHA256.
 
 ```ts
-function createTelegramAuthHandler(botToken: string): BridgeAuthHandler
+function createTelegramAuthHandler(botToken: string): BridgeAuthHandler;
 ```
 
-Accepts both `{ type: "auth", initData: "..." }` and `{ type: "auth", payload: { initData: "..." } }`.
+Accepts both `{ type: "auth", initData: "..." }` and
+`{ type: "auth", payload: { initData: "..." } }`.
 
 ### `validateTelegramInitData(initData, botToken, maxAgeSeconds?)`
 
@@ -304,8 +332,8 @@ Low-level validation function. Returns `TelegramAuthResult`.
 async function validateTelegramInitData(
   initData: string,
   botToken: string,
-  maxAgeSeconds?: number,  // Default: 86400
-): Promise<TelegramAuthResult>
+  maxAgeSeconds?: number, // Default: 86400
+): Promise<TelegramAuthResult>;
 ```
 
 ```ts
@@ -364,12 +392,12 @@ Sessions expire after 30 minutes of inactivity. Max 10,000 concurrent sessions.
 
 ```ts
 class SessionStore {
-  constructor(maxAgeMs?: number);  // Default: 30 * 60 * 1000
+  constructor(maxAgeMs?: number); // Default: 30 * 60 * 1000
   create(platform: string): BridgeSession;
   get(id: string): BridgeSession | undefined;
   touch(id: string): void;
   remove(id: string): boolean;
-  cleanup(): number;  // removes expired sessions, returns count
+  cleanup(): number; // removes expired sessions, returns count
   readonly size: number;
   clear(): void;
 }
@@ -406,13 +434,14 @@ interface ContainerDimensions {
 }
 ```
 
-Telegram: `TelegramPlatformAdapter` sets `width` (from `innerWidth`) and `maxHeight` (from `viewportStableHeight`). `height` is not set.
+Telegram: `TelegramPlatformAdapter` sets `width` (from `innerWidth`) and
+`maxHeight` (from `viewportStableHeight`). `height` is not set.
 
 ### `HostContextStyles`
 
 ```ts
 interface HostContextStyles {
-  variables?: Record<string, string>;  // CSS custom properties
+  variables?: Record<string, string>; // CSS custom properties
   css?: { fonts?: string };
 }
 ```
@@ -432,7 +461,12 @@ interface SafeAreaInsets {
 
 ```ts
 interface LifecycleEvent {
-  type: "theme-changed" | "viewport-changed" | "activated" | "deactivated" | "teardown";
+  type:
+    | "theme-changed"
+    | "viewport-changed"
+    | "activated"
+    | "deactivated"
+    | "teardown";
   reason?: string;
 }
 ```
@@ -463,9 +497,17 @@ interface McpToolDeclaration {
 
 ```ts
 type McpAppPermission =
-  | "allow-downloads" | "allow-forms" | "allow-modals" | "allow-popups"
-  | "allow-same-origin" | "allow-scripts" | "camera" | "microphone"
-  | "geolocation" | "clipboard-read" | "clipboard-write";
+  | "allow-downloads"
+  | "allow-forms"
+  | "allow-modals"
+  | "allow-popups"
+  | "allow-same-origin"
+  | "allow-scripts"
+  | "camera"
+  | "microphone"
+  | "geolocation"
+  | "clipboard-read"
+  | "clipboard-write";
 ```
 
 ---
@@ -539,8 +581,8 @@ enum JsonRpcErrorCode {
 ## Resource resolver
 
 ```ts
-function parseResourceUri(uri: string): ResourceUri
-function resolveToHttp(uri: ResourceUri, options: ResolveToHttpOptions): string
+function parseResourceUri(uri: string): ResourceUri;
+function resolveToHttp(uri: ResourceUri, options: ResolveToHttpOptions): string;
 ```
 
 ```ts
@@ -557,7 +599,7 @@ interface ResourceUri {
 ## CSP helper
 
 ```ts
-function buildCspHeader(options?: CspOptions): string
+function buildCspHeader(options?: CspOptions): string;
 ```
 
 ---
@@ -565,7 +607,7 @@ function buildCspHeader(options?: CspOptions): string
 ## Telegram SDK bridge
 
 ```ts
-function getTelegramWebApp(): TelegramWebApp
+function getTelegramWebApp(): TelegramWebApp;
 ```
 
 Reads `window.Telegram.WebApp`. Throws if the Telegram SDK is not loaded.

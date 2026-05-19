@@ -96,11 +96,55 @@ pkg.exports = {
     require: "./script/mod.js",
   },
   "./adapters/network": {
-    types: "./esm/adapters/network.d.ts",
-    import: "./esm/adapters/network.js",
-    require: "./script/adapters/network.js",
+    types: "./esm/adapters/network/mod.d.ts",
+    import: "./esm/adapters/network/mod.js",
+    require: "./script/adapters/network/mod.js",
   },
 };
 await Deno.writeTextFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
 
+await smokeTestNetworkAdapterSubpath();
+
 console.log("\n[build-npm] Done. Output in ./dist-node/");
+
+async function smokeTestNetworkAdapterSubpath(): Promise<void> {
+  const tempConsumer = await Deno.makeTempDir({
+    prefix: "mcp-bridge-npm-smoke-",
+  });
+  try {
+    const packageScope = `${tempConsumer}/node_modules/@casys`;
+    await Deno.mkdir(packageScope, { recursive: true });
+    await Deno.symlink(
+      new URL("../dist-node", import.meta.url).pathname,
+      `${packageScope}/mcp-bridge`,
+      { type: "dir" },
+    );
+    const command = new Deno.Command("node", {
+      cwd: tempConsumer,
+      args: [
+        "--input-type=module",
+        "--eval",
+        [
+          "const mod = await import('@casys/mcp-bridge/adapters/network');",
+          "if (typeof mod.NetworkRelay !== 'function') {",
+          "  throw new Error('NetworkRelay export missing');",
+          "}",
+        ].join("\n"),
+      ],
+    });
+    const result = await command.output();
+    if (!result.success) {
+      const stderr = new TextDecoder().decode(result.stderr).trim();
+      const stdout = new TextDecoder().decode(result.stdout).trim();
+      throw new Error(
+        [
+          "[build-npm] npm subpath smoke test failed",
+          stdout && `stdout:\n${stdout}`,
+          stderr && `stderr:\n${stderr}`,
+        ].filter(Boolean).join("\n"),
+      );
+    }
+  } finally {
+    await Deno.remove(tempConsumer, { recursive: true });
+  }
+}

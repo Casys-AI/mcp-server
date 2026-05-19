@@ -235,6 +235,8 @@ export class NetworkTunnelClient {
 function isTerminalClose(reason: NetworkTunnelCloseReason): boolean {
   return reason.code === 4001 ||
     reason.code === 4002 ||
+    // 4003 covers bridge tenant mismatch and missing/required verifier config.
+    reason.code === 4003 ||
     reason.code === 4004 ||
     reason.code === 4009;
 }

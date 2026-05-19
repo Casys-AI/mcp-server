@@ -274,6 +274,51 @@ Deno.test("relay reject strategy rejects concurrent calls to the same agent", as
   assertEquals(await firstCall, { ok: true });
 });
 
+Deno.test("relay frees agent slot when send throws synchronously", async () => {
+  const relay = new NetworkRelay();
+  let calls = 0;
+
+  relay.registerAgent({
+    tenantId: "tenant_123",
+    targetType: "erpnext",
+    agentId: "agent_1",
+    send: (message) => {
+      calls++;
+      if (calls === 1) {
+        throw new Error("sync send failed");
+      }
+      return Promise.resolve({
+        type: "tool.result",
+        requestId: message.requestId,
+        result: { ok: true },
+      });
+    },
+  });
+
+  await assertRejects(
+    () =>
+      relay.callTool({
+        tenantId: "tenant_123",
+        targetType: "erpnext",
+        toolName: "erpnext.customer_list",
+        arguments: {},
+        actorSubject: null,
+      }),
+    Error,
+    "sync send failed",
+  );
+
+  const result = await relay.callTool({
+    tenantId: "tenant_123",
+    targetType: "erpnext",
+    toolName: "erpnext.customer_list",
+    arguments: {},
+    actorSubject: null,
+  });
+
+  assertEquals(result, { ok: true });
+});
+
 function withTimeout<T>(promise: Promise<T>, message: string): Promise<T> {
   let timer: number | undefined;
   const timeout = new Promise<never>((_, reject) => {

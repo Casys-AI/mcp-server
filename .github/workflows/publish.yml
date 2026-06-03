@@ -1,8 +1,7 @@
 name: Publish
 
-# Triggered on push to main. Publishes workspace packages to JSR (all four)
-# and npm (server, compose, bridge — view stays JSR-only until a build-npm.ts
-# is added). Each npm job is idempotent: it checks `npm view <pkg>@<ver>`
+# Triggered on push to main. Publishes workspace packages to JSR and npm.
+# Each npm job is idempotent: it checks `npm view <pkg>@<ver>`
 # before publishing so already-published versions exit cleanly without
 # masking auth/build/network failures.
 
@@ -102,6 +101,28 @@ jobs:
           fi
           npm publish --access public
 
-  # NOTE: @casys/mcp-view is intentionally JSR-only at this stage. Adding npm
-  # publish requires writing packages/view/scripts/build-npm.ts (dnt build with
-  # DOM types — see compose's script for the pattern).
+  publish-npm-view:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Build and publish @casys/mcp-view to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          cd packages/view
+          deno run -A scripts/build-npm.ts
+          cd dist-node
+          PKG_NAME=$(node -p "require('./package.json').name")
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if npm view "${PKG_NAME}@${PKG_VERSION}" version >/dev/null 2>&1; then
+            echo "Already published: ${PKG_NAME}@${PKG_VERSION} — skipping"
+            exit 0
+          fi
+          npm publish --access public

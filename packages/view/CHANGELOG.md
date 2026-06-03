@@ -7,6 +7,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Add npm packaging for `@casys/mcp-view` via `scripts/build-npm.ts` and the repository publish
+  workflow. The package now follows the same JSR + npm publishing path as the other workspace
+  members.
+
 ## [0.3.0] - 2026-05-09
 
 Wraps the four interesting additions of `@modelcontextprotocol/ext-apps` 1.7.0 as first-class

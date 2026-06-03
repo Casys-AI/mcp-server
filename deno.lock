@@ -881,6 +881,7 @@
       },
       "packages/view": {
         "dependencies": [
+          "jsr:@deno/dnt@0.41",
           "jsr:@std/assert@1",
           "npm:@modelcontextprotocol/ext-apps@^1.7.1",
           "npm:@modelcontextprotocol/sdk@^1.29.0"

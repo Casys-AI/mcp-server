@@ -870,6 +870,7 @@
       },
       "packages/server": {
         "dependencies": [
+          "jsr:@casys/mcp-compose@~0.5.2",
           "jsr:@std/assert@1",
           "jsr:@std/yaml@1",
           "npm:@modelcontextprotocol/sdk@^1.29.0",

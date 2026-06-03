@@ -36,13 +36,20 @@ find "$DIST_DIR" -name "*_test.ts" -o -name "*.test.ts" -o -name "*.bench.ts" | 
 cp "$DIST_DIR/src/runtime/runtime.node.ts" "$DIST_DIR/src/runtime/runtime.ts"
 rm "$DIST_DIR/src/runtime/runtime.node.ts"
 
+# Portable in-place sed: GNU sed wants `-i`, BSD/macOS sed wants `-i ''`.
+if sed --version >/dev/null 2>&1; then
+  SED_INPLACE=(-i)
+else
+  SED_INPLACE=(-i '')
+fi
+
 # Remap Deno-ecosystem imports to npm equivalents
 # @std/yaml → yaml (npm yaml package has same parse() API)
-find "$DIST_DIR" -name "*.ts" -exec sed -i 's|from "@std/yaml"|from "yaml"|g' {} +
+find "$DIST_DIR" -name "*.ts" -exec sed "${SED_INPLACE[@]}" 's|from "@std/yaml"|from "yaml"|g' {} +
 
 # Strip .ts extensions from relative imports → .js (Node ESM)
 # Matches: from "./foo.ts", from "../bar/baz.ts", import("./types.ts")
-find "$DIST_DIR" -name "*.ts" -exec sed -i \
+find "$DIST_DIR" -name "*.ts" -exec sed "${SED_INPLACE[@]}" \
   -e 's/from "\(\.[^"]*\)\.ts"/from "\1.js"/g' \
   -e 's/import("\(\.[^"]*\)\.ts")/import("\1.js")/g' \
   {} +
@@ -50,11 +57,21 @@ find "$DIST_DIR" -name "*.ts" -exec sed -i \
 # Read versions from deno.json (single source of truth — keep specs aligned).
 VERSION=$(grep '"version"' "$ROOT_DIR/deno.json" | sed 's/.*"version": *"\([^"]*\)".*/\1/')
 SDK_VERSION=$(grep '"@modelcontextprotocol/sdk"' "$ROOT_DIR/deno.json" | sed 's|.*sdk@\([^"]*\)".*|\1|')
+# @casys/mcp-server re-exports @casys/mcp-compose (mod.ts → /sdk, types.ts → /core),
+# so the npm package must declare it as a runtime dependency. Pin to the compose
+# minor currently in the workspace so consumers get a compatible build.
+COMPOSE_VERSION=$(grep '"version"' "$ROOT_DIR/../compose/deno.json" | sed 's/.*"version": *"\([^"]*\)".*/\1/')
 echo "[build-node] Version: $VERSION"
 echo "[build-node] MCP SDK version: $SDK_VERSION"
+echo "[build-node] mcp-compose version: $COMPOSE_VERSION"
 
 if [ -z "$SDK_VERSION" ]; then
   echo "[build-node] ERROR: failed to parse @modelcontextprotocol/sdk version from deno.json" >&2
+  exit 1
+fi
+
+if [ -z "$COMPOSE_VERSION" ]; then
+  echo "[build-node] ERROR: failed to parse @casys/mcp-compose version from ../compose/deno.json" >&2
   exit 1
 fi
 
@@ -73,6 +90,7 @@ cat > "$DIST_DIR/package.json" <<PKGJSON
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "$SDK_VERSION",
+    "@casys/mcp-compose": "^$COMPOSE_VERSION",
     "hono": "^4.0.0",
     "ajv": "^8.17.1",
     "jose": "^6.0.0",

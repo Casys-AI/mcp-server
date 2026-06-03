@@ -4,3 +4,6 @@ packages/bridge/.env
 .DS_Store
 .idea/
 .serena/
+
+# Generated npm build output (dnt / build-node.sh) in any package
+dist-node/

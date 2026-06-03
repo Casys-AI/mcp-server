@@ -4,6 +4,21 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
 
 ## [Unreleased]
 
+## [0.17.6] - 2026-06-03
+
+### Fixed
+
+- **npm package now declares its `@casys/mcp-compose` dependency.** `mod.ts`
+  re-exports `@casys/mcp-compose/sdk` and `src/types.ts` imports
+  `@casys/mcp-compose/core`, but the generated npm `package.json` never listed
+  the dependency — it only resolved through the Deno workspace. As a result
+  `npm install @casys/mcp-server` left the bare `@casys/mcp-compose/*` imports
+  unresolvable (`Cannot find module`). `build-node.sh` now reads the compose
+  version from `../compose/deno.json` and adds `@casys/mcp-compose` to the
+  generated dependencies, and `deno.json` declares the import explicitly
+  (`jsr:@casys/mcp-compose@^0.5.2`) so JSR records the same coupling. The build
+  script's in-place `sed` calls were also made portable (GNU + BSD/macOS).
+
 ## [0.17.5] - 2026-04-16
 
 ### Fixed

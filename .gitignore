@@ -1,1 +1,6 @@
 packages/bridge/.env
+
+# Local tooling / OS noise
+.DS_Store
+.idea/
+.serena/

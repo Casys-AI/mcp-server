@@ -4,24 +4,38 @@
 [![JSR](https://jsr.io/badges/@casys/mcp-bridge)](https://jsr.io/@casys/mcp-bridge)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Bridge
+Bridge MCP traffic across hosts that cannot talk directly.
+
+`@casys/mcp-bridge` started as a bridge for
 [MCP Apps](https://modelcontextprotocol.io/specification/2025-11-25/client/roots)
-interactive UIs to messaging platforms. Turn any MCP tool with a `ui://`
-resource into a Telegram Mini App or LINE LIFF app.
+interactive UIs: turn any MCP tool with a `ui://` resource into a Telegram Mini
+App or LINE LIFF app.
+
+It now also exposes network tunnel primitives for Casys-style
+SaaS-to-private-network deployments: a local runtime opens an outbound WebSocket
+to a relay, and the relay routes MCP tool calls back through that socket. That
+local runtime can be a small wrapper daemon, or the MCP server process itself if
+the MCP server is already the long-lived process that can reach private data.
 
 ```
-MCP Server (tools with ui:// resources)
-        |
-        v
-+------------------+
-|  @casys/mcp-bridge  |
-|   Resource Server   |  Serves HTML + injects bridge.js
-|   Bridge Client     |  Intercepts postMessage, routes via WebSocket
-|   Platform Adapters |  Telegram theme/viewport/auth mapping
-+------------------+
-        |
-        v
-Telegram Mini App / LINE LIFF WebView
+UI bridge:
+  MCP Server (tools with ui:// resources)
+          |
+          v
+  @casys/mcp-bridge Resource Server
+          |
+          v
+  Telegram Mini App / LINE LIFF WebView
+
+Network bridge:
+  Online MCP endpoint / SaaS relay
+      ^
+      | outbound WebSocket
+      |
+  Local runtime: MCP server + bridge client
+      |
+      v
+  Private ERP / DB / local service
 ```
 
 ---
@@ -121,6 +135,8 @@ Then configure your Telegram bot via [@BotFather](https://t.me/BotFather):
 
 ## How It Works
 
+### UI bridge
+
 1. **User opens Mini App** in Telegram (or LINE)
 2. **Resource server** serves the MCP App HTML with `bridge.js` auto-injected
 3. **bridge.js** intercepts `postMessage` calls from the MCP App
@@ -131,6 +147,47 @@ Then configure your Telegram bot via [@BotFather](https://t.me/BotFather):
 
 The MCP App doesn't know it's running in Telegram. It uses the standard MCP Apps
 SDK (`postMessage`), and the bridge handles the translation.
+
+### Network bridge
+
+1. **Local runtime starts** inside the private network
+2. **Bridge client opens an outbound WebSocket** to the SaaS relay
+3. **Relay authenticates `agent.hello`** and registers the agent for a
+   `tenantId` + `targetType`
+4. **SaaS calls `NetworkRelay.callTool()`** for private work
+5. **Tool call crosses the socket** as `tool.call`
+6. **Local handler runs** against the private ERP, DB, filesystem, or MCP server
+7. **Result returns** as `tool.result`, or a structured `error`
+
+This is the Casys relay mode. It is the path used by products such as
+`erp-platform`, where an online MCP endpoint handles tenant auth and routing,
+then sends selected tool calls through the tunnel to a local runtime. For a
+local ERP, that runtime typically runs `mcp-erp` next to ERPNext/Dolibarr and
+uses `@casys/mcp-bridge/adapters/network` only for the relay transport.
+
+`daemon` here describes the runtime role, not necessarily a separate package:
+the tunnel client can live in a standalone wrapper, or inside the MCP server
+binary/process.
+
+### Direct OpenAI tunnel mode
+
+When the goal is to publish a local/private MCP server directly to ChatGPT,
+Codex, the Responses API, or AgentKit, use OpenAI's official
+[`tunnel-client`](https://github.com/openai/tunnel-client) around your
+`@casys/mcp-server` server instead of reimplementing OpenAI's control plane in
+`mcp-bridge`.
+
+```text
+Local MCP server built with @casys/mcp-server
+  -> Streamable HTTP / stdio
+  -> OpenAI tunnel-client
+  -> OpenAI-hosted tunnel endpoint
+  -> ChatGPT / Codex / Responses API / AgentKit
+```
+
+`@casys/mcp-bridge` remains the reusable bridge layer for Casys-owned relays and
+host integrations. It does not implement OpenAI tunnel IDs, runtime/admin API
+keys, connector management, or OpenAI's hosted control-plane protocol.
 
 ---
 
@@ -194,6 +251,73 @@ const hostContext = await adapter.initialize();
 import { LineAdapter } from "@casys/mcp-bridge";
 ```
 
+### Network Tunnel Primitives
+
+Relay side:
+
+```typescript
+import {
+  attachNetworkTunnelSocket,
+  NetworkRelay,
+} from "@casys/mcp-bridge/adapters/network";
+
+const relay = new NetworkRelay({
+  requestTimeoutMs: 30_000,
+  concurrencyStrategy: "reject",
+});
+
+function handleTunnelSocket(socket: WebSocket, tenantId: string) {
+  attachNetworkTunnelSocket({
+    relay,
+    socket,
+    tenantId,
+    authorizeAgentHello: async (hello) => {
+      // Verify the agent token, tenant, target type, key version, and policy.
+      if (hello.targetType !== "erpnext") {
+        return { ok: false, closeCode: 4004, reason: "unsupported target" };
+      }
+      return { ok: true };
+    },
+  });
+}
+
+const result = await relay.callTool({
+  tenantId: "tenant_123",
+  targetType: "erpnext",
+  toolName: "erpnext.customer_list",
+  arguments: { limit: 10 },
+  actorSubject: "user_123",
+});
+```
+
+Local runtime side:
+
+```typescript
+import {
+  NetworkTunnelClient,
+  WebSocketNetworkTransport,
+} from "@casys/mcp-bridge/adapters/network";
+
+const client = new NetworkTunnelClient({
+  transport: new WebSocketNetworkTransport({
+    auth: { type: "bearer", token: () => Deno.env.get("BRIDGE_AGENT_TOKEN")! },
+  }),
+  tenantId: "tenant_123",
+  targetType: "erpnext",
+  agentId: "agent_local_1",
+  keyVersion: 1,
+  handleToolCall: async (call, options) => {
+    // Run private-network work here. This can call an ERP SDK directly,
+    // dispatch into mcp-erp, or forward into a local MCP server.
+    return await callPrivateTool(call.toolName, call.arguments, {
+      signal: options?.signal,
+    });
+  },
+});
+
+await client.start("wss://app.example.com/mcp/_tunnel");
+```
+
 ### Resource URI Parsing
 
 ```typescript
@@ -211,13 +335,14 @@ const proxyUrl = resolveToHttp(uri, "https://my-domain.com", { mode: "query" });
 
 ## Architecture
 
-| Layer        | Component              | Role                                                                          |
-| ------------ | ---------------------- | ----------------------------------------------------------------------------- |
-| **Client**   | `bridge.js`            | IIFE injected into MCP App HTML. Intercepts postMessage, routes via WebSocket |
-| **Server**   | `ResourceServer`       | HTTP server (serves HTML + bridge.js), WebSocket endpoint, session management |
-| **Protocol** | `MessageRouter`        | JSON-RPC 2.0 routing, pending request tracking, timeout                       |
-| **Adapters** | Platform runtimes      | Map host SDKs (Telegram today, extensible for others) to MCP Apps HostContext |
-| **Security** | `CSP` + `SessionStore` | Content-Security-Policy headers, session auth, path traversal protection      |
+| Layer        | Component              | Role                                                                               |
+| ------------ | ---------------------- | ---------------------------------------------------------------------------------- |
+| **Client**   | `bridge.js`            | IIFE injected into MCP App HTML. Intercepts postMessage, routes via WebSocket      |
+| **Server**   | `ResourceServer`       | HTTP server (serves HTML + bridge.js), WebSocket endpoint, session management      |
+| **Protocol** | `MessageRouter`        | JSON-RPC 2.0 routing, pending request tracking, timeout                            |
+| **Adapters** | Platform runtimes      | Map host SDKs (Telegram/LINE today, extensible for others) to MCP Apps HostContext |
+| **Network**  | `adapters/network`     | Outbound WebSocket tunnel primitives for SaaS-to-private-network tool calls        |
+| **Security** | `CSP` + `SessionStore` | Content-Security-Policy headers, session auth, path traversal protection           |
 
 ---
 
@@ -241,10 +366,12 @@ deno task demo
 
 ## Companion Package
 
-Built to work with [@casys/mcp-server](https://jsr.io/@casys/mcp-server) — the
-production MCP server framework. Use `@casys/mcp-server` to build MCP tools with
-`ui://` resources, and `@casys/mcp-bridge` to deliver them to messaging
-platforms.
+Built to work with [@casys/mcp-server](https://jsr.io/@casys/mcp-server), the
+production MCP server framework.
+
+Use `@casys/mcp-server` to build MCP tools with `ui://` resources, and
+`@casys/mcp-bridge` to deliver them to messaging platforms or to route selected
+private-network tool calls through a Casys-owned relay.
 
 ---
 

@@ -19,11 +19,11 @@ rate-limit → auth → custom middleware → scope-check → validation → bac
 
 ## Packages
 
-| Package                                   | Status         | Description                                                                                |
-| ----------------------------------------- | -------------- | ------------------------------------------------------------------------------------------ |
-| [`@casys/mcp-server`](packages/server/)   | **Production** | The framework. Middleware, auth, dual transport, observability.                            |
-| [`@casys/mcp-compose`](packages/compose/) | Experimental   | Multi-server UI composition — sync and orchestrate MCP Apps into dashboards.               |
-| [`@casys/mcp-bridge`](packages/bridge/)   | Experimental   | Deliver MCP Apps UIs through Telegram Mini Apps, LINE LIFF, and other messaging platforms. |
+| Package                                   | Status         | Description                                                                  |
+| ----------------------------------------- | -------------- | ---------------------------------------------------------------------------- |
+| [`@casys/mcp-server`](packages/server/)   | **Production** | The framework. Middleware, auth, dual transport, observability.              |
+| [`@casys/mcp-compose`](packages/compose/) | Experimental   | Multi-server UI composition — sync and orchestrate MCP Apps into dashboards. |
+| [`@casys/mcp-bridge`](packages/bridge/)   | Experimental   | Bridge MCP Apps UIs and private-network tool calls across hosts and relays.  |
 
 ---
 
@@ -133,13 +133,18 @@ routing.
 
 [Documentation](packages/compose/README.md)
 
-### @casys/mcp-bridge — Messaging Platform Bridge
+### @casys/mcp-bridge — Host And Network Bridge
 
 > _Experimental — API may change._
 
-Deliver MCP Apps interactive UIs through messaging platforms. Currently supports
-Telegram Mini Apps and LINE LIFF with platform-specific authentication and
-lifecycle handling.
+Deliver MCP Apps interactive UIs through messaging platforms, and route selected
+private-network tool calls through Casys-owned relays. Telegram Mini Apps and
+LINE LIFF are the UI bridge adapters; `adapters/network` contains the outbound
+WebSocket tunnel primitives used by SaaS-to-local runtimes.
+
+For direct publication of a local `@casys/mcp-server` to ChatGPT, Codex, or the
+Responses API, use OpenAI's official `tunnel-client` around the MCP server
+rather than reimplementing OpenAI's hosted tunnel protocol in this package.
 
 [Documentation](packages/bridge/README.md)
 

@@ -873,6 +873,7 @@
           "jsr:@casys/mcp-compose@~0.5.2",
           "jsr:@std/assert@1",
           "jsr:@std/yaml@1",
+          "npm:@modelcontextprotocol/ext-apps@^1.7.1",
           "npm:@modelcontextprotocol/sdk@^1.29.0",
           "npm:@opentelemetry/api@^1.9.0",
           "npm:ajv@^8.17.1",

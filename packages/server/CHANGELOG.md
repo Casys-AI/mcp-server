@@ -4,6 +4,22 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
 
 ## [Unreleased]
 
+## [0.17.7] - 2026-06-03
+
+### Changed
+
+- **`McpUiToolMeta` base type now imported from `@modelcontextprotocol/ext-apps`
+  instead of `@casys/mcp-compose/core`.** The base type was never owned by
+  compose — `compose/core` merely re-exported it verbatim from the official
+  ext-apps package. Server already wraps `@modelcontextprotocol/sdk` throughout,
+  so consuming the MCP Apps contract from its real upstream source (the same
+  official `@modelcontextprotocol/*` family) removes a needless detour through
+  compose for a type that lives in the spec. Type-only import — erased at
+  runtime, no behaviour change. `@modelcontextprotocol/ext-apps` is now a
+  declared dependency of the npm build. The `@casys/mcp-compose` dependency
+  stays (still used for the `composeEvents`/`uiMeta` value re-exports in
+  `mod.ts`).
+
 ## [0.17.6] - 2026-06-03
 
 ### Fixed

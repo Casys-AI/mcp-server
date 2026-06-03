@@ -57,6 +57,10 @@ find "$DIST_DIR" -name "*.ts" -exec sed "${SED_INPLACE[@]}" \
 # Read versions from deno.json (single source of truth — keep specs aligned).
 VERSION=$(grep '"version"' "$ROOT_DIR/deno.json" | sed 's/.*"version": *"\([^"]*\)".*/\1/')
 SDK_VERSION=$(grep '"@modelcontextprotocol/sdk"' "$ROOT_DIR/deno.json" | sed 's|.*sdk@\([^"]*\)".*|\1|')
+# @modelcontextprotocol/ext-apps supplies the base McpUiToolMeta type that
+# src/types.ts extends; the npm package ships .ts, so consumers type-check
+# against it and need it declared as a runtime dependency.
+EXTAPPS_VERSION=$(grep '"@modelcontextprotocol/ext-apps"' "$ROOT_DIR/deno.json" | sed 's|.*ext-apps@\([^"]*\)".*|\1|')
 # @casys/mcp-server re-exports @casys/mcp-compose (mod.ts → /sdk, types.ts → /core),
 # so the npm package must declare it as a runtime dependency. Pin to the compose
 # minor currently in the workspace so consumers get a compatible build.
@@ -75,6 +79,11 @@ if [ -z "$COMPOSE_VERSION" ]; then
   exit 1
 fi
 
+if [ -z "$EXTAPPS_VERSION" ]; then
+  echo "[build-node] ERROR: failed to parse @modelcontextprotocol/ext-apps version from deno.json" >&2
+  exit 1
+fi
+
 # Generate package.json
 cat > "$DIST_DIR/package.json" <<PKGJSON
 {
@@ -90,6 +99,7 @@ cat > "$DIST_DIR/package.json" <<PKGJSON
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "$SDK_VERSION",
+    "@modelcontextprotocol/ext-apps": "$EXTAPPS_VERSION",
     "@casys/mcp-compose": "^$COMPOSE_VERSION",
     "hono": "^4.0.0",
     "ajv": "^8.17.1",

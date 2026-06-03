@@ -7,7 +7,7 @@
  * @module lib/server/types
  */
 
-import type { McpUiToolMeta as McpUiToolMetaBase } from "@casys/mcp-compose/core";
+import type { McpUiToolMeta as McpUiToolMetaBase } from "@modelcontextprotocol/ext-apps";
 
 /**
  * Rate limit configuration
@@ -141,9 +141,10 @@ export interface McpAppOptions {
 /**
  * MCP Apps UI metadata for tools (SEP-1865 + PML extensions)
  *
- * Extends the base `McpUiToolMeta` from mcp-compose/core with
- * PML-specific `emits`/`accepts` fields for cross-UI sync rules.
- * The server DECLARES capabilities; mcp-compose OWNS the contract.
+ * Extends the base `McpUiToolMeta` from `@modelcontextprotocol/ext-apps`
+ * (the official MCP Apps contract) with PML-specific `emits`/`accepts`
+ * fields for cross-UI sync rules. The server narrows/extends the spec type;
+ * the contract itself is owned upstream by the protocol, not by this repo.
  *
  * @example
  * ```typescript

@@ -122,22 +122,13 @@ export {
   resolveViewerDistPath,
 } from "./src/ui/viewer-utils.ts";
 
-// MCP Compose — UI composition helpers (re-exported from @casys/mcp-compose)
-export {
-  COMPOSE_EVENT_METHOD,
-  composeEvents,
-  uiMeta,
-} from "@casys/mcp-compose/sdk";
-export type {
-  ComposeEventHandler,
-  ComposeEventPayload,
-  ComposeEvents,
-  ComposeSource,
-  ComposeTarget,
-  UiMetaOptions,
-  UiMetaResult,
-  UiMetaUi,
-} from "@casys/mcp-compose/sdk";
+// NOTE: UI composition helpers (`composeEvents`, `uiMeta`, `COMPOSE_EVENT_METHOD`
+// and their types) are NOT re-exported here. They live in `@casys/mcp-compose`
+// and must be imported from there directly:
+//   import { composeEvents, uiMeta } from "@casys/mcp-compose/sdk";
+// Dropping the convenience re-export removes @casys/mcp-server's dependency on
+// @casys/mcp-compose entirely — server stays a lean MCP framework that only
+// touches the official protocol packages.
 
 // Middleware pipeline
 export type {

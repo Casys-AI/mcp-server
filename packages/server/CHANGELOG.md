@@ -4,6 +4,22 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-06-03
+
+### Removed (breaking)
+
+- **Dropped the `@casys/mcp-compose` dependency entirely.** `mod.ts` no longer
+  re-exports the UI composition helpers `composeEvents`, `uiMeta`,
+  `COMPOSE_EVENT_METHOD` (nor their types `ComposeEventHandler`,
+  `ComposeEventPayload`, `ComposeEvents`, `ComposeSource`, `ComposeTarget`,
+  `UiMetaOptions`, `UiMetaResult`, `UiMetaUi`). These were a convenience
+  pass-through that forced every `@casys/mcp-server` consumer to install
+  `@casys/mcp-compose`. **Migration:** import them directly from
+  `@casys/mcp-compose/sdk` instead. With the base `McpUiToolMeta` type now
+  sourced from `@modelcontextprotocol/ext-apps` (0.17.7), server depends only on
+  the official protocol packages (`@modelcontextprotocol/sdk` + `ext-apps`) and
+  is a lean MCP framework again.
+
 ## [0.17.7] - 2026-06-03
 
 ### Changed

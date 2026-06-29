@@ -75,7 +75,10 @@ export interface McpAppOptions {
    */
   validateSchema?: boolean;
 
-  /** Enable sampling support for agentic tools (default: false) */
+  /**
+   * Enable sampling support for agentic tools (default: false)
+   * @deprecated Deprecated (MCP 2026-07-28). Removal after 2027-07-28. Prefer the explicit handle-based pattern.
+   */
   enableSampling?: boolean;
 
   /**
@@ -84,7 +87,10 @@ export interface McpAppOptions {
    */
   instructions?: string;
 
-  /** Sampling client implementation (required if enableSampling is true) */
+  /**
+   * Sampling client implementation (required if enableSampling is true)
+   * @deprecated Deprecated (MCP 2026-07-28). Removal after 2027-07-28. Prefer the explicit handle-based pattern.
+   */
   samplingClient?: SamplingClient;
 
   /** Custom logger function (default: console.error) */
@@ -481,6 +487,8 @@ export type ToolErrorMapper = (
 /**
  * Sampling client interface for bidirectional LLM delegation
  * Compatible with the agentic sampling protocol (SEP-1577)
+ *
+ * @deprecated Deprecated (MCP 2026-07-28). Removal after 2027-07-28. Prefer the explicit handle-based pattern.
  */
 export interface SamplingClient {
   /**
@@ -494,6 +502,8 @@ export interface SamplingClient {
 /**
  * Parameters for sampling request
  * Compatible with MCP sampling protocol
+ *
+ * @deprecated Deprecated (MCP 2026-07-28). Removal after 2027-07-28. Prefer the explicit handle-based pattern.
  */
 export interface SamplingParams {
   messages: Array<{ role: "user" | "assistant"; content: string }>;
@@ -515,6 +525,8 @@ export interface SamplingParams {
 /**
  * Result from sampling request
  * Compatible with MCP sampling protocol
+ *
+ * @deprecated Deprecated (MCP 2026-07-28). Removal after 2027-07-28. Prefer the explicit handle-based pattern.
  */
 export interface SamplingResult {
   content: Array<{

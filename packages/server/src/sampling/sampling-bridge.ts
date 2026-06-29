@@ -24,6 +24,8 @@ import type {
  * - Promise-based async/await API
  * - Support for both Anthropic and OpenAI sampling
  *
+ * @deprecated Deprecated (MCP 2026-07-28). Removal after 2027-07-28. Prefer the explicit handle-based pattern.
+ *
  * @example
  * ```typescript
  * const bridge = new SamplingBridge(samplingClient);

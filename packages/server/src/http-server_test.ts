@@ -15,8 +15,9 @@ import { MCP_APP_MIME_TYPE } from "./types.ts";
 
 // ── Track A — Stateless V2 (enableStatelessV2) ──────────────────────────────
 // Spec 2026-07-28: protocolVersion is carried via the namespaced key
-// "io.modelcontextprotocol/protocolVersion" at the top level of JSON-RPC params.
-// The server echoes the negotiated version in the MCP-Protocol-Version response header.
+// "io.modelcontextprotocol/protocolVersion" in params._meta (not at the top level
+// of JSON-RPC params). The server echoes the negotiated version in the
+// MCP-Protocol-Version response header.
 
 const PROTO_KEY = "io.modelcontextprotocol/protocolVersion";
 
@@ -44,7 +45,7 @@ Deno.test(
           jsonrpc: "2.0",
           id: 1,
           method: "initialize",
-          params: { [PROTO_KEY]: "2026-07-28" },
+          params: { _meta: { [PROTO_KEY]: "2026-07-28" } },
         }),
       });
 
@@ -92,7 +93,7 @@ Deno.test(
           jsonrpc: "2.0",
           id: 1,
           method: "tools/list",
-          params: { [PROTO_KEY]: "2026-07-28" },
+          params: { _meta: { [PROTO_KEY]: "2026-07-28" } },
         }),
       });
 
@@ -177,6 +178,40 @@ Deno.test(
 );
 
 Deno.test(
+  "enableStatelessV2 - _meta present but without version key returns -32020",
+  async () => {
+    const server = new McpApp({
+      name: "stateless-meta-nokey-test",
+      version: "1.0.0",
+      logger: () => {},
+      enableStatelessV2: true,
+    });
+    const listener = Deno.listen({ port: 0 });
+    const port = (listener.addr as Deno.NetAddr).port;
+    listener.close();
+    const http = await server.startHttp({ port, onListen: () => {} });
+    try {
+      // _meta object present but the namespaced key is absent → must fail -32020
+      const res = await fetch(`http://localhost:${port}/mcp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/list",
+          params: { _meta: {} }, // _meta exists but key missing
+        }),
+      });
+      assertEquals(res.status, 400);
+      const data = await res.json();
+      assertEquals(data.error.code, -32020);
+    } finally {
+      await http.shutdown();
+    }
+  },
+);
+
+Deno.test(
   "enableStatelessV2 - unsupported protocolVersion returns -32022",
   async () => {
     const server = new McpApp({
@@ -201,7 +236,7 @@ Deno.test(
           id: 2,
           method: "tools/call",
           params: {
-            [PROTO_KEY]: "1999-01-01", // unknown version
+            _meta: { [PROTO_KEY]: "1999-01-01" }, // unknown version
             name: "anything",
             arguments: {},
           },
@@ -246,7 +281,7 @@ Deno.test(
           jsonrpc: "2.0",
           id: 1,
           method: "tools/list",
-          params: { [PROTO_KEY]: "2026-07-28" },
+          params: { _meta: { [PROTO_KEY]: "2026-07-28" } },
         }),
       });
 
@@ -326,7 +361,7 @@ Deno.test(
           jsonrpc: "2.0",
           id: 1,
           method: "tools/list",
-          params: { [PROTO_KEY]: "9999-99-99" }, // unsupported
+          params: { _meta: { [PROTO_KEY]: "9999-99-99" } }, // unsupported
         }),
       });
       assertEquals(res.status, 400);
@@ -395,7 +430,7 @@ Deno.test(
           jsonrpc: "2.0",
           id: 3,
           method: "tools/list",
-          params: { [PROTO_KEY]: "0000-01-01" },
+          params: { _meta: { [PROTO_KEY]: "0000-01-01" } },
         }),
       });
       assertEquals(res.status, 400);
@@ -453,7 +488,7 @@ Deno.test(
           jsonrpc: "2.0",
           id: 1,
           method: "tools/list",
-          params: { [PROTO_KEY]: "2026-07-28" },
+          params: { _meta: { [PROTO_KEY]: "2026-07-28" } },
         }),
       });
       await r1.json(); // consume
@@ -471,7 +506,7 @@ Deno.test(
           jsonrpc: "2.0",
           id: 2,
           method: "tools/list",
-          params: { [PROTO_KEY]: "2026-07-28" },
+          params: { _meta: { [PROTO_KEY]: "2026-07-28" } },
         }),
       });
       const d2 = await r2.json();
@@ -498,7 +533,11 @@ Deno.test(
 
     server.registerResource(
       { uri: "ui://test/page", name: "Page" },
-      () => ({ uri: "ui://test/page", mimeType: MCP_APP_MIME_TYPE, text: "<h1>ok</h1>" }),
+      () => ({
+        uri: "ui://test/page",
+        mimeType: MCP_APP_MIME_TYPE,
+        text: "<h1>ok</h1>",
+      }),
     );
 
     const listener = Deno.listen({ port: 0 });
@@ -515,7 +554,10 @@ Deno.test(
           jsonrpc: "2.0",
           id: 1,
           method: "resources/read",
-          params: { [PROTO_KEY]: "2026-07-28", uri: "ui://test/page" },
+          params: {
+            _meta: { [PROTO_KEY]: "2026-07-28" },
+            uri: "ui://test/page",
+          },
         }),
       });
       const d1 = await r1.json(); // consume body first
@@ -564,7 +606,7 @@ Deno.test(
           jsonrpc: "2.0",
           // no "id" — this is a notification
           method: "notifications/initialized",
-          params: { [PROTO_KEY]: "2026-07-28" },
+          params: { _meta: { [PROTO_KEY]: "2026-07-28" } },
         }),
       });
       assertEquals(res.status, 202);
@@ -626,8 +668,18 @@ Deno.test(
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify([
-          { jsonrpc: "2.0", id: 1, method: "tools/list", params: { [PROTO_KEY]: "2026-07-28" } },
-          { jsonrpc: "2.0", id: 2, method: "tools/list", params: { [PROTO_KEY]: "2026-07-28" } },
+          {
+            jsonrpc: "2.0",
+            id: 1,
+            method: "tools/list",
+            params: { _meta: { [PROTO_KEY]: "2026-07-28" } },
+          },
+          {
+            jsonrpc: "2.0",
+            id: 2,
+            method: "tools/list",
+            params: { _meta: { [PROTO_KEY]: "2026-07-28" } },
+          },
         ]),
       });
       // Batch lands in version validation path (params = undefined → -32020) or parse error
@@ -661,7 +713,7 @@ Deno.test(
           jsonrpc: "2.0",
           id: 99,
           method: "ping",
-          params: { [PROTO_KEY]: "2026-07-28" },
+          params: { _meta: { [PROTO_KEY]: "2026-07-28" } },
         }),
       });
       const data = await res.json(); // consume first

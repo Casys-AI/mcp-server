@@ -145,11 +145,13 @@ export interface McpAppOptions {
    * When true:
    * - No `initialize` handshake required before any method.
    * - No `Mcp-Session-Id` header emitted or required.
-   * - `protocolVersion` negotiated from `params._meta.protocolVersion` per request.
+   * - `protocolVersion` negotiated from the namespaced key
+   *   `params._meta["io.modelcontextprotocol/protocolVersion"]` per request.
    * - `GET /mcp` (SSE channel) returns 405; Track B will replace it.
    *
    * Default: false (stateful mode, backward-compatible with spec 2025-06-18).
-   */ // Track A — feature flag, défaut false
+   */
+  // Track A — feature flag, défaut false
   enableStatelessV2?: boolean;
 }
 

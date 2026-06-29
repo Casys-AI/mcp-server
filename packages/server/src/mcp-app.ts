@@ -168,7 +168,7 @@ async function readBodyWithLimit(
 
 // ── Track A (spec 2026-07-28) — Stateless transport constants ───────────────
 
-/** Namespaced protocolVersion key in JSON-RPC params (spec 2026-07-28) */
+/** Namespaced protocolVersion key in params._meta (spec 2026-07-28) */
 const STATELESS_PROTO_KEY = "io.modelcontextprotocol/protocolVersion";
 
 /** Protocol versions accepted by this server in stateless mode */
@@ -1171,7 +1171,11 @@ export class McpApp {
             "mcp-protocol-version",
             "last-event-id",
           ],
-          exposeHeaders: ["Content-Length", "mcp-session-id"],
+          exposeHeaders: [
+            "Content-Length",
+            "mcp-session-id",
+            "mcp-protocol-version",
+          ],
           maxAge: 600,
         }),
       );
@@ -1447,12 +1451,16 @@ export class McpApp {
         // so a keyExtractor cannot use rotating session IDs to bypass IP-level limits.
         const rlHeaders = this.options.enableStatelessV2
           ? (() => {
-              const h = new Headers(c.req.raw.headers);
-              h.delete("mcp-session-id");
-              return h;
-            })()
+            const h = new Headers(c.req.raw.headers);
+            h.delete("mcp-session-id");
+            return h;
+          })()
           : undefined;
-        const rateLimit = await checkHttpRateLimit(c.req.raw, reqSessionId, rlHeaders);
+        const rateLimit = await checkHttpRateLimit(
+          c.req.raw,
+          reqSessionId,
+          rlHeaders,
+        );
         if (!rateLimit.allowed) {
           const retryAfter = Math.max(
             1,
@@ -1519,42 +1527,49 @@ export class McpApp {
         // Must run BEFORE any method dispatch so every call (not just initialize)
         // is validated. Sets MCP-Protocol-Version header on all subsequent responses
         // via Hono's c.header() accumulation.
-        // TODO(spec-2026-07-28, valider en interop MCP Inspector): key location assumed
-        // top-level params — may move to params._meta[...] once spec final text confirmed.
+        // Key location: params._meta[STATELESS_PROTO_KEY] (spec 2026-07-28, confirmed).
         // TODO(spec-2026-07-28, valider en interop MCP Inspector): MCP-Protocol-Version
         // request header comparison to body version not enforced until spec text is final.
         let statelessVersion: string | undefined;
         if (this.options.enableStatelessV2) {
-          const clientVersion = isRecord(params)
-            ? params[STATELESS_PROTO_KEY]
+          const clientVersion = isRecord(params) && isRecord(params["_meta"])
+            ? params["_meta"][STATELESS_PROTO_KEY]
             : undefined;
 
           if (typeof clientVersion !== "string") {
             // Header uses fallback version — no negotiated version available yet
-            return jsonRpcResponse({
-              jsonrpc: "2.0",
-              id,
-              error: {
-                code: -32020,
-                message: `Missing required field '${STATELESS_PROTO_KEY}'`,
+            return jsonRpcResponse(
+              {
+                jsonrpc: "2.0",
+                id,
+                error: {
+                  code: -32020,
+                  message: `Missing required field '${STATELESS_PROTO_KEY}'`,
+                },
               },
-            }, 400, { "MCP-Protocol-Version": STATELESS_FALLBACK_VERSION });
+              400,
+              { "MCP-Protocol-Version": STATELESS_FALLBACK_VERSION },
+            );
           }
 
           if (!STATELESS_SUPPORTED_VERSIONS.includes(clientVersion)) {
             // AX: data carries machine-readable supported/requested for agent recovery
-            return jsonRpcResponse({
-              jsonrpc: "2.0",
-              id,
-              error: {
-                code: -32022,
-                message: `Unsupported protocolVersion: "${clientVersion}"`,
-                data: {
-                  supported: [...STATELESS_SUPPORTED_VERSIONS],
-                  requested: clientVersion,
+            return jsonRpcResponse(
+              {
+                jsonrpc: "2.0",
+                id,
+                error: {
+                  code: -32022,
+                  message: `Unsupported protocolVersion: "${clientVersion}"`,
+                  data: {
+                    supported: [...STATELESS_SUPPORTED_VERSIONS],
+                    requested: clientVersion,
+                  },
                 },
               },
-            }, 400, { "MCP-Protocol-Version": STATELESS_FALLBACK_VERSION });
+              400,
+              { "MCP-Protocol-Version": STATELESS_FALLBACK_VERSION },
+            );
           }
 
           statelessVersion = clientVersion;

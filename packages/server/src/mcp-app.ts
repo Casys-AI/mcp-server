@@ -166,6 +166,31 @@ async function readBodyWithLimit(
   return body;
 }
 
+// ── Track A (spec 2026-07-28) — Stateless transport constants ───────────────
+
+/** Namespaced protocolVersion key in JSON-RPC params (spec 2026-07-28) */
+const STATELESS_PROTO_KEY = "io.modelcontextprotocol/protocolVersion";
+
+/** Protocol versions accepted by this server in stateless mode */
+const STATELESS_SUPPORTED_VERSIONS: readonly string[] = [
+  "2026-07-28",
+  "2025-06-18",
+  "2025-11-25",
+];
+
+/** Version echoed in MCP-Protocol-Version header on error responses (server's stable baseline) */
+const STATELESS_FALLBACK_VERSION = "2025-06-18";
+
+/**
+ * Narrow type-guard: returns true iff `v` is a plain object (not array, not null).
+ * Used to safely extract fields from JSON-RPC `params` without unsafe casts.
+ */
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * McpApp provides a high-performance MCP server
  *
@@ -1235,6 +1260,7 @@ export class McpApp {
     const checkHttpRateLimit = async (
       request: Request,
       sessionId?: string,
+      overrideHeaders?: Headers, // Track A: sanitized headers for stateless mode (no mcp-session-id)
     ): Promise<{ allowed: boolean; retryAfterMs: number }> => {
       if (!httpRateLimiter || !httpRateLimit) {
         return { allowed: true, retryAfterMs: 0 };
@@ -1245,7 +1271,7 @@ export class McpApp {
         ip,
         method: request.method,
         path: new URL(request.url).pathname,
-        headers: request.headers,
+        headers: overrideHeaders ?? request.headers,
         sessionId,
       };
       const key = httpRateLimit.keyExtractor?.(context) ?? ip;
@@ -1300,6 +1326,11 @@ export class McpApp {
     // MCP endpoint - GET opens SSE stream for server→client messages (Streamable HTTP spec)
     // deno-lint-ignore no-explicit-any
     const handleMcpGet = async (c: any) => {
+      // Track A: stateless V2 — SSE channel not applicable (Track B replaces it)
+      if (this.options.enableStatelessV2) {
+        return c.text("Method Not Allowed", 405);
+      }
+
       const accept = c.req.header("accept") ?? "";
       const sessionId = c.req.header("mcp-session-id");
       const lastEventId = c.req.header("last-event-id");
@@ -1401,12 +1432,27 @@ export class McpApp {
           header: (name: string) => string | undefined;
         };
         json: (data: unknown, status?: number) => Response;
+        /** Accumulate a response header (Hono Context API — Track A: MCP-Protocol-Version) */
+        header: (name: string, value: string) => void;
       },
     ) => {
       let requestId: string | number | null = null;
       try {
-        const reqSessionId = c.req.header("mcp-session-id");
-        const rateLimit = await checkHttpRateLimit(c.req.raw, reqSessionId);
+        // Track A: in stateless mode, ignore Mcp-Session-Id so it cannot be used
+        // as a rate-limit key (session bypass attack surface removed).
+        const reqSessionId = this.options.enableStatelessV2
+          ? undefined
+          : c.req.header("mcp-session-id");
+        // Track A: strip mcp-session-id from headers passed to rate-limit context
+        // so a keyExtractor cannot use rotating session IDs to bypass IP-level limits.
+        const rlHeaders = this.options.enableStatelessV2
+          ? (() => {
+              const h = new Headers(c.req.raw.headers);
+              h.delete("mcp-session-id");
+              return h;
+            })()
+          : undefined;
+        const rateLimit = await checkHttpRateLimit(c.req.raw, reqSessionId, rlHeaders);
         if (!rateLimit.allowed) {
           const retryAfter = Math.max(
             1,
@@ -1469,8 +1515,81 @@ export class McpApp {
           httpAuthInfo = authResult.authInfo;
         }
 
+        // Track A: per-request protocolVersion validation in stateless mode.
+        // Must run BEFORE any method dispatch so every call (not just initialize)
+        // is validated. Sets MCP-Protocol-Version header on all subsequent responses
+        // via Hono's c.header() accumulation.
+        // TODO(spec-2026-07-28, valider en interop MCP Inspector): key location assumed
+        // top-level params — may move to params._meta[...] once spec final text confirmed.
+        // TODO(spec-2026-07-28, valider en interop MCP Inspector): MCP-Protocol-Version
+        // request header comparison to body version not enforced until spec text is final.
+        let statelessVersion: string | undefined;
+        if (this.options.enableStatelessV2) {
+          const clientVersion = isRecord(params)
+            ? params[STATELESS_PROTO_KEY]
+            : undefined;
+
+          if (typeof clientVersion !== "string") {
+            // Header uses fallback version — no negotiated version available yet
+            return jsonRpcResponse({
+              jsonrpc: "2.0",
+              id,
+              error: {
+                code: -32020,
+                message: `Missing required field '${STATELESS_PROTO_KEY}'`,
+              },
+            }, 400, { "MCP-Protocol-Version": STATELESS_FALLBACK_VERSION });
+          }
+
+          if (!STATELESS_SUPPORTED_VERSIONS.includes(clientVersion)) {
+            // AX: data carries machine-readable supported/requested for agent recovery
+            return jsonRpcResponse({
+              jsonrpc: "2.0",
+              id,
+              error: {
+                code: -32022,
+                message: `Unsupported protocolVersion: "${clientVersion}"`,
+                data: {
+                  supported: [...STATELESS_SUPPORTED_VERSIONS],
+                  requested: clientVersion,
+                },
+              },
+            }, 400, { "MCP-Protocol-Version": STATELESS_FALLBACK_VERSION });
+          }
+
+          statelessVersion = clientVersion;
+          // Spec 2026-07-28: echo negotiated version in every response header.
+          // c.header() accumulates headers — all subsequent c.json() calls inherit it.
+          c.header("MCP-Protocol-Version", statelessVersion);
+        }
+
         // Initialize - create session and return session ID (now auth-verified)
         if (method === "initialize") {
+          // Track A: stateless V2 — respond without creating a session or emitting Mcp-Session-Id.
+          // statelessVersion is guaranteed defined here (per-request block above returned early otherwise).
+          if (this.options.enableStatelessV2) {
+            return c.json({
+              jsonrpc: "2.0",
+              id,
+              result: {
+                protocolVersion: statelessVersion as string,
+                capabilities: {
+                  tools: {},
+                  resources: this.resources.size > 0 ? {} : undefined,
+                },
+                serverInfo: {
+                  name: this.options.name,
+                  version: this.options.version,
+                },
+                ...(this.options.instructions
+                  ? { instructions: this.options.instructions }
+                  : {}),
+              },
+            });
+            // Note: c.json() inherits MCP-Protocol-Version header set above.
+            // No Mcp-Session-Id header emitted — stateless by design.
+          }
+
           // Per-IP rate limit on initialize to prevent session exhaustion attacks
           const clientIp = getClientIpFromHeaders(c.req.raw.headers);
           if (!this.initRateLimiter.checkLimit(clientIp)) {
@@ -1530,8 +1649,9 @@ export class McpApp {
           );
         }
 
-        // Session validation: all methods after initialize must provide a valid session
-        if (reqSessionId) {
+        // Session validation: all methods after initialize must provide a valid session.
+        // Skipped in stateless V2 mode (Track A) — no session concept.
+        if (!this.options.enableStatelessV2 && reqSessionId) {
           const session = this.sessions.get(reqSessionId);
           if (!session) {
             return c.json({
@@ -1756,11 +1876,14 @@ export class McpApp {
       // deno-lint-ignore no-explicit-any
       options.embeddedHandlerCallback(app.fetch as any);
       this.started = true;
-      this.sessionCleanupTimer = setInterval(
-        () => this.cleanupSessions(),
-        McpApp.SESSION_CLEANUP_INTERVAL_MS,
-      );
-      unrefTimer(this.sessionCleanupTimer as unknown as number);
+      // Track A: no sessions in stateless mode — skip cleanup timer
+      if (!this.options.enableStatelessV2) {
+        this.sessionCleanupTimer = setInterval(
+          () => this.cleanupSessions(),
+          McpApp.SESSION_CLEANUP_INTERVAL_MS,
+        );
+        unrefTimer(this.sessionCleanupTimer as unknown as number);
+      }
       this.log(
         `HTTP handler ready (embedded mode — no port bound, max concurrent: ${
           this.options.maxConcurrent ?? 10
@@ -1791,13 +1914,16 @@ export class McpApp {
 
     this.started = true;
 
-    // Start session cleanup timer (prevents unbounded memory growth)
-    this.sessionCleanupTimer = setInterval(
-      () => this.cleanupSessions(),
-      McpApp.SESSION_CLEANUP_INTERVAL_MS,
-    );
-    // Don't block Deno from exiting because of cleanup timer
-    unrefTimer(this.sessionCleanupTimer as unknown as number);
+    // Start session cleanup timer (prevents unbounded memory growth).
+    // Track A: no sessions in stateless mode — skip timer to keep contract clean.
+    if (!this.options.enableStatelessV2) {
+      this.sessionCleanupTimer = setInterval(
+        () => this.cleanupSessions(),
+        McpApp.SESSION_CLEANUP_INTERVAL_MS,
+      );
+      // Don't block Deno from exiting because of cleanup timer
+      unrefTimer(this.sessionCleanupTimer as unknown as number);
+    }
 
     const rateLimitInfo = this.options.rateLimit
       ? `, rate limit: ${this.options.rateLimit.maxRequests}/${this.options.rateLimit.windowMs}ms`

@@ -138,6 +138,19 @@ export interface McpAppOptions {
    * that discovers child servers after the stdio handshake).
    */
   expectResources?: boolean;
+
+  /**
+   * Enable stateless HTTP transport (Track A — spec 2026-07-28).
+   *
+   * When true:
+   * - No `initialize` handshake required before any method.
+   * - No `Mcp-Session-Id` header emitted or required.
+   * - `protocolVersion` negotiated from `params._meta.protocolVersion` per request.
+   * - `GET /mcp` (SSE channel) returns 405; Track B will replace it.
+   *
+   * Default: false (stateful mode, backward-compatible with spec 2025-06-18).
+   */ // Track A — feature flag, défaut false
+  enableStatelessV2?: boolean;
 }
 
 // ============================================

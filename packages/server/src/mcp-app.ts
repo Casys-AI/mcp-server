@@ -1331,7 +1331,7 @@ export class McpApp {
     // deno-lint-ignore no-explicit-any
     const handleMcpGet = async (c: any) => {
       // Track A: stateless V2 — SSE channel not applicable (Track B replaces it)
-      if (this.options.enableStatelessV2) {
+      if (this.options.transport === "stateless") {
         return c.text("Method Not Allowed", 405);
       }
 
@@ -1444,12 +1444,12 @@ export class McpApp {
       try {
         // Track A: in stateless mode, ignore Mcp-Session-Id so it cannot be used
         // as a rate-limit key (session bypass attack surface removed).
-        const reqSessionId = this.options.enableStatelessV2
+        const reqSessionId = this.options.transport === "stateless"
           ? undefined
           : c.req.header("mcp-session-id");
         // Track A: strip mcp-session-id from headers passed to rate-limit context
         // so a keyExtractor cannot use rotating session IDs to bypass IP-level limits.
-        const rlHeaders = this.options.enableStatelessV2
+        const rlHeaders = this.options.transport === "stateless"
           ? (() => {
             const h = new Headers(c.req.raw.headers);
             h.delete("mcp-session-id");
@@ -1531,7 +1531,7 @@ export class McpApp {
         // TODO(spec-2026-07-28, valider en interop MCP Inspector): MCP-Protocol-Version
         // request header comparison to body version not enforced until spec text is final.
         let statelessVersion: string | undefined;
-        if (this.options.enableStatelessV2) {
+        if (this.options.transport === "stateless") {
           const clientVersion = isRecord(params) && isRecord(params["_meta"])
             ? params["_meta"][STATELESS_PROTO_KEY]
             : undefined;
@@ -1582,7 +1582,7 @@ export class McpApp {
         if (method === "initialize") {
           // Track A: stateless V2 — respond without creating a session or emitting Mcp-Session-Id.
           // statelessVersion is guaranteed defined here (per-request block above returned early otherwise).
-          if (this.options.enableStatelessV2) {
+          if (this.options.transport === "stateless") {
             return c.json({
               jsonrpc: "2.0",
               id,
@@ -1666,7 +1666,7 @@ export class McpApp {
 
         // Session validation: all methods after initialize must provide a valid session.
         // Skipped in stateless V2 mode (Track A) — no session concept.
-        if (!this.options.enableStatelessV2 && reqSessionId) {
+        if (this.options.transport !== "stateless" && reqSessionId) {
           const session = this.sessions.get(reqSessionId);
           if (!session) {
             return c.json({
@@ -1892,7 +1892,7 @@ export class McpApp {
       options.embeddedHandlerCallback(app.fetch as any);
       this.started = true;
       // Track A: no sessions in stateless mode — skip cleanup timer
-      if (!this.options.enableStatelessV2) {
+      if (this.options.transport !== "stateless") {
         this.sessionCleanupTimer = setInterval(
           () => this.cleanupSessions(),
           McpApp.SESSION_CLEANUP_INTERVAL_MS,
@@ -1931,7 +1931,7 @@ export class McpApp {
 
     // Start session cleanup timer (prevents unbounded memory growth).
     // Track A: no sessions in stateless mode — skip timer to keep contract clean.
-    if (!this.options.enableStatelessV2) {
+    if (this.options.transport !== "stateless") {
       this.sessionCleanupTimer = setInterval(
         () => this.cleanupSessions(),
         McpApp.SESSION_CLEANUP_INTERVAL_MS,

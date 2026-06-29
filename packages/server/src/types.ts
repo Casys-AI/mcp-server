@@ -140,19 +140,20 @@ export interface McpAppOptions {
   expectResources?: boolean;
 
   /**
-   * Enable stateless HTTP transport (Track A — spec 2026-07-28).
+   * HTTP transport mode (Track A — spec 2026-07-28).
    *
-   * When true:
-   * - No `initialize` handshake required before any method.
-   * - No `Mcp-Session-Id` header emitted or required.
-   * - `protocolVersion` negotiated from the namespaced key
-   *   `params._meta["io.modelcontextprotocol/protocolVersion"]` per request.
-   * - `GET /mcp` (SSE channel) returns 405; Track B will replace it.
+   * - `"stateful"` (DEFAULT): legacy session-based transport, retro-compatible
+   *   with spec 2025-06-18. Requires an `initialize` handshake before any
+   *   other method; emits and validates `Mcp-Session-Id` headers.
+   * - `"stateless"`: per-request transport, spec 2026-07-28. No handshake, no
+   *   `Mcp-Session-Id`. `protocolVersion` is read from
+   *   `params._meta["io.modelcontextprotocol/protocolVersion"]` on every
+   *   request. `GET /mcp` returns 405 (Track B will replace the SSE channel).
    *
-   * Default: false (stateful mode, backward-compatible with spec 2025-06-18).
+   * Default: `"stateful"`.
    */
-  // Track A — feature flag, défaut false
-  enableStatelessV2?: boolean;
+  // Track A — transport mode, défaut "stateful"
+  transport?: "stateful" | "stateless";
 }
 
 // ============================================

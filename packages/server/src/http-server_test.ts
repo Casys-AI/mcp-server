@@ -13,7 +13,7 @@ import {
 import { McpApp } from "./mcp-app.ts";
 import { MCP_APP_MIME_TYPE } from "./types.ts";
 
-// ── Track A — Stateless V2 (enableStatelessV2) ──────────────────────────────
+// ── Track A — Stateless transport (transport: "stateless") ──────────────────
 // Spec 2026-07-28: protocolVersion is carried via the namespaced key
 // "io.modelcontextprotocol/protocolVersion" in params._meta (not at the top level
 // of JSON-RPC params). The server echoes the negotiated version in the
@@ -22,13 +22,13 @@ import { MCP_APP_MIME_TYPE } from "./types.ts";
 const PROTO_KEY = "io.modelcontextprotocol/protocolVersion";
 
 Deno.test(
-  "enableStatelessV2 - initialize responds without Mcp-Session-Id and negotiates protocolVersion",
+  "transport stateless - initialize responds without Mcp-Session-Id and negotiates protocolVersion",
   async () => {
     const server = new McpApp({
       name: "stateless-test",
       version: "1.0.0",
       logger: () => {},
-      enableStatelessV2: true,
+      transport: "stateless",
     });
 
     const listener = Deno.listen({ port: 0 });
@@ -65,13 +65,13 @@ Deno.test(
 );
 
 Deno.test(
-  "enableStatelessV2 - tools/list works without prior handshake",
+  "transport stateless - tools/list works without prior handshake",
   async () => {
     const server = new McpApp({
       name: "stateless-tools-test",
       version: "1.0.0",
       logger: () => {},
-      enableStatelessV2: true,
+      transport: "stateless",
     });
 
     server.registerTool(
@@ -110,13 +110,13 @@ Deno.test(
 );
 
 Deno.test(
-  "enableStatelessV2 - GET /mcp returns 405 even with SSE Accept header",
+  "transport stateless - GET /mcp returns 405 even with SSE Accept header",
   async () => {
     const server = new McpApp({
       name: "stateless-sse-test",
       version: "1.0.0",
       logger: () => {},
-      enableStatelessV2: true,
+      transport: "stateless",
     });
 
     const listener = Deno.listen({ port: 0 });
@@ -139,13 +139,13 @@ Deno.test(
 );
 
 Deno.test(
-  "enableStatelessV2 - missing protocolVersion key returns -32020",
+  "transport stateless - missing protocolVersion key returns -32020",
   async () => {
     const server = new McpApp({
       name: "stateless-noversion-test",
       version: "1.0.0",
       logger: () => {},
-      enableStatelessV2: true,
+      transport: "stateless",
     });
 
     const listener = Deno.listen({ port: 0 });
@@ -178,13 +178,13 @@ Deno.test(
 );
 
 Deno.test(
-  "enableStatelessV2 - _meta present but without version key returns -32020",
+  "transport stateless - _meta present but without version key returns -32020",
   async () => {
     const server = new McpApp({
       name: "stateless-meta-nokey-test",
       version: "1.0.0",
       logger: () => {},
-      enableStatelessV2: true,
+      transport: "stateless",
     });
     const listener = Deno.listen({ port: 0 });
     const port = (listener.addr as Deno.NetAddr).port;
@@ -212,13 +212,13 @@ Deno.test(
 );
 
 Deno.test(
-  "enableStatelessV2 - unsupported protocolVersion returns -32022",
+  "transport stateless - unsupported protocolVersion returns -32022",
   async () => {
     const server = new McpApp({
       name: "stateless-badversion-test",
       version: "1.0.0",
       logger: () => {},
-      enableStatelessV2: true,
+      transport: "stateless",
     });
 
     const listener = Deno.listen({ port: 0 });
@@ -254,13 +254,13 @@ Deno.test(
 );
 
 Deno.test(
-  "enableStatelessV2 - Mcp-Session-Id request header is ignored (no session bypass)",
+  "transport stateless - Mcp-Session-Id request header is ignored (no session bypass)",
   async () => {
     const server = new McpApp({
       name: "stateless-nossid-test",
       version: "1.0.0",
       logger: () => {},
-      enableStatelessV2: true,
+      transport: "stateless",
     });
 
     const listener = Deno.listen({ port: 0 });
@@ -298,13 +298,13 @@ Deno.test(
 );
 
 Deno.test(
-  "enableStatelessV2=false - stateful mode unchanged (initialize emits Mcp-Session-Id)",
+  "transport stateful (default) - stateful mode unchanged (initialize emits Mcp-Session-Id)",
   async () => {
     const server = new McpApp({
       name: "stateful-regression-test",
       version: "1.0.0",
       logger: () => {},
-      // enableStatelessV2 NOT set — default false
+      // transport not set — default "stateful"
     });
 
     const listener = Deno.listen({ port: 0 });
@@ -341,13 +341,13 @@ Deno.test(
 // ── Track A corrections (post-Codex review) ─────────────────────────────────
 
 Deno.test(
-  "enableStatelessV2 - -32022 error carries MCP-Protocol-Version header",
+  "transport stateless - -32022 error carries MCP-Protocol-Version header",
   async () => {
     const server = new McpApp({
       name: "stateless-errheader-test",
       version: "1.0.0",
       logger: () => {},
-      enableStatelessV2: true,
+      transport: "stateless",
     });
     const listener = Deno.listen({ port: 0 });
     const port = (listener.addr as Deno.NetAddr).port;
@@ -376,13 +376,13 @@ Deno.test(
 );
 
 Deno.test(
-  "enableStatelessV2 - -32020 error carries MCP-Protocol-Version header",
+  "transport stateless - -32020 error carries MCP-Protocol-Version header",
   async () => {
     const server = new McpApp({
       name: "stateless-errheader2-test",
       version: "1.0.0",
       logger: () => {},
-      enableStatelessV2: true,
+      transport: "stateless",
     });
     const listener = Deno.listen({ port: 0 });
     const port = (listener.addr as Deno.NetAddr).port;
@@ -410,13 +410,13 @@ Deno.test(
 );
 
 Deno.test(
-  "enableStatelessV2 - -32022 error body carries data.supported and data.requested (AX)",
+  "transport stateless - -32022 error body carries data.supported and data.requested (AX)",
   async () => {
     const server = new McpApp({
       name: "stateless-errdata-test",
       version: "1.0.0",
       logger: () => {},
-      enableStatelessV2: true,
+      transport: "stateless",
     });
     const listener = Deno.listen({ port: 0 });
     const port = (listener.addr as Deno.NetAddr).port;
@@ -449,7 +449,7 @@ Deno.test(
 );
 
 Deno.test(
-  "enableStatelessV2 - rate-limit keyExtractor cannot see Mcp-Session-Id header",
+  "transport stateless - rate-limit keyExtractor cannot see Mcp-Session-Id header",
   async () => {
     // Scenario: a keyExtractor tries to use Mcp-Session-Id as the rate-limit key.
     // If the header reaches the context, rotating session IDs bypasses the limit.
@@ -458,7 +458,7 @@ Deno.test(
       name: "stateless-rl-test",
       version: "1.0.0",
       logger: () => {},
-      enableStatelessV2: true,
+      transport: "stateless",
     });
 
     const listener = Deno.listen({ port: 0 });
@@ -522,13 +522,13 @@ Deno.test(
 // ── Track A coverage: version validation is not bypassable ────────────────────
 
 Deno.test(
-  "enableStatelessV2 - resources/read validates version per-request",
+  "transport stateless - resources/read validates version per-request",
   async () => {
     const server = new McpApp({
       name: "stateless-res-test",
       version: "1.0.0",
       logger: () => {},
-      enableStatelessV2: true,
+      transport: "stateless",
     });
 
     server.registerResource(
@@ -586,13 +586,13 @@ Deno.test(
 );
 
 Deno.test(
-  "enableStatelessV2 - notification (no id) with version accepted as 202",
+  "transport stateless - notification (no id) with version accepted as 202",
   async () => {
     const server = new McpApp({
       name: "stateless-notif-test",
       version: "1.0.0",
       logger: () => {},
-      enableStatelessV2: true,
+      transport: "stateless",
     });
     const listener = Deno.listen({ port: 0 });
     const port = (listener.addr as Deno.NetAddr).port;
@@ -618,13 +618,13 @@ Deno.test(
 );
 
 Deno.test(
-  "enableStatelessV2 - notification without version returns -32020 (no bypass)",
+  "transport stateless - notification without version returns -32020 (no bypass)",
   async () => {
     const server = new McpApp({
       name: "stateless-notif-noversion-test",
       version: "1.0.0",
       logger: () => {},
-      enableStatelessV2: true,
+      transport: "stateless",
     });
     const listener = Deno.listen({ port: 0 });
     const port = (listener.addr as Deno.NetAddr).port;
@@ -650,13 +650,13 @@ Deno.test(
 );
 
 Deno.test(
-  "enableStatelessV2 - batch (array body) blocked by version validation",
+  "transport stateless - batch (array body) blocked by version validation",
   async () => {
     const server = new McpApp({
       name: "stateless-batch-test",
       version: "1.0.0",
       logger: () => {},
-      enableStatelessV2: true,
+      transport: "stateless",
     });
     const listener = Deno.listen({ port: 0 });
     const port = (listener.addr as Deno.NetAddr).port;
@@ -693,13 +693,13 @@ Deno.test(
 );
 
 Deno.test(
-  "enableStatelessV2 - ping with version succeeds and carries MCP-Protocol-Version",
+  "transport stateless - ping with version succeeds and carries MCP-Protocol-Version",
   async () => {
     const server = new McpApp({
       name: "stateless-ping-test",
       version: "1.0.0",
       logger: () => {},
-      enableStatelessV2: true,
+      transport: "stateless",
     });
     const listener = Deno.listen({ port: 0 });
     const port = (listener.addr as Deno.NetAddr).port;
@@ -728,13 +728,13 @@ Deno.test(
 );
 
 Deno.test(
-  "enableStatelessV2 - ping without version key returns -32020 (no bypass)",
+  "transport stateless - ping without version key returns -32020 (no bypass)",
   async () => {
     const server = new McpApp({
       name: "stateless-ping-noversion-test",
       version: "1.0.0",
       logger: () => {},
-      enableStatelessV2: true,
+      transport: "stateless",
     });
     const listener = Deno.listen({ port: 0 });
     const port = (listener.addr as Deno.NetAddr).port;

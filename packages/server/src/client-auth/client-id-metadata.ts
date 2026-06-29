@@ -32,6 +32,8 @@ export interface ClientIdMetadataDocument {
   grant_types: ["authorization_code"];
   response_types: ["code"];
   token_endpoint_auth_method: "none";
+  /** RFC 7591 application type. Always "native" for loopback CLI/desktop clients. */
+  application_type: "native" | "web";
   scope?: string;
   client_uri?: string;
   logo_uri?: string;
@@ -121,6 +123,7 @@ export function buildClientIdMetadataDocument(
     grant_types: ["authorization_code"],
     response_types: ["code"],
     token_endpoint_auth_method: "none",
+    application_type: "native",
   } as ClientIdMetadataDocument;
 
   if (config.scopes?.length) {
@@ -230,6 +233,7 @@ const RESERVED_METADATA_KEYS = new Set([
   "grant_types",
   "response_types",
   "token_endpoint_auth_method",
+  "application_type",
 ]);
 
 function validateExtraMetadataKeys(metadata: unknown): void {

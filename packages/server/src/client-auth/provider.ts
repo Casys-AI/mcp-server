@@ -71,6 +71,7 @@ export class OAuthClientProviderImpl implements OAuthClientProvider {
       grant_types: ["authorization_code"],
       response_types: ["code"],
       token_endpoint_auth_method: "none", // public client, PKCE only
+      application_type: "native", // loopback CLI/desktop — prevents AS rejection of http://127.0.0.1 redirects
     };
   }
 

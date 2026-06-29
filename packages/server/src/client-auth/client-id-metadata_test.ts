@@ -54,6 +54,7 @@ Deno.test("buildClientIdMetadataDocument is deterministic and preserves client_i
   );
   assertEquals(first.redirect_uris, ["http://127.0.0.1:38987/callback"]);
   assertEquals(first.scope, "openid profile");
+  assertEquals(first.application_type, "native");
 });
 
 Deno.test("buildClientIdMetadataDocument rejects configs with both static and CIMD client ids", () => {
@@ -235,6 +236,30 @@ Deno.test("buildClientIdMetadataDocument rejects reserved metadata extra keys", 
       })),
     "cimd_reserved_metadata_key",
   );
+});
+
+Deno.test("buildClientIdMetadataDocument rejects application_type in extra metadata", () => {
+  assertCimdError(
+    () =>
+      buildClientIdMetadataDocument(config({
+        clientRegistration: {
+          method: "client_id_metadata",
+          clientIdMetadataUrl: "https://client.example.com/oauth/client.json",
+          redirectUri: "http://127.0.0.1:38987/callback",
+          metadata: {
+            extra: {
+              application_type: "web",
+            },
+          },
+        },
+      })),
+    "cimd_reserved_metadata_key",
+  );
+});
+
+Deno.test("buildClientIdMetadataDocument always sets application_type to native", () => {
+  const document = buildClientIdMetadataDocument(config());
+  assertEquals(document.application_type, "native");
 });
 
 Deno.test("buildClientIdMetadataDocument rejects dedicated metadata fields in extra", () => {

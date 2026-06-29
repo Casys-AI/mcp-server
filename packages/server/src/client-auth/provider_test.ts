@@ -65,6 +65,15 @@ Deno.test("OAuthClientProviderImpl - clientMetadata returns correct shape", () =
   assertEquals(metadata.client_name, "Test App");
   assertEquals(metadata.grant_types?.includes("authorization_code"), true);
   assertEquals(metadata.token_endpoint_auth_method, "none");
+  assertEquals(metadata.application_type, "native");
+});
+
+Deno.test("OAuthClientProviderImpl - clientMetadata sets application_type native for CIMD mode", () => {
+  const provider = new OAuthClientProviderImpl(
+    "https://mcp.example.com",
+    cimdConfig(),
+  );
+  assertEquals(provider.clientMetadata.application_type, "native");
 });
 
 Deno.test("OAuthClientProviderImpl - saveCodeVerifier and codeVerifier round-trip", async () => {

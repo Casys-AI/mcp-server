@@ -34,10 +34,8 @@ export interface TokenStore {
   list(): Promise<string[]>;
 }
 
-/** Configuration for creating an OAuthClientProvider */
-export interface OAuthClientConfig {
-  /** OAuth Client ID (public — embedded in consumer binary) */
-  clientId: string;
+/** Fields shared by all OAuth client registration modes. */
+export interface OAuthClientConfigBase {
   /** Client name shown in consent screen */
   clientName?: string;
   /** Scopes to request (space-separated in OAuth, array here) */
@@ -51,3 +49,34 @@ export interface OAuthClientConfig {
   /** Timeout for user to complete OAuth flow (ms, default: 120_000) */
   authTimeout?: number;
 }
+
+/** Static OAuth client registration (default, backwards-compatible mode). */
+export interface StaticClientConfig extends OAuthClientConfigBase {
+  /** OAuth Client ID (public — embedded in consumer binary) */
+  clientId: string;
+  /** Absence of clientRegistration selects static client-id behavior. */
+  clientRegistration?: undefined;
+}
+
+/** CIMD client registration (explicit opt-in). */
+export interface CimdClientConfig extends OAuthClientConfigBase {
+  /** In CIMD mode, client_id is derived from clientIdMetadataUrl. */
+  clientId?: never;
+  clientRegistration: {
+    method: "client_id_metadata";
+    /** HTTPS URL of the hosted Client ID Metadata Document; also the client_id. */
+    clientIdMetadataUrl: string;
+    /** Runtime redirect URI published in the metadata document. */
+    redirectUri: string;
+    /** Optional display and extension metadata for the hosted document. */
+    metadata?: {
+      client_uri?: string;
+      logo_uri?: string;
+      contacts?: string[];
+      extra?: Record<string, unknown>;
+    };
+  };
+}
+
+/** Configuration for creating an OAuthClientProvider */
+export type OAuthClientConfig = StaticClientConfig | CimdClientConfig;

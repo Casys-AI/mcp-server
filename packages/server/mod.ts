@@ -185,6 +185,30 @@ export {
 } from "./src/auth/mod.ts";
 export type { AuthConfig, AuthProviderName } from "./src/auth/mod.ts";
 
+// Client Auth — OAuth client flow + CIMD
+export {
+  buildClientIdMetadataDocument,
+  CallbackServer,
+  CimdConfigError,
+  FileTokenStore,
+  isCimdConfig,
+  MemoryTokenStore,
+  OAuthClientProviderImpl,
+  prepareOAuthProvider,
+} from "./src/client-auth/mod.ts";
+export type {
+  CallbackServerOptions,
+  CimdClientConfig,
+  CimdConfigErrorCode,
+  ClientIdMetadataDocument,
+  OAuthClientConfig,
+  OAuthClientConfigBase,
+  PrepareOAuthResult,
+  StaticClientConfig,
+  StoredCredentials,
+  TokenStore,
+} from "./src/client-auth/mod.ts";
+
 // Observability
 export {
   endToolCallSpan,

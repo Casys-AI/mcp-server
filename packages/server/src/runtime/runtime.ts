@@ -41,20 +41,85 @@ export async function readTextFile(path: string): Promise<string | null> {
 }
 
 /**
+ * Write a UTF-8 text file.
+ */
+export async function writeTextFile(
+  path: string,
+  content: string,
+  opts?: { mode?: number },
+): Promise<void> {
+  await Deno.writeTextFile(path, content, opts);
+}
+
+/**
+ * Create a directory.
+ */
+export async function mkdir(
+  path: string,
+  opts?: { recursive?: boolean; mode?: number },
+): Promise<void> {
+  await Deno.mkdir(path, opts);
+}
+
+/**
+ * Remove a file or empty directory. No-op if absent.
+ */
+export async function remove(path: string): Promise<void> {
+  try {
+    await Deno.remove(path);
+  } catch (err) {
+    if (err instanceof Deno.errors.NotFound) {
+      return;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Read directory entry names. Returns [] if absent.
+ */
+export async function readDir(path: string): Promise<string[]> {
+  try {
+    const names: string[] = [];
+    for await (const entry of Deno.readDir(path)) {
+      names.push(entry.name);
+    }
+    return names;
+  } catch (err) {
+    if (err instanceof Deno.errors.NotFound) {
+      return [];
+    }
+    throw err;
+  }
+}
+
+/**
  * Start an HTTP server with a fetch-style handler.
  */
 export function serve(
   options: ServeOptions,
   handler: FetchHandler,
 ): ServeHandle {
-  const server = Deno.serve(
-    {
-      port: options.port,
-      hostname: options.hostname,
-      onListen: options.onListen,
-    },
-    handler,
-  );
+  let server: Deno.HttpServer | null = null;
+  try {
+    server = Deno.serve(
+      {
+        port: options.port,
+        hostname: options.hostname,
+        onListen: options.onListen,
+      },
+      handler,
+    );
+  } catch (err) {
+    const error = toError(err);
+    if (options.onError) {
+      options.onError(error);
+      return {
+        shutdown: () => Promise.resolve(),
+      };
+    }
+    throw error;
+  }
   return {
     shutdown: () => server.shutdown(),
   };
@@ -68,4 +133,17 @@ export function unrefTimer(id: number): void {
 }
 
 /** Compile-time contract check — ensures this module satisfies RuntimePort */
-void ({ env, readTextFile, serve, unrefTimer } satisfies RuntimePort);
+void ({
+  env,
+  readTextFile,
+  writeTextFile,
+  mkdir,
+  remove,
+  readDir,
+  serve,
+  unrefTimer,
+} satisfies RuntimePort);
+
+function toError(err: unknown): Error {
+  return err instanceof Error ? err : new Error(String(err));
+}

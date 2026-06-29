@@ -9,7 +9,18 @@
  */
 
 import { assert, assertEquals, assertStrictEquals } from "@std/assert";
-import { ConcurrentMCPServer, McpApp } from "../mod.ts";
+import {
+  buildClientIdMetadataDocument,
+  CallbackServer,
+  CimdConfigError,
+  ConcurrentMCPServer,
+  FileTokenStore,
+  isCimdConfig,
+  McpApp,
+  MemoryTokenStore,
+  OAuthClientProviderImpl,
+  prepareOAuthProvider,
+} from "../mod.ts";
 
 Deno.test("retro-compat: ConcurrentMCPServer is the same class as McpApp", () => {
   // Strict identity — both names point to the exact same constructor.
@@ -34,4 +45,15 @@ Deno.test("McpApp.name: public readonly field mirrors options.name (0.16.1)", ()
   assertEquals(app.name, "my-test-server");
   // Second read confirms stability.
   assertEquals(app.name, "my-test-server");
+});
+
+Deno.test("public API: client-auth and CIMD helpers are exported from root mod", () => {
+  assertEquals(typeof prepareOAuthProvider, "function");
+  assertEquals(typeof OAuthClientProviderImpl, "function");
+  assertEquals(typeof CallbackServer, "function");
+  assertEquals(typeof MemoryTokenStore, "function");
+  assertEquals(typeof FileTokenStore, "function");
+  assertEquals(typeof buildClientIdMetadataDocument, "function");
+  assertEquals(typeof isCimdConfig, "function");
+  assertEquals(typeof CimdConfigError, "function");
 });

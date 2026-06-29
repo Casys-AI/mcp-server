@@ -27,6 +27,31 @@ export type EnvFn = (key: string) => string | undefined;
  */
 export type ReadTextFileFn = (path: string) => Promise<string | null>;
 
+/** Write a UTF-8 text file. */
+export type WriteTextFileFn = (
+  path: string,
+  content: string,
+  opts?: { mode?: number },
+) => Promise<void>;
+
+/** Create a directory. */
+export type MkdirFn = (
+  path: string,
+  opts?: { recursive?: boolean; mode?: number },
+) => Promise<void>;
+
+/**
+ * Remove a file or empty directory.
+ * Does nothing if the path does not exist.
+ */
+export type RemoveFn = (path: string) => Promise<void>;
+
+/**
+ * Read directory entry names.
+ * Returns [] if the directory does not exist.
+ */
+export type ReadDirFn = (path: string) => Promise<string[]>;
+
 // ─── HTTP Server ─────────────────────────────────────────
 
 /** Fetch-style request handler (Web standard) */
@@ -37,6 +62,8 @@ export interface ServeOptions {
   port: number;
   hostname?: string;
   onListen?: (info: { hostname: string; port: number }) => void;
+  /** Optional bind/startup error channel. */
+  onError?: (err: Error) => void;
   /** Maximum request body size in bytes (optional, adapter-specific). */
   maxBodyBytes?: number | null;
 }
@@ -79,12 +106,25 @@ export type UnrefTimerFn = (id: number) => void;
  * @example
  * ```typescript
  * // At the bottom of runtime.ts / runtime.node.ts:
- * export const _port = { env, readTextFile, serve, unrefTimer } satisfies RuntimePort;
+ * export const _port = {
+ *   env,
+ *   readTextFile,
+ *   writeTextFile,
+ *   mkdir,
+ *   remove,
+ *   readDir,
+ *   serve,
+ *   unrefTimer,
+ * } satisfies RuntimePort;
  * ```
  */
 export interface RuntimePort {
   env: EnvFn;
   readTextFile: ReadTextFileFn;
+  writeTextFile: WriteTextFileFn;
+  mkdir: MkdirFn;
+  remove: RemoveFn;
+  readDir: ReadDirFn;
   serve: ServeFn;
   unrefTimer: UnrefTimerFn;
 }

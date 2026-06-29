@@ -8,9 +8,13 @@
  * @module lib/server/client-auth/callback-server
  */
 
+import { serve, type ServeHandle } from "../runtime/runtime.ts";
+
 export interface CallbackServerOptions {
   /** Port to listen on (0 = auto-assign, default: 0) */
   port?: number;
+  /** Hostname to bind (default: 127.0.0.1) */
+  hostname?: string;
   /** Timeout in ms (default: 120_000) */
   timeout?: number;
 }
@@ -35,25 +39,32 @@ body{font-family:system-ui;display:flex;justify-content:center;align-items:cente
 
 export class CallbackServer {
   private port: number;
+  private hostname: string;
   private timeout: number;
-  private abortController: AbortController | null = null;
-  private server: Deno.HttpServer | null = null;
+  private server: ServeHandle | null = null;
   private timerId: ReturnType<typeof setTimeout> | null = null;
   private closeTimerId: ReturnType<typeof setTimeout> | null = null;
 
   constructor(options?: CallbackServerOptions) {
     this.port = options?.port ?? 0;
+    this.hostname = options?.hostname ?? "127.0.0.1";
     this.timeout = options?.timeout ?? 120_000;
   }
 
   async start(): Promise<{ port: number; codePromise: Promise<string> }> {
-    this.abortController = new AbortController();
-
     let resolveCode!: (code: string) => void;
     let rejectCode!: (err: Error) => void;
     const codePromise = new Promise<string>((resolve, reject) => {
       resolveCode = resolve;
       rejectCode = reject;
+    });
+    let resolveListen!: (port: number) => void;
+    let rejectListen!: (err: Error) => void;
+    const listenPromise = new Promise<number>((resolve) => {
+      resolveListen = resolve;
+    });
+    const bindPromise = new Promise<never>((_, reject) => {
+      rejectListen = reject;
     });
 
     this.timerId = setTimeout(() => {
@@ -66,46 +77,71 @@ export class CallbackServer {
       this.close();
     }, this.timeout);
 
-    this.server = Deno.serve(
-      {
-        port: this.port,
-        signal: this.abortController.signal,
-        onListen: () => {},
-      },
-      (req) => {
-        const url = new URL(req.url);
-        if (url.pathname === "/callback") {
-          const code = url.searchParams.get("code");
-          if (!code) {
-            return new Response(ERROR_HTML, {
-              status: 400,
+    try {
+      this.server = serve(
+        {
+          port: this.port,
+          hostname: this.hostname,
+          onListen: ({ port }) => {
+            this.port = port;
+            resolveListen(port);
+          },
+          onError: (err) => {
+            rejectListen(err);
+          },
+        },
+        (req) => {
+          const url = new URL(req.url);
+          if (url.pathname === "/callback") {
+            const code = url.searchParams.get("code");
+            if (!code) {
+              return new Response(ERROR_HTML, {
+                status: 400,
+                headers: { "Content-Type": "text/html" },
+              });
+            }
+            if (this.timerId) {
+              clearTimeout(this.timerId);
+              this.timerId = null;
+            }
+            resolveCode(code);
+            // Schedule close after response is sent
+            this.closeTimerId = setTimeout(() => {
+              this.closeTimerId = null;
+              this.close();
+            }, 100);
+            return new Response(SUCCESS_HTML, {
+              status: 200,
               headers: { "Content-Type": "text/html" },
             });
           }
-          if (this.timerId) {
-            clearTimeout(this.timerId);
-            this.timerId = null;
-          }
-          resolveCode(code);
-          // Schedule close after response is sent
-          this.closeTimerId = setTimeout(() => {
-            this.closeTimerId = null;
-            this.close();
-          }, 100);
-          return new Response(SUCCESS_HTML, {
-            status: 200,
-            headers: { "Content-Type": "text/html" },
-          });
-        }
-        return new Response("Not Found", { status: 404 });
-      },
-    );
+          return new Response("Not Found", { status: 404 });
+        },
+      );
+    } catch (err) {
+      await this.cleanupAfterStartFailure();
+      throw err;
+    }
 
-    const addr = this.server.addr as Deno.NetAddr;
-    return { port: addr.port, codePromise };
+    let port: number;
+    try {
+      port = await Promise.race([listenPromise, bindPromise]);
+    } catch (err) {
+      await this.cleanupAfterStartFailure();
+      throw err;
+    }
+    return { port, codePromise };
   }
 
   async close(): Promise<void> {
+    this.clearTimers();
+    if (this.server) {
+      await this.server.shutdown();
+      this.server = null;
+    }
+  }
+
+  private clearTimers(): void {
     if (this.timerId) {
       clearTimeout(this.timerId);
       this.timerId = null;
@@ -114,15 +150,15 @@ export class CallbackServer {
       clearTimeout(this.closeTimerId);
       this.closeTimerId = null;
     }
-    if (this.abortController) {
-      this.abortController.abort();
-      this.abortController = null;
-    }
+  }
+
+  private async cleanupAfterStartFailure(): Promise<void> {
+    this.clearTimers();
     if (this.server) {
       try {
-        await this.server.finished;
+        await this.server.shutdown();
       } catch {
-        // Expected when aborted
+        // Ignore shutdown failures after a failed bind.
       }
       this.server = null;
     }

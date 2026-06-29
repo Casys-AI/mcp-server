@@ -15,6 +15,12 @@ import type {
 } from "@modelcontextprotocol/sdk/shared/auth.js";
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { OAuthClientConfig } from "./types.ts";
+import {
+  CimdConfigError,
+  isCimdConfig,
+  resolveClientMode,
+  validateCimdClientConfig,
+} from "./client-id-metadata.ts";
 
 export class OAuthClientProviderImpl implements OAuthClientProvider {
   private serverUrl: string;
@@ -24,16 +30,37 @@ export class OAuthClientProviderImpl implements OAuthClientProvider {
   private _redirectUrl: string | undefined;
 
   constructor(serverUrl: string, config: OAuthClientConfig) {
+    const mode = resolveClientMode(config);
+    if (mode === "client_id_metadata") {
+      validateCimdClientConfig(config);
+    }
     this.serverUrl = serverUrl;
     this.config = config;
   }
 
   get redirectUrl(): string | URL {
+    if (isCimdConfig(this.config)) {
+      return this.config.clientRegistration.redirectUri;
+    }
     return this._redirectUrl ?? "http://localhost:0/callback";
   }
 
   /** Set the redirect URL (called after CallbackServer binds to a port). */
   setRedirectUrl(url: string): void {
+    if (isCimdConfig(this.config)) {
+      if (url !== this.config.clientRegistration.redirectUri) {
+        throw new CimdConfigError(
+          "cimd_redirect_mismatch",
+          "CIMD redirectUrl cannot differ from configured redirectUri",
+          {
+            redirectUrl: url,
+            configuredRedirectUri: this.config.clientRegistration.redirectUri,
+          },
+          "Use clientRegistration.redirectUri as the runtime redirect URL.",
+        );
+      }
+      return;
+    }
     this._redirectUrl = url;
   }
 
@@ -47,16 +74,24 @@ export class OAuthClientProviderImpl implements OAuthClientProvider {
     };
   }
 
-  async clientInformation(): Promise<OAuthClientInformationMixed | undefined> {
-    return this._clientInfo ?? {
-      client_id: this.config.clientId,
-    };
+  clientInformation(): Promise<OAuthClientInformationMixed | undefined> {
+    if (isCimdConfig(this.config)) {
+      return Promise.resolve({
+        client_id: this.config.clientRegistration.clientIdMetadataUrl,
+      });
+    }
+    return Promise.resolve(
+      this._clientInfo ?? {
+        client_id: this.config.clientId,
+      },
+    );
   }
 
-  async saveClientInformation(
+  saveClientInformation(
     info: OAuthClientInformationMixed,
   ): Promise<void> {
     this._clientInfo = info;
+    return Promise.resolve();
   }
 
   async tokens(): Promise<OAuthTokens | undefined> {
@@ -76,12 +111,13 @@ export class OAuthClientProviderImpl implements OAuthClientProvider {
     await this.config.openBrowser(authorizationUrl.toString());
   }
 
-  async saveCodeVerifier(codeVerifier: string): Promise<void> {
+  saveCodeVerifier(codeVerifier: string): Promise<void> {
     this._codeVerifier = codeVerifier;
+    return Promise.resolve();
   }
 
-  async codeVerifier(): Promise<string> {
-    return this._codeVerifier;
+  codeVerifier(): Promise<string> {
+    return Promise.resolve(this._codeVerifier);
   }
 
   async invalidateCredentials(

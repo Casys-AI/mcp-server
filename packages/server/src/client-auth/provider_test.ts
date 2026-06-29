@@ -1,6 +1,30 @@
-import { assertEquals, assertExists } from "@std/assert";
+import {
+  assertEquals,
+  assertExists,
+  assertInstanceOf,
+  assertThrows,
+} from "@std/assert";
+import { CimdConfigError } from "./client-id-metadata.ts";
 import { OAuthClientProviderImpl } from "./provider.ts";
 import { MemoryTokenStore } from "./token-store/memory-store.ts";
+import type { CimdClientConfig, OAuthClientConfig } from "./types.ts";
+
+function cimdConfig(
+  overrides: Partial<CimdClientConfig> = {},
+): CimdClientConfig {
+  return {
+    clientName: "Casys CLI",
+    tokenStore: new MemoryTokenStore(),
+    openBrowser: async () => {},
+    callbackPort: 38987,
+    clientRegistration: {
+      method: "client_id_metadata",
+      clientIdMetadataUrl: "https://client.example.com/oauth/client.json",
+      redirectUri: "http://127.0.0.1:38987/callback",
+    },
+    ...overrides,
+  };
+}
 
 Deno.test("OAuthClientProviderImpl - tokens() returns undefined when no stored tokens", async () => {
   const provider = new OAuthClientProviderImpl("https://mcp.example.com", {
@@ -59,8 +83,9 @@ Deno.test("OAuthClientProviderImpl - redirectToAuthorization calls openBrowser",
   const provider = new OAuthClientProviderImpl("https://mcp.example.com", {
     clientId: "test",
     tokenStore: new MemoryTokenStore(),
-    openBrowser: async (url) => {
+    openBrowser: (url) => {
       capturedUrl = url;
+      return Promise.resolve();
     },
   });
   const authUrl = new URL(
@@ -79,6 +104,121 @@ Deno.test("OAuthClientProviderImpl - clientInformation returns client_id", async
   const info = await provider.clientInformation();
   assertExists(info);
   assertEquals(info.client_id, "my-client-id");
+});
+
+Deno.test("OAuthClientProviderImpl - CIMD clientInformation uses metadata URL as client_id", async () => {
+  const provider = new OAuthClientProviderImpl(
+    "https://mcp.example.com",
+    cimdConfig(),
+  );
+
+  const info = await provider.clientInformation();
+
+  assertExists(info);
+  assertEquals(
+    info.client_id,
+    "https://client.example.com/oauth/client.json",
+  );
+});
+
+Deno.test("OAuthClientProviderImpl - CIMD clientInformation is not overwritten by saved client info", async () => {
+  const provider = new OAuthClientProviderImpl(
+    "https://mcp.example.com",
+    cimdConfig(),
+  );
+
+  await provider.saveClientInformation({ client_id: "dcr-client-id" });
+  const info = await provider.clientInformation();
+
+  assertExists(info);
+  assertEquals(
+    info.client_id,
+    "https://client.example.com/oauth/client.json",
+  );
+});
+
+Deno.test("OAuthClientProviderImpl - CIMD redirectUrl and clientMetadata use configured redirect URI", () => {
+  const provider = new OAuthClientProviderImpl(
+    "https://mcp.example.com",
+    cimdConfig(),
+  );
+
+  assertEquals(
+    String(provider.redirectUrl),
+    "http://127.0.0.1:38987/callback",
+  );
+  assertEquals(provider.clientMetadata.client_name, "Casys CLI");
+  assertEquals(provider.clientMetadata.redirect_uris, [
+    "http://127.0.0.1:38987/callback",
+  ]);
+});
+
+Deno.test("OAuthClientProviderImpl - CIMD constructor fast-fails invalid config", () => {
+  const error = assertThrows(() =>
+    new OAuthClientProviderImpl(
+      "https://mcp.example.com",
+      cimdConfig({ clientName: "" }),
+    )
+  );
+
+  assertInstanceOf(error, CimdConfigError);
+  assertEquals(error.code, "cimd_name_missing");
+});
+
+Deno.test("OAuthClientProviderImpl - constructor rejects invalid clientRegistration method", () => {
+  const error = assertThrows(() =>
+    new OAuthClientProviderImpl("https://mcp.example.com", {
+      clientRegistration: { method: "bogus" },
+      tokenStore: new MemoryTokenStore(),
+      openBrowser: async () => {},
+    } as unknown as OAuthClientConfig)
+  );
+
+  assertInstanceOf(error, CimdConfigError);
+  assertEquals(error.code, "cimd_method_invalid");
+});
+
+Deno.test("OAuthClientProviderImpl - constructor rejects incomplete clientRegistration", () => {
+  const error = assertThrows(() =>
+    new OAuthClientProviderImpl("https://mcp.example.com", {
+      clientRegistration: {},
+      tokenStore: new MemoryTokenStore(),
+      openBrowser: async () => {},
+    } as unknown as OAuthClientConfig)
+  );
+
+  assertInstanceOf(error, CimdConfigError);
+  assertEquals(error.code, "cimd_registration_missing");
+});
+
+Deno.test("OAuthClientProviderImpl - constructor rejects missing client mode", () => {
+  const error = assertThrows(() =>
+    new OAuthClientProviderImpl("https://mcp.example.com", {
+      tokenStore: new MemoryTokenStore(),
+      openBrowser: async () => {},
+    } as unknown as OAuthClientConfig)
+  );
+
+  assertInstanceOf(error, CimdConfigError);
+  assertEquals(error.code, "cimd_registration_missing");
+});
+
+Deno.test("OAuthClientProviderImpl - CIMD setRedirectUrl rejects incoherent redirect URIs", () => {
+  const provider = new OAuthClientProviderImpl(
+    "https://mcp.example.com",
+    cimdConfig(),
+  );
+
+  const error = assertThrows(() =>
+    provider.setRedirectUrl("http://127.0.0.1:38988/callback")
+  );
+
+  assertInstanceOf(error, CimdConfigError);
+  assertEquals(error.code, "cimd_redirect_mismatch");
+  assertEquals(
+    String(provider.redirectUrl),
+    "http://127.0.0.1:38987/callback",
+  );
 });
 
 Deno.test("OAuthClientProviderImpl - invalidateCredentials clears tokens", async () => {

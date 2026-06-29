@@ -4,6 +4,47 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-06-29
+
+### Added
+
+- **Client-side Client ID Metadata Document (CIMD) support is now public and
+  opt-in.** OAuth clients can configure
+  `clientRegistration.method = "client_id_metadata"` and use
+  `buildClientIdMetadataDocument()` to publish a spec-shaped client metadata
+  document where `client_id` is the metadata URL.
+- **The OAuth client-auth surface is now exported from the package root.**
+  `prepareOAuthProvider`, `OAuthClientProviderImpl`, `CallbackServer`, token
+  stores, client-auth config types, and CIMD helpers are available from
+  `@casys/mcp-server` alongside the server auth APIs.
+
+### Changed
+
+- **The OAuth callback server now binds to `127.0.0.1` by default.** This keeps
+  local authorization-code callbacks on loopback instead of listening on all
+  interfaces, while preserving explicit hostname configuration for callers that
+  need it.
+- **The public client-auth runtime now uses the shared runtime port.**
+  `CallbackServer` and `FileTokenStore` no longer depend on Deno-only globals in
+  the Node/npm build, while static client registrations keep the historical
+  `http://localhost:<port>/callback` redirect URI.
+- **Callback bind failures now reject cleanly across Deno and Node.** The
+  runtime port exposes an optional bind-error channel, so a fixed CIMD callback
+  port collision fails `CallbackServer.start()` instead of crashing the Node
+  process with an unhandled server `error` event.
+- **The npm publish path now runs a client-auth smoke test before publish.** The
+  generated `dist-node` package imports the public API and exercises CIMD
+  document building, `FileTokenStore`, `CallbackServer`, and occupied-port
+  rejection.
+- **CIMD config validation is stricter before runtime work begins.** Invalid or
+  incomplete `clientRegistration` objects now fail with structured
+  `CimdConfigError` codes, and `metadata.extra` rejects all reserved OAuth
+  client metadata keys instead of silently shadowing derived fields.
+- **The MCP 2026-07-28 migration plan now treats CIMD as the modern Track E
+  registration path.** The AS metadata proxy remains documented as a DCR
+  compatibility/legacy interop path, and the erroneous note about injecting DCR
+  `application_type` from the proxy has been removed.
+
 ## [0.18.0] - 2026-06-03
 
 ### Removed (breaking)

@@ -1,4 +1,4 @@
-// deno-lint-ignore-file no-process-global no-node-globals
+// deno-lint-ignore-file no-process-global
 /**
  * Runtime adapter — Node.js implementation
  *
@@ -9,7 +9,14 @@
  * @module lib/server/runtime.node
  */
 
-import { readFile } from "node:fs/promises";
+import { Buffer } from "node:buffer";
+import {
+  mkdir as nodeMkdir,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { createServer } from "node:http";
 import type {
   FetchHandler,
@@ -47,6 +54,55 @@ export async function readTextFile(path: string): Promise<string | null> {
       err && typeof err === "object" && "code" in err && err.code === "ENOENT"
     ) {
       return null;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Write a UTF-8 text file.
+ */
+export async function writeTextFile(
+  path: string,
+  content: string,
+  opts?: { mode?: number },
+): Promise<void> {
+  await writeFile(path, content, { mode: opts?.mode });
+}
+
+/**
+ * Create a directory.
+ */
+export async function mkdir(
+  path: string,
+  opts?: { recursive?: boolean; mode?: number },
+): Promise<void> {
+  await nodeMkdir(path, { recursive: opts?.recursive, mode: opts?.mode });
+}
+
+/**
+ * Remove a file or empty directory. No-op if absent.
+ */
+export async function remove(path: string): Promise<void> {
+  try {
+    await rm(path);
+  } catch (err: unknown) {
+    if (isNodeNotFound(err)) {
+      return;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Read directory entry names. Returns [] if absent.
+ */
+export async function readDir(path: string): Promise<string[]> {
+  try {
+    return await readdir(path);
+  } catch (err: unknown) {
+    if (isNodeNotFound(err)) {
+      return [];
     }
     throw err;
   }
@@ -149,16 +205,36 @@ export function serve(
     }
   });
 
+  server.on("error", (err) => {
+    if (options.onError) {
+      options.onError(err);
+      return;
+    }
+    setTimeout(() => {
+      throw err;
+    }, 0);
+  });
+
   server.listen(options.port, hostname, () => {
     if (options.onListen) {
-      options.onListen({ hostname, port: options.port });
+      const address = server.address();
+      const port = typeof address === "object" && address !== null
+        ? address.port
+        : options.port;
+      options.onListen({ hostname, port });
     }
   });
 
   return {
     shutdown: () =>
       new Promise<void>((resolve, reject) => {
-        server.close((err) => (err ? reject(err) : resolve()));
+        server.close((err) => {
+          if (err && !isNodeServerNotRunning(err)) {
+            reject(err);
+            return;
+          }
+          resolve();
+        });
       }),
   };
 }
@@ -182,7 +258,16 @@ export function unrefTimer(id: number): void {
 }
 
 /** Compile-time contract check — ensures this module satisfies RuntimePort */
-void ({ env, readTextFile, serve, unrefTimer } satisfies RuntimePort);
+void ({
+  env,
+  readTextFile,
+  writeTextFile,
+  mkdir,
+  remove,
+  readDir,
+  serve,
+  unrefTimer,
+} satisfies RuntimePort);
 
 // ─── Internal helpers ────────────────────────────────────
 
@@ -190,7 +275,7 @@ void ({ env, readTextFile, serve, unrefTimer } satisfies RuntimePort);
 function collectBody(
   req: import("node:http").IncomingMessage,
   maxBytes: number | null,
-): Promise<Uint8Array> {
+): Promise<ArrayBuffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let total = 0;
@@ -208,7 +293,13 @@ function collectBody(
     });
     req.on("end", () => {
       if (!rejected) {
-        resolve(new Uint8Array(Buffer.concat(chunks)));
+        const body = Buffer.concat(chunks);
+        resolve(
+          body.buffer.slice(
+            body.byteOffset,
+            body.byteOffset + body.byteLength,
+          ),
+        );
       }
     });
     req.on("error", (err) => {
@@ -217,4 +308,17 @@ function collectBody(
       }
     });
   });
+}
+
+function isNodeNotFound(err: unknown): boolean {
+  return Boolean(
+    err && typeof err === "object" && "code" in err && err.code === "ENOENT",
+  );
+}
+
+function isNodeServerNotRunning(err: unknown): boolean {
+  return Boolean(
+    err && typeof err === "object" && "code" in err &&
+      err.code === "ERR_SERVER_NOT_RUNNING",
+  );
 }

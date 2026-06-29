@@ -8,6 +8,13 @@
  */
 
 import type { StoredCredentials, TokenStore } from "../types.ts";
+import {
+  mkdir,
+  readDir,
+  readTextFile,
+  remove,
+  writeTextFile,
+} from "../../runtime/runtime.ts";
 
 async function sha256hex(input: string): Promise<string> {
   const data = new TextEncoder().encode(input);
@@ -26,57 +33,41 @@ export class FileTokenStore implements TokenStore {
   }
 
   private async ensureDir(): Promise<void> {
-    await Deno.mkdir(this.baseDir, { recursive: true, mode: 0o700 });
+    await mkdir(this.baseDir, { recursive: true, mode: 0o700 });
   }
 
   async get(serverUrl: string): Promise<StoredCredentials | null> {
     const path = await this.filePath(serverUrl);
-    try {
-      const content = await Deno.readTextFile(path);
-      return JSON.parse(content) as StoredCredentials;
-    } catch (e) {
-      if (e instanceof Deno.errors.NotFound) return null;
-      throw e;
-    }
+    const content = await readTextFile(path);
+    return content === null ? null : JSON.parse(content) as StoredCredentials;
   }
 
   async set(serverUrl: string, credentials: StoredCredentials): Promise<void> {
     await this.ensureDir();
     const path = await this.filePath(serverUrl);
     const content = JSON.stringify(credentials, null, 2);
-    await Deno.writeTextFile(path, content, { mode: 0o600 });
+    await writeTextFile(path, content, { mode: 0o600 });
   }
 
   async delete(serverUrl: string): Promise<void> {
     const path = await this.filePath(serverUrl);
-    try {
-      await Deno.remove(path);
-    } catch (e) {
-      if (e instanceof Deno.errors.NotFound) return;
-      throw e;
-    }
+    await remove(path);
   }
 
   async list(): Promise<string[]> {
-    try {
-      const urls: string[] = [];
-      for await (const entry of Deno.readDir(this.baseDir)) {
-        if (entry.isFile && entry.name.endsWith(".json")) {
-          try {
-            const content = await Deno.readTextFile(
-              `${this.baseDir}/${entry.name}`,
-            );
-            const creds = JSON.parse(content) as StoredCredentials;
-            urls.push(creds.serverUrl);
-          } catch {
-            // Corrupted file, skip
-          }
+    const urls: string[] = [];
+    for (const name of await readDir(this.baseDir)) {
+      if (name.endsWith(".json")) {
+        try {
+          const content = await readTextFile(`${this.baseDir}/${name}`);
+          if (content === null) continue;
+          const creds = JSON.parse(content) as StoredCredentials;
+          urls.push(creds.serverUrl);
+        } catch {
+          // Corrupted file, skip
         }
       }
-      return urls;
-    } catch (e) {
-      if (e instanceof Deno.errors.NotFound) return [];
-      throw e;
     }
+    return urls;
   }
 }

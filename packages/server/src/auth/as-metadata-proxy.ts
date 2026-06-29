@@ -1,12 +1,15 @@
 /**
- * AS Metadata Proxy for DCR Discovery.
+ * AS Metadata Proxy for DCR compatibility discovery.
  *
  * Creates a Web Standard request handler that serves an RFC 8414
  * Authorization Server Metadata document enriched with
- * `registration_endpoint` (RFC 7591). Enables MCP servers behind IdPs
- * without native Dynamic Client Registration (e.g., Zitadel,
- * unconfigured Keycloak, Okta free tier) to advertise a DCR endpoint
- * so clients like Claude.ai / Cursor can auto-register.
+ * `registration_endpoint` (RFC 7591). This is a compatibility path for
+ * MCP clients and IdPs that still rely on Dynamic Client Registration
+ * (DCR), which is now optional (`MAY`) in the 2025-11-25 MCP spec.
+ *
+ * For new OAuth client integrations, prefer the spec-preferred Client ID
+ * Metadata Documents (CIMD) on the client side. See
+ * `src/client-auth/client-id-metadata.ts`.
  *
  * **Issuer field note (RFC 8414 §3.2)**:
  * The `issuer` field in the served metadata will be the upstream IdP's
@@ -15,7 +18,8 @@
  * overriding `issuer` would cause JWT `iss` claim mismatches — the IdP
  * still issues tokens with its own `iss`, and clients verify
  * `token.iss === metadata.issuer`. The metadata-URL mismatch is the
- * lesser evil and disappears once the IdP ships native DCR.
+ * lesser evil for this compatibility path and is not needed when clients
+ * use CIMD or the upstream IdP ships native registration discovery.
  *
  * @module lib/server/auth/as-metadata-proxy
  */
@@ -140,7 +144,9 @@ function resolveMetadataUrl(options: AsMetadataProxyOptions): string {
   }
 
   validateUrl(upstreamIssuer!, "upstreamIssuer");
-  return `${stripTrailingSlash(upstreamIssuer!)}/.well-known/openid-configuration`;
+  return `${
+    stripTrailingSlash(upstreamIssuer!)
+  }/.well-known/openid-configuration`;
 }
 
 /**
@@ -173,8 +179,13 @@ export function createAsMetadataHandler(
   // ── Fail-fast validation at construction time ──
   const metadataUrl = resolveMetadataUrl(options);
   validateUrl(options.registrationEndpoint, "registrationEndpoint");
-  if (options.cacheTtlMs !== undefined && (options.cacheTtlMs < 0 || !Number.isFinite(options.cacheTtlMs))) {
-    throw new Error("AsMetadataProxyOptions.cacheTtlMs must be a non-negative finite number");
+  if (
+    options.cacheTtlMs !== undefined &&
+    (options.cacheTtlMs < 0 || !Number.isFinite(options.cacheTtlMs))
+  ) {
+    throw new Error(
+      "AsMetadataProxyOptions.cacheTtlMs must be a non-negative finite number",
+    );
   }
 
   const {
@@ -200,7 +211,9 @@ export function createAsMetadataHandler(
     const body = await res.json();
     if (body === null || typeof body !== "object" || Array.isArray(body)) {
       throw new Error(
-        `AS metadata from ${metadataUrl} is not a JSON object (got ${Array.isArray(body) ? "array" : typeof body})`,
+        `AS metadata from ${metadataUrl} is not a JSON object (got ${
+          Array.isArray(body) ? "array" : typeof body
+        })`,
       );
     }
     if (typeof body.issuer !== "string") {
@@ -245,7 +258,10 @@ export function createAsMetadataHandler(
 
   return async (req: Request): Promise<Response> => {
     if (req.method !== "GET" && req.method !== "HEAD") {
-      return new Response(null, { status: 405, headers: { "Allow": "GET, HEAD" } });
+      return new Response(null, {
+        status: 405,
+        headers: { "Allow": "GET, HEAD" },
+      });
     }
     try {
       const upstream = await getMetadata();

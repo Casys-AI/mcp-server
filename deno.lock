@@ -28,7 +28,7 @@
     "jsr:@std/yaml@1": "1.0.12",
     "jsr:@ts-morph/bootstrap@0.24": "0.24.0",
     "jsr:@ts-morph/common@0.24": "0.24.0",
-    "npm:@modelcontextprotocol/ext-apps@^1.7.1": "1.7.1_@modelcontextprotocol+sdk@1.29.0__zod@4.4.3_zod@4.4.3",
+    "npm:@modelcontextprotocol/ext-apps@^1.7.4": "1.7.4_@modelcontextprotocol+sdk@1.29.0__zod@4.4.3_zod@4.4.3",
     "npm:@modelcontextprotocol/sdk@^1.29.0": "1.29.0_zod@4.4.3",
     "npm:@opentelemetry/api@^1.9.0": "1.9.0",
     "npm:ajv@^8.17.1": "8.18.0",
@@ -295,8 +295,8 @@
         "hono"
       ]
     },
-    "@modelcontextprotocol/ext-apps@1.7.1_@modelcontextprotocol+sdk@1.29.0__zod@4.4.3_zod@4.4.3": {
-      "integrity": "sha512-J3WdG1A4JSSKnSWKyU+895dBVYBV2Utgtf7fUsUK45mlkETm53a/1DR6Pm3hUGKqLLQthZLmpxOg8VPzJi/lyg==",
+    "@modelcontextprotocol/ext-apps@1.7.4_@modelcontextprotocol+sdk@1.29.0__zod@4.4.3_zod@4.4.3": {
+      "integrity": "sha512-QQqysE549cf/Y0VabBmAACXhj92EhB3t8yVct2BHbkWiPTFA1S91EqTVjYXXcZEefXU0pmHcdObhsNMcomJIOQ==",
       "dependencies": [
         "@modelcontextprotocol/sdk",
         "@standard-schema/spec",
@@ -860,7 +860,7 @@
           "jsr:@deno/dnt@0.41",
           "jsr:@std/assert@1",
           "jsr:@std/yaml@1",
-          "npm:@modelcontextprotocol/ext-apps@^1.7.1",
+          "npm:@modelcontextprotocol/ext-apps@^1.7.4",
           "npm:@modelcontextprotocol/sdk@^1.29.0",
           "npm:@opentelemetry/api@^1.9.0",
           "npm:ajv@^8.17.1",
@@ -872,7 +872,7 @@
         "dependencies": [
           "jsr:@std/assert@1",
           "jsr:@std/yaml@1",
-          "npm:@modelcontextprotocol/ext-apps@^1.7.1",
+          "npm:@modelcontextprotocol/ext-apps@^1.7.4",
           "npm:@modelcontextprotocol/sdk@^1.29.0",
           "npm:@opentelemetry/api@^1.9.0",
           "npm:ajv@^8.17.1",
@@ -884,7 +884,7 @@
         "dependencies": [
           "jsr:@deno/dnt@0.41",
           "jsr:@std/assert@1",
-          "npm:@modelcontextprotocol/ext-apps@^1.7.1",
+          "npm:@modelcontextprotocol/ext-apps@^1.7.4",
           "npm:@modelcontextprotocol/sdk@^1.29.0"
         ]
       }

@@ -282,6 +282,9 @@ export class McpApp {
 
     // Optional sampling support
     if (options.enableSampling && options.samplingClient) {
+      this.log(
+        "[DEPRECATED] Sampling is deprecated (MCP 2026-07-28) and will be removed after 2027-07-28.",
+      );
       this.samplingBridge = new SamplingBridge(options.samplingClient);
     }
 
@@ -1686,6 +1689,7 @@ export class McpApp {
         if (method === "prompts/list") {
           return c.json({ jsonrpc: "2.0", id, result: { prompts: [] } });
         }
+        // @deprecated (MCP 2026-07-28)
         if (method === "logging/setLevel") {
           return c.json({ jsonrpc: "2.0", id, result: {} });
         }
@@ -1962,6 +1966,8 @@ export class McpApp {
 
   /**
    * Get sampling bridge (if enabled)
+   *
+   * @deprecated Deprecated (MCP 2026-07-28). Removal after 2027-07-28. Prefer the explicit handle-based pattern.
    */
   getSamplingBridge(): SamplingBridge | null {
     return this.samplingBridge;

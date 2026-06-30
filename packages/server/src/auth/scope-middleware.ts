@@ -48,8 +48,8 @@ export function createScopeMiddleware(
       const missingScopes = requiredScopes.filter((s) =>
         !authInfo.scopes.includes(s)
       );
-      // resourceMetadataUrl is not critical for 403 responses (only used in 401),
-      // but we populate it from context if available for consistency
+      // Used by 403 responses to advertise protected resource metadata in
+      // WWW-Authenticate; auth middleware populates it for HTTP requests.
       const metadataUrl = (ctx.resourceMetadataUrl as string | undefined) ?? "";
       throw new AuthError("insufficient_scope", metadataUrl, missingScopes);
     }

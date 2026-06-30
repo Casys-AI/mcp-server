@@ -29,7 +29,7 @@ export interface ClientIdMetadataDocument {
   client_id: string;
   client_name: string;
   redirect_uris: string[];
-  grant_types: ["authorization_code"];
+  grant_types: ["authorization_code", "refresh_token"];
   response_types: ["code"];
   token_endpoint_auth_method: "none";
   /** RFC 7591 application type. Always "native" for loopback CLI/desktop clients. */
@@ -120,7 +120,7 @@ export function buildClientIdMetadataDocument(
     client_id: clientRegistration.clientIdMetadataUrl,
     client_name: config.clientName!,
     redirect_uris: [clientRegistration.redirectUri],
-    grant_types: ["authorization_code"],
+    grant_types: ["authorization_code", "refresh_token"],
     response_types: ["code"],
     token_endpoint_auth_method: "none",
     application_type: "native",

@@ -8,6 +8,10 @@
  */
 
 import type { McpUiToolMeta as McpUiToolMetaBase } from "@modelcontextprotocol/ext-apps";
+import type {
+  ClientCapabilities,
+  Implementation,
+} from "@modelcontextprotocol/sdk/types.js";
 
 /**
  * Rate limit configuration
@@ -467,6 +471,8 @@ export interface ToolHandlerContext {
   readonly request?: Request;
   readonly sessionId?: string;
   readonly authInfo?: import("./auth/types.ts").AuthInfo;
+  readonly clientInfo?: Implementation;
+  readonly clientCapabilities?: ClientCapabilities;
 }
 
 export type ToolHandler = (

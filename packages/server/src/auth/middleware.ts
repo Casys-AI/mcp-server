@@ -12,6 +12,12 @@ import type { AuthInfo } from "./types.ts";
 import type { Middleware } from "../middleware/types.ts";
 import { isOtelEnabled, recordAuthEvent } from "../observability/otel.ts";
 
+const JSONRPC_FORBIDDEN = -32002;
+
+function escapeAuthenticateParam(s: string): string {
+  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
 /**
  * Authentication error with structured information
  * for generating proper HTTP error responses.
@@ -61,11 +67,14 @@ export function createUnauthorizedResponse(
   error?: string,
   errorDescription?: string,
 ): Response {
-  const escape = (s: string) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-  const parts = [`Bearer resource_metadata="${escape(resourceMetadataUrl)}"`];
-  if (error) parts.push(`error="${escape(error)}"`);
+  const parts = [
+    `Bearer resource_metadata="${escapeAuthenticateParam(resourceMetadataUrl)}"`,
+  ];
+  if (error) parts.push(`error="${escapeAuthenticateParam(error)}"`);
   if (errorDescription) {
-    parts.push(`error_description="${escape(errorDescription)}"`);
+    parts.push(
+      `error_description="${escapeAuthenticateParam(errorDescription)}"`,
+    );
   }
 
   return new Response(
@@ -88,20 +97,36 @@ export function createUnauthorizedResponse(
  * Create a 403 Forbidden response for insufficient scopes.
  *
  * @param requiredScopes - Scopes that were required but missing
+ * @param resourceMetadataUrl - URL to the Protected Resource Metadata endpoint
  */
-export function createForbiddenResponse(requiredScopes: string[]): Response {
+export function createForbiddenResponse(
+  requiredScopes: string[],
+  resourceMetadataUrl: string,
+): Response {
+  const requiredScopesDescription = requiredScopes.join(", ");
+  const parts = [
+    `Bearer resource_metadata="${escapeAuthenticateParam(resourceMetadataUrl)}"`,
+    `error="insufficient_scope"`,
+    `error_description="${
+      escapeAuthenticateParam(requiredScopesDescription)
+    }"`,
+  ];
+
   return new Response(
     JSON.stringify({
       jsonrpc: "2.0",
       id: null,
       error: {
-        code: -32001,
+        code: JSONRPC_FORBIDDEN,
         message: `Forbidden: requires scopes ${requiredScopes.join(", ")}`,
       },
     }),
     {
       status: 403,
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "WWW-Authenticate": parts.join(", "),
+      },
     },
   );
 }
@@ -150,17 +175,18 @@ export function createAuthMiddleware(provider: AuthProvider): Middleware {
       return next();
     }
 
-    // Already authenticated by the HTTP-level gate (verifyHttpAuth).
-    // Skip the redundant verifyToken call to avoid JWKS race conditions
-    // when concurrent requests arrive on a cold cache.
-    if (ctx.authInfo) {
-      return next();
-    }
-
     // 0.15.0+: provider's getResourceMetadata() always returns a valid
     // absolute URL in resource_metadata_url (type system guarantees it).
     // No derivation needed at the middleware level anymore.
     const metadataUrl = provider.getResourceMetadata().resource_metadata_url;
+
+    // Already authenticated by the HTTP-level gate (verifyHttpAuth).
+    // Skip the redundant verifyToken call to avoid JWKS race conditions
+    // when concurrent requests arrive on a cold cache.
+    if (ctx.authInfo) {
+      ctx.resourceMetadataUrl = metadataUrl;
+      return next();
+    }
 
     const token = extractBearerToken(ctx.request);
     if (!token) {

@@ -15,6 +15,9 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
   type CallToolRequest,
   CallToolRequestSchema,
+  type ClientCapabilities,
+  ErrorCode,
+  type Implementation,
   ListResourcesRequestSchema,
   ListToolsRequestSchema,
   type ReadResourceRequest,
@@ -171,6 +174,13 @@ async function readBodyWithLimit(
 /** Namespaced protocolVersion key in params._meta (spec 2026-07-28) */
 const STATELESS_PROTO_KEY = "io.modelcontextprotocol/protocolVersion";
 
+/** Namespaced clientInfo key in params._meta (SEP-2575 stateless transport) */
+const STATELESS_CLIENT_INFO_KEY = "io.modelcontextprotocol/clientInfo";
+
+/** Namespaced clientCapabilities key in params._meta (SEP-2575 stateless transport) */
+const STATELESS_CLIENT_CAPABILITIES_KEY =
+  "io.modelcontextprotocol/clientCapabilities";
+
 /** Protocol versions accepted by this server in stateless mode */
 const STATELESS_SUPPORTED_VERSIONS: readonly string[] = [
   "2026-07-28",
@@ -180,6 +190,14 @@ const STATELESS_SUPPORTED_VERSIONS: readonly string[] = [
 
 /** Version echoed in MCP-Protocol-Version header on error responses (server's stable baseline) */
 const STATELESS_FALLBACK_VERSION = "2025-06-18";
+
+const JSONRPC_INVALID_PARAMS = ErrorCode.InvalidParams;
+const MCP_UNSUPPORTED_PROTOCOL_VERSION = -32004;
+
+interface StatelessClientMeta {
+  readonly clientInfo?: Implementation;
+  readonly clientCapabilities?: ClientCapabilities;
+}
 
 /**
  * Narrow type-guard: returns true iff `v` is a plain object (not array, not null).
@@ -636,6 +654,10 @@ export class McpApp {
           ? { sessionId: ctx.sessionId }
           : {}),
         ...(ctx.authInfo ? { authInfo: ctx.authInfo as AuthInfo } : {}),
+        ...(ctx.clientInfo !== undefined ? { clientInfo: ctx.clientInfo } : {}),
+        ...(ctx.clientCapabilities !== undefined
+          ? { clientCapabilities: ctx.clientCapabilities }
+          : {}),
       }));
     });
   }
@@ -656,6 +678,7 @@ export class McpApp {
     request?: Request,
     sessionId?: string,
     preVerifiedAuthInfo?: AuthInfo,
+    clientMeta?: StatelessClientMeta,
   ): Promise<MiddlewareResult> {
     if (!this.middlewareRunner) {
       throw new Error(
@@ -672,6 +695,12 @@ export class McpApp {
       // middleware skips the redundant verifyToken call (avoids JWKS
       // race conditions on concurrent cold-cache requests).
       authInfo: preVerifiedAuthInfo,
+      ...(clientMeta?.clientInfo !== undefined
+        ? { clientInfo: clientMeta.clientInfo }
+        : {}),
+      ...(clientMeta?.clientCapabilities !== undefined
+        ? { clientCapabilities: clientMeta.clientCapabilities }
+        : {}),
     };
 
     // OTel span + metrics
@@ -1527,9 +1556,9 @@ export class McpApp {
         // Must run BEFORE any method dispatch so every call (not just initialize)
         // is validated. Sets MCP-Protocol-Version header on all subsequent responses
         // via Hono's c.header() accumulation.
-        // Key location: params._meta[STATELESS_PROTO_KEY] (spec 2026-07-28, confirmed).
-        // TODO(spec-2026-07-28, valider en interop MCP Inspector): MCP-Protocol-Version
-        // request header comparison to body version not enforced until spec text is final.
+        // Key location: params._meta[STATELESS_PROTO_KEY] (SEP-2575 Final).
+        // Tolerant mode: MCP-Protocol-Version may be absent for backward compatibility;
+        // when present it must match the _meta version.
         let statelessVersion: string | undefined;
         if (this.options.transport === "stateless") {
           const clientVersion = isRecord(params) && isRecord(params["_meta"])
@@ -1543,7 +1572,7 @@ export class McpApp {
                 jsonrpc: "2.0",
                 id,
                 error: {
-                  code: -32020,
+                  code: JSONRPC_INVALID_PARAMS,
                   message: `Missing required field '${STATELESS_PROTO_KEY}'`,
                 },
               },
@@ -1559,7 +1588,7 @@ export class McpApp {
                 jsonrpc: "2.0",
                 id,
                 error: {
-                  code: -32022,
+                  code: MCP_UNSUPPORTED_PROTOCOL_VERSION,
                   message: `Unsupported protocolVersion: "${clientVersion}"`,
                   data: {
                     supported: [...STATELESS_SUPPORTED_VERSIONS],
@@ -1572,10 +1601,54 @@ export class McpApp {
             );
           }
 
+          const headerVersion = c.req.header("MCP-Protocol-Version");
+          if (
+            headerVersion !== undefined &&
+            headerVersion !== clientVersion
+          ) {
+            return jsonRpcResponse(
+              {
+                jsonrpc: "2.0",
+                id,
+                error: {
+                  code: JSONRPC_INVALID_PARAMS,
+                  message:
+                    `MCP-Protocol-Version header "${headerVersion}" does not match _meta protocolVersion "${clientVersion}"`,
+                },
+              },
+              400,
+              { "MCP-Protocol-Version": STATELESS_FALLBACK_VERSION },
+            );
+          }
+
           statelessVersion = clientVersion;
           // Spec 2026-07-28: echo negotiated version in every response header.
           // c.header() accumulates headers — all subsequent c.json() calls inherit it.
           c.header("MCP-Protocol-Version", statelessVersion);
+        }
+
+        if (
+          method === "server/discover" &&
+          this.options.transport === "stateless"
+        ) {
+          return c.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              supportedVersions: [...STATELESS_SUPPORTED_VERSIONS],
+              capabilities: {
+                tools: {},
+                resources: this.resources.size > 0 ? {} : undefined,
+              },
+              serverInfo: {
+                name: this.options.name,
+                version: this.options.version,
+              },
+              ...(this.options.instructions
+                ? { instructions: this.options.instructions }
+                : {}),
+            },
+          });
         }
 
         // Initialize - create session and return session ID (now auth-verified)
@@ -1683,6 +1756,20 @@ export class McpApp {
         if (method === "tools/call" && params?.name) {
           const toolName = params.name as string;
           const args = (params.arguments as Record<string, unknown>) || {};
+          const statelessClientMeta:
+            | StatelessClientMeta
+            | undefined = this.options.transport === "stateless" &&
+                isRecord(params) &&
+                isRecord(params["_meta"])
+              ? {
+                clientInfo: params["_meta"][STATELESS_CLIENT_INFO_KEY] as
+                  | Implementation
+                  | undefined,
+                clientCapabilities: params["_meta"][
+                  STATELESS_CLIENT_CAPABILITIES_KEY
+                ] as ClientCapabilities | undefined,
+              }
+              : undefined;
 
           try {
             const result = await this.executeToolCall(
@@ -1691,6 +1778,7 @@ export class McpApp {
               c.req.raw,
               reqSessionId,
               httpAuthInfo,
+              statelessClientMeta,
             );
             return c.json({
               jsonrpc: "2.0",
@@ -1710,7 +1798,10 @@ export class McpApp {
                 );
               }
               if (error.code === "insufficient_scope") {
-                return createForbiddenResponse(error.requiredScopes ?? []);
+                return createForbiddenResponse(
+                  error.requiredScopes ?? [],
+                  error.resourceMetadataUrl,
+                );
               }
             }
 
@@ -1818,6 +1909,10 @@ export class McpApp {
         }
 
         // MCP protocol methods we don't implement — return empty results
+        // ping: SEP-2575 removes ping in stateless mode, but we deliberately keep
+        // answering it for backward compatibility. A SEP-conformant client won't send
+        // it, and a stale client using ping for liveness keeps working. (Decision:
+        // tolerant over strict, consistent with the rest of the stateless conformance work.)
         if (method === "ping") {
           return c.json({ jsonrpc: "2.0", id, result: {} });
         }

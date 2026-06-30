@@ -53,6 +53,7 @@ Deno.test("buildClientIdMetadataDocument is deterministic and preserves client_i
     "https://client.example.com?tenant=acme",
   );
   assertEquals(first.redirect_uris, ["http://127.0.0.1:38987/callback"]);
+  assertEquals(first.grant_types, ["authorization_code", "refresh_token"]);
   assertEquals(first.scope, "openid profile");
   assertEquals(first.application_type, "native");
 });
@@ -212,7 +213,7 @@ Deno.test("buildClientIdMetadataDocument includes optional metadata without over
     document.client_id,
     "https://client.example.com/oauth/client.json",
   );
-  assertEquals(document.grant_types, ["authorization_code"]);
+  assertEquals(document.grant_types, ["authorization_code", "refresh_token"]);
   assertEquals(document.client_uri, "https://client.example.com");
   assertEquals(document.logo_uri, "https://client.example.com/logo.png");
   assertEquals(document.contacts, ["ops@client.example.com"]);

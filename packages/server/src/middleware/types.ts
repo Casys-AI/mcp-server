@@ -7,6 +7,11 @@
  * @module lib/server/middleware/types
  */
 
+import type {
+  ClientCapabilities,
+  Implementation,
+} from "@modelcontextprotocol/sdk/types.js";
+
 /**
  * Context passed through the middleware pipeline.
  * Each middleware can read and enrich the context.
@@ -23,6 +28,12 @@ export interface MiddlewareContext {
 
   /** Session ID (only present for HTTP transport) */
   sessionId?: string;
+
+  /** Client implementation metadata (stateless HTTP transport, when provided) */
+  clientInfo?: Implementation;
+
+  /** Client capabilities metadata (stateless HTTP transport, when provided) */
+  clientCapabilities?: ClientCapabilities;
 
   /** Extensible by middlewares (e.g., authInfo added by auth middleware) */
   [key: string]: unknown;

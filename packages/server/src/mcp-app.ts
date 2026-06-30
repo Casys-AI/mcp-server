@@ -15,6 +15,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
   type CallToolRequest,
   CallToolRequestSchema,
+  ErrorCode,
   ListResourcesRequestSchema,
   ListToolsRequestSchema,
   type ReadResourceRequest,
@@ -180,6 +181,9 @@ const STATELESS_SUPPORTED_VERSIONS: readonly string[] = [
 
 /** Version echoed in MCP-Protocol-Version header on error responses (server's stable baseline) */
 const STATELESS_FALLBACK_VERSION = "2025-06-18";
+
+const JSONRPC_INVALID_PARAMS = ErrorCode.InvalidParams;
+const MCP_UNSUPPORTED_PROTOCOL_VERSION = -32004;
 
 /**
  * Narrow type-guard: returns true iff `v` is a plain object (not array, not null).
@@ -1543,7 +1547,7 @@ export class McpApp {
                 jsonrpc: "2.0",
                 id,
                 error: {
-                  code: -32020,
+                  code: JSONRPC_INVALID_PARAMS,
                   message: `Missing required field '${STATELESS_PROTO_KEY}'`,
                 },
               },
@@ -1559,7 +1563,7 @@ export class McpApp {
                 jsonrpc: "2.0",
                 id,
                 error: {
-                  code: -32022,
+                  code: MCP_UNSUPPORTED_PROTOCOL_VERSION,
                   message: `Unsupported protocolVersion: "${clientVersion}"`,
                   data: {
                     supported: [...STATELESS_SUPPORTED_VERSIONS],

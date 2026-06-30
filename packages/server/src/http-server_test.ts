@@ -139,7 +139,7 @@ Deno.test(
 );
 
 Deno.test(
-  "transport stateless - missing protocolVersion key returns -32020",
+  "transport stateless - missing protocolVersion key returns -32602",
   async () => {
     const server = new McpApp({
       name: "stateless-noversion-test",
@@ -170,7 +170,7 @@ Deno.test(
       // Machine-readable error, not a spurious 200
       assertEquals(res.status, 400);
       const data = await res.json();
-      assertEquals(data.error.code, -32020);
+      assertEquals(data.error.code, -32602);
     } finally {
       await http.shutdown();
     }
@@ -178,7 +178,7 @@ Deno.test(
 );
 
 Deno.test(
-  "transport stateless - _meta present but without version key returns -32020",
+  "transport stateless - _meta present but without version key returns -32602",
   async () => {
     const server = new McpApp({
       name: "stateless-meta-nokey-test",
@@ -191,7 +191,7 @@ Deno.test(
     listener.close();
     const http = await server.startHttp({ port, onListen: () => {} });
     try {
-      // _meta object present but the namespaced key is absent → must fail -32020
+      // _meta object present but the namespaced key is absent → must fail -32602
       const res = await fetch(`http://localhost:${port}/mcp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -204,7 +204,7 @@ Deno.test(
       });
       assertEquals(res.status, 400);
       const data = await res.json();
-      assertEquals(data.error.code, -32020);
+      assertEquals(data.error.code, -32602);
     } finally {
       await http.shutdown();
     }
@@ -212,7 +212,7 @@ Deno.test(
 );
 
 Deno.test(
-  "transport stateless - unsupported protocolVersion returns -32022",
+  "transport stateless - unsupported protocolVersion returns -32004",
   async () => {
     const server = new McpApp({
       name: "stateless-badversion-test",
@@ -245,7 +245,7 @@ Deno.test(
 
       assertEquals(res.status, 400);
       const data = await res.json();
-      assertEquals(data.error.code, -32022);
+      assertEquals(data.error.code, -32004);
       assertEquals(data.id, 2);
     } finally {
       await http.shutdown();
@@ -341,7 +341,7 @@ Deno.test(
 // ── Track A corrections (post-Codex review) ─────────────────────────────────
 
 Deno.test(
-  "transport stateless - -32022 error carries MCP-Protocol-Version header",
+  "transport stateless - -32004 error carries MCP-Protocol-Version header",
   async () => {
     const server = new McpApp({
       name: "stateless-errheader-test",
@@ -368,7 +368,7 @@ Deno.test(
       // Error responses must ALSO carry the header (server's fallback version)
       assertExists(res.headers.get("mcp-protocol-version"));
       const data = await res.json();
-      assertEquals(data.error.code, -32022);
+      assertEquals(data.error.code, -32004);
     } finally {
       await http.shutdown();
     }
@@ -376,7 +376,7 @@ Deno.test(
 );
 
 Deno.test(
-  "transport stateless - -32020 error carries MCP-Protocol-Version header",
+  "transport stateless - -32602 error carries MCP-Protocol-Version header",
   async () => {
     const server = new McpApp({
       name: "stateless-errheader2-test",
@@ -402,7 +402,7 @@ Deno.test(
       assertEquals(res.status, 400);
       assertExists(res.headers.get("mcp-protocol-version"));
       const data = await res.json();
-      assertEquals(data.error.code, -32020);
+      assertEquals(data.error.code, -32602);
     } finally {
       await http.shutdown();
     }
@@ -410,7 +410,7 @@ Deno.test(
 );
 
 Deno.test(
-  "transport stateless - -32022 error body carries data.supported and data.requested (AX)",
+  "transport stateless - -32004 error body carries data.supported and data.requested (AX)",
   async () => {
     const server = new McpApp({
       name: "stateless-errdata-test",
@@ -435,7 +435,7 @@ Deno.test(
       });
       assertEquals(res.status, 400);
       const data = await res.json();
-      assertEquals(data.error.code, -32022);
+      assertEquals(data.error.code, -32004);
       assertEquals(data.id, 3);
       // Machine-readable: client knows what's supported and what it sent
       assertExists(data.error.data);
@@ -565,7 +565,7 @@ Deno.test(
       assertEquals(r1.headers.get("mcp-protocol-version"), "2026-07-28");
       assertExists(d1.result.contents);
 
-      // Scenario B: without version key → -32020 (no bypass)
+      // Scenario B: without version key → -32602 (no bypass)
       const r2 = await fetch(`http://localhost:${port}/mcp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -578,7 +578,7 @@ Deno.test(
       });
       const d2 = await r2.json(); // consume body first
       assertEquals(r2.status, 400);
-      assertEquals(d2.error.code, -32020);
+      assertEquals(d2.error.code, -32602);
     } finally {
       await http.shutdown();
     }
@@ -618,7 +618,7 @@ Deno.test(
 );
 
 Deno.test(
-  "transport stateless - notification without version returns -32020 (no bypass)",
+  "transport stateless - notification without version returns -32602 (no bypass)",
   async () => {
     const server = new McpApp({
       name: "stateless-notif-noversion-test",
@@ -642,7 +642,7 @@ Deno.test(
       });
       assertEquals(res.status, 400);
       const data = await res.json();
-      assertEquals(data.error.code, -32020);
+      assertEquals(data.error.code, -32602);
     } finally {
       await http.shutdown();
     }
@@ -663,7 +663,7 @@ Deno.test(
     listener.close();
     const http = await server.startHttp({ port, onListen: () => {} });
     try {
-      // Batch body = array — params would be undefined → -32020
+      // Batch body = array — params would be undefined → -32602
       const res = await fetch(`http://localhost:${port}/mcp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -682,7 +682,7 @@ Deno.test(
           },
         ]),
       });
-      // Batch lands in version validation path (params = undefined → -32020) or parse error
+      // Batch lands in version validation path (params = undefined → -32602) or parse error
       // Key assertion: does NOT return a spurious 200 bypass
       assertStringIncludes(String(res.status), "4"); // 4xx
       await res.text();
@@ -728,7 +728,7 @@ Deno.test(
 );
 
 Deno.test(
-  "transport stateless - ping without version key returns -32020 (no bypass)",
+  "transport stateless - ping without version key returns -32602 (no bypass)",
   async () => {
     const server = new McpApp({
       name: "stateless-ping-noversion-test",
@@ -753,7 +753,7 @@ Deno.test(
       });
       const data = await res.json(); // consume first
       assertEquals(res.status, 400);
-      assertEquals(data.error.code, -32020);
+      assertEquals(data.error.code, -32602);
     } finally {
       await http.shutdown();
     }

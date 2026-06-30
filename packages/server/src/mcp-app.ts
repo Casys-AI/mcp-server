@@ -1798,7 +1798,10 @@ export class McpApp {
                 );
               }
               if (error.code === "insufficient_scope") {
-                return createForbiddenResponse(error.requiredScopes ?? []);
+                return createForbiddenResponse(
+                  error.requiredScopes ?? [],
+                  error.resourceMetadataUrl,
+                );
               }
             }
 

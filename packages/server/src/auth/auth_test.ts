@@ -140,9 +140,20 @@ Deno.test("createUnauthorizedResponse - includes error and description", async (
 });
 
 Deno.test("createForbiddenResponse - status 403", async () => {
-  const res = createForbiddenResponse(["admin", "write"]);
+  const res = createForbiddenResponse(
+    ["admin", "write"],
+    "https://example.com/.well-known/oauth-protected-resource",
+  );
   assertEquals(res.status, 403);
+  const wwwAuth = res.headers.get("WWW-Authenticate");
+  assert(
+    wwwAuth?.includes(
+      'resource_metadata="https://example.com/.well-known/oauth-protected-resource"',
+    ),
+  );
+  assert(wwwAuth?.includes('error="insufficient_scope"'));
   const body = await res.json();
+  assertEquals(body.error.code, -32002);
   assert(body.error.message.includes("admin"));
   assert(body.error.message.includes("write"));
 });
@@ -640,6 +651,8 @@ Deno.test("HTTP + Auth - no auth config means tools work without token", async (
 });
 
 Deno.test("HTTP + Auth - scope enforcement 403", async () => {
+  const expectedResourceMetadataUrl =
+    "https://mock.example.com/.well-known/oauth-protected-resource";
   const server = new McpApp({
     name: "test-scopes",
     version: "1.0.0",
@@ -681,7 +694,15 @@ Deno.test("HTTP + Auth - scope enforcement 403", async () => {
     });
 
     assertEquals(res.status, 403);
+    const wwwAuth = res.headers.get("WWW-Authenticate");
+    assert(wwwAuth?.includes('error="insufficient_scope"'));
+    assert(
+      wwwAuth?.includes(
+        `resource_metadata="${expectedResourceMetadataUrl}"`,
+      ),
+    );
     const body = await res.json();
+    assertEquals(body.error.code, -32002);
     assert(body.error.message.includes("admin"));
   } finally {
     await http.shutdown();

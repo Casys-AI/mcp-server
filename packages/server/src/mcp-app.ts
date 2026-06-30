@@ -1906,6 +1906,10 @@ export class McpApp {
         }
 
         // MCP protocol methods we don't implement — return empty results
+        // ping: SEP-2575 removes ping in stateless mode, but we deliberately keep
+        // answering it for backward compatibility. A SEP-conformant client won't send
+        // it, and a stale client using ping for liveness keeps working. (Decision:
+        // tolerant over strict, consistent with the rest of the stateless conformance work.)
         if (method === "ping") {
           return c.json({ jsonrpc: "2.0", id, result: {} });
         }

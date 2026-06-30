@@ -1627,6 +1627,30 @@ export class McpApp {
           c.header("MCP-Protocol-Version", statelessVersion);
         }
 
+        if (
+          method === "server/discover" &&
+          this.options.transport === "stateless"
+        ) {
+          return c.json({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              supportedVersions: [...STATELESS_SUPPORTED_VERSIONS],
+              capabilities: {
+                tools: {},
+                resources: this.resources.size > 0 ? {} : undefined,
+              },
+              serverInfo: {
+                name: this.options.name,
+                version: this.options.version,
+              },
+              ...(this.options.instructions
+                ? { instructions: this.options.instructions }
+                : {}),
+            },
+          });
+        }
+
         // Initialize - create session and return session ID (now auth-verified)
         if (method === "initialize") {
           // Track A: stateless V2 — respond without creating a session or emitting Mcp-Session-Id.

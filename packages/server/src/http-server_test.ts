@@ -192,6 +192,162 @@ Deno.test(
 );
 
 Deno.test(
+  "transport stateless - server/discover returns server metadata",
+  async () => {
+    const server = new McpApp({
+      name: "stateless-discover-test",
+      version: "1.2.3",
+      logger: () => {},
+      transport: "stateless",
+    });
+
+    const listener = Deno.listen({ port: 0 });
+    const port = (listener.addr as Deno.NetAddr).port;
+    listener.close();
+
+    const http = await server.startHttp({ port, onListen: () => {} });
+
+    try {
+      const res = await fetch(`http://localhost:${port}/mcp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 4,
+          method: "server/discover",
+          params: { _meta: { [PROTO_KEY]: "2026-07-28" } },
+        }),
+      });
+
+      const data = await res.json();
+      assertEquals(res.status, 200);
+      assertEquals(res.headers.get("mcp-protocol-version"), "2026-07-28");
+      assertExists(data.result);
+      assertEquals(data.result.supportedVersions.includes("2026-07-28"), true);
+      assertEquals(data.result.serverInfo.name, "stateless-discover-test");
+      assertEquals(data.result.serverInfo.version, "1.2.3");
+      assertExists(data.result.capabilities);
+      assertEquals(data.result.capabilities.tools, {});
+    } finally {
+      await http.shutdown();
+    }
+  },
+);
+
+Deno.test(
+  "transport stateless - server/discover without version returns -32602",
+  async () => {
+    const server = new McpApp({
+      name: "stateless-discover-noversion-test",
+      version: "1.0.0",
+      logger: () => {},
+      transport: "stateless",
+    });
+
+    const listener = Deno.listen({ port: 0 });
+    const port = (listener.addr as Deno.NetAddr).port;
+    listener.close();
+
+    const http = await server.startHttp({ port, onListen: () => {} });
+
+    try {
+      const res = await fetch(`http://localhost:${port}/mcp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 5,
+          method: "server/discover",
+          params: {},
+        }),
+      });
+
+      const data = await res.json();
+      assertEquals(res.status, 400);
+      assertEquals(data.error.code, -32602);
+    } finally {
+      await http.shutdown();
+    }
+  },
+);
+
+Deno.test(
+  "transport stateless - server/discover includes instructions when configured",
+  async () => {
+    const server = new McpApp({
+      name: "stateless-discover-instructions-test",
+      version: "1.0.0",
+      logger: () => {},
+      transport: "stateless",
+      instructions: "Prefer concise responses.",
+    });
+
+    const listener = Deno.listen({ port: 0 });
+    const port = (listener.addr as Deno.NetAddr).port;
+    listener.close();
+
+    const http = await server.startHttp({ port, onListen: () => {} });
+
+    try {
+      const res = await fetch(`http://localhost:${port}/mcp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 6,
+          method: "server/discover",
+          params: { _meta: { [PROTO_KEY]: "2026-07-28" } },
+        }),
+      });
+
+      const data = await res.json();
+      assertEquals(res.status, 200);
+      assertExists(data.result);
+      assertEquals(data.result.instructions, "Prefer concise responses.");
+    } finally {
+      await http.shutdown();
+    }
+  },
+);
+
+Deno.test(
+  "transport stateful (default) - server/discover remains unhandled",
+  async () => {
+    const server = new McpApp({
+      name: "stateful-discover-regression-test",
+      version: "1.0.0",
+      logger: () => {},
+    });
+
+    const listener = Deno.listen({ port: 0 });
+    const port = (listener.addr as Deno.NetAddr).port;
+    listener.close();
+
+    const http = await server.startHttp({ port, onListen: () => {} });
+
+    try {
+      const res = await fetch(`http://localhost:${port}/mcp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 7,
+          method: "server/discover",
+          params: {},
+        }),
+      });
+
+      const data = await res.json();
+      assertEquals(res.status, 200);
+      assertEquals(data.result, undefined);
+      assertEquals(data.error.code, -32601);
+    } finally {
+      await http.shutdown();
+    }
+  },
+);
+
+Deno.test(
   "transport stateless - tools/list works without prior handshake",
   async () => {
     const server = new McpApp({

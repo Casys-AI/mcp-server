@@ -4,6 +4,54 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-06-30
+
+Stateless transport brought in line with the finalized **SEP-2575**, plus
+auth/OAuth conformance fixes. All changes are confined to the stateless
+transport and the auth/client-auth layers — the default **stateful** transport
+is unchanged.
+
+### Added
+
+- **`server/discover` RPC in the stateless transport (SEP-2575).** A stateless
+  server now answers `server/discover` with its `supportedVersions`,
+  `capabilities`, `serverInfo`, and (when configured) `instructions`, letting
+  clients negotiate without an `initialize` handshake. Stateful mode is
+  unaffected.
+- **Per-request `clientInfo` / `clientCapabilities` exposed to tool handlers.**
+  In stateless mode, tool handlers can read the client's identity and
+  capabilities from the SEP-2575 namespaced `_meta` keys via
+  `ToolHandlerContext`. Both fields are optional — a request without them still
+  succeeds.
+
+### Changed
+
+- **Stateless error codes aligned with the finalized SEP-2575.** A missing
+  per-request protocol version now returns `-32602` (INVALID_PARAMS) instead of
+  `-32020`, and an unsupported version returns `-32004`
+  (UNSUPPORTED_PROTOCOL_VERSION) instead of `-32022`. Stateless transport only.
+- **`MCP-Protocol-Version` header validated in stateless mode (tolerant).** When
+  the header is present it must match the `_meta` protocol version, otherwise
+  the request is rejected with `400` / `-32602`. The header stays optional for
+  backward compatibility with existing `_meta`-only clients.
+- **403 responses are now distinct from 401.** Insufficient-scope responses use
+  a dedicated JSON-RPC code (`-32002`, chosen to avoid the SEP-2575 reserved
+  `-32003`) and emit `WWW-Authenticate: Bearer ..., error="insufficient_scope"`
+  per RFC 6750/9728, so clients can tell an authorization failure from an
+  authentication one.
+- **The OAuth client now declares the `refresh_token` grant.** `grant_types`
+  includes `"refresh_token"` (provider metadata and CIMD document), and
+  `saveTokens` preserves an existing refresh token when a later save omits one.
+
+### Notes
+
+- `initialize` and `ping` are intentionally retained in stateless mode for
+  backward compatibility, even though SEP-2575 removes them.
+- The stateless transport is not yet interoperable with the stock
+  `@modelcontextprotocol/sdk` 1.29 client (which does not emit the SEP-2575 wire
+  format); the acceptance suite uses a conformant in-house client and verifies
+  round-robin across two instances with no sticky session.
+
 ## [0.19.0] - 2026-06-29
 
 ### Added

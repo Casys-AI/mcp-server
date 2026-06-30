@@ -52,6 +52,33 @@ is unchanged.
   format); the acceptance suite uses a conformant in-house client and verifies
   round-robin across two instances with no sticky session.
 
+## [0.20.0] - 2026-06-29
+
+MCP 2026-07-28 groundwork: an experimental stateless transport (Track A) plus
+the Track D and Track E deprecations and additions.
+
+### Added
+
+- **Experimental stateless HTTP transport (`transport: "stateless"`, MCP
+  2026-07-28 Track A).** The server can serve requests without a session (no
+  `Mcp-Session-Id`); the protocol version is carried per-request in
+  `params._meta` (`io.modelcontextprotocol/protocolVersion`). Opt-in via the new
+  `transport` option (`"stateful"` default, `"stateless"`), which replaces the
+  earlier `enableStatelessV2` flag.
+- **`application_type: "native"` in DCR client metadata (Track E, MCP
+  2026-07-28).** Loopback CLI/desktop clients advertise the native application
+  type so strict authorization servers don't reject `http://127.0.0.1` redirect
+  URIs.
+
+### Deprecated
+
+- **Sampling and `logging/setLevel` (Track D, MCP 2026-07-28).** Marked
+  deprecated ahead of their removal in the stateless model.
+
+### Changed
+
+- Bump `@modelcontextprotocol/ext-apps` to `^1.7.4`.
+
 ## [0.19.0] - 2026-06-29
 
 ### Added

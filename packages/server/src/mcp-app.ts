@@ -1531,9 +1531,9 @@ export class McpApp {
         // Must run BEFORE any method dispatch so every call (not just initialize)
         // is validated. Sets MCP-Protocol-Version header on all subsequent responses
         // via Hono's c.header() accumulation.
-        // Key location: params._meta[STATELESS_PROTO_KEY] (spec 2026-07-28, confirmed).
-        // TODO(spec-2026-07-28, valider en interop MCP Inspector): MCP-Protocol-Version
-        // request header comparison to body version not enforced until spec text is final.
+        // Key location: params._meta[STATELESS_PROTO_KEY] (SEP-2575 Final).
+        // Tolerant mode: MCP-Protocol-Version may be absent for backward compatibility;
+        // when present it must match the _meta version.
         let statelessVersion: string | undefined;
         if (this.options.transport === "stateless") {
           const clientVersion = isRecord(params) && isRecord(params["_meta"])
@@ -1569,6 +1569,26 @@ export class McpApp {
                     supported: [...STATELESS_SUPPORTED_VERSIONS],
                     requested: clientVersion,
                   },
+                },
+              },
+              400,
+              { "MCP-Protocol-Version": STATELESS_FALLBACK_VERSION },
+            );
+          }
+
+          const headerVersion = c.req.header("MCP-Protocol-Version");
+          if (
+            headerVersion !== undefined &&
+            headerVersion !== clientVersion
+          ) {
+            return jsonRpcResponse(
+              {
+                jsonrpc: "2.0",
+                id,
+                error: {
+                  code: JSONRPC_INVALID_PARAMS,
+                  message:
+                    `MCP-Protocol-Version header "${headerVersion}" does not match _meta protocolVersion "${clientVersion}"`,
                 },
               },
               400,

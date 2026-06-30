@@ -65,6 +65,131 @@ Deno.test(
 );
 
 Deno.test(
+  "transport stateless - matching MCP-Protocol-Version header succeeds",
+  async () => {
+    const server = new McpApp({
+      name: "stateless-header-match-test",
+      version: "1.0.0",
+      logger: () => {},
+      transport: "stateless",
+    });
+
+    const listener = Deno.listen({ port: 0 });
+    const port = (listener.addr as Deno.NetAddr).port;
+    listener.close();
+
+    const http = await server.startHttp({ port, onListen: () => {} });
+
+    try {
+      const res = await fetch(`http://localhost:${port}/mcp`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "MCP-Protocol-Version": "2026-07-28",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "initialize",
+          params: { _meta: { [PROTO_KEY]: "2026-07-28" } },
+        }),
+      });
+
+      assertEquals(res.status, 200);
+      assertEquals(res.headers.get("mcp-session-id"), null);
+      assertEquals(res.headers.get("mcp-protocol-version"), "2026-07-28");
+      const data = await res.json();
+      assertEquals(data.result.protocolVersion, "2026-07-28");
+    } finally {
+      await http.shutdown();
+    }
+  },
+);
+
+Deno.test(
+  "transport stateless - mismatched MCP-Protocol-Version header returns -32602",
+  async () => {
+    const server = new McpApp({
+      name: "stateless-header-mismatch-test",
+      version: "1.0.0",
+      logger: () => {},
+      transport: "stateless",
+    });
+
+    const listener = Deno.listen({ port: 0 });
+    const port = (listener.addr as Deno.NetAddr).port;
+    listener.close();
+
+    const http = await server.startHttp({ port, onListen: () => {} });
+
+    try {
+      const res = await fetch(`http://localhost:${port}/mcp`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "mcp-protocol-version": "2025-11-25",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/list",
+          params: { _meta: { [PROTO_KEY]: "2026-07-28" } },
+        }),
+      });
+
+      const data = await res.json();
+      assertEquals(res.status, 400);
+      assertEquals(res.headers.get("mcp-protocol-version"), "2025-06-18");
+      assertEquals(data.error.code, -32602);
+      assertEquals(
+        data.error.message,
+        'MCP-Protocol-Version header "2025-11-25" does not match _meta protocolVersion "2026-07-28"',
+      );
+    } finally {
+      await http.shutdown();
+    }
+  },
+);
+
+Deno.test(
+  "transport stateless - absent MCP-Protocol-Version header accepts _meta version",
+  async () => {
+    const server = new McpApp({
+      name: "stateless-header-absent-test",
+      version: "1.0.0",
+      logger: () => {},
+      transport: "stateless",
+    });
+
+    const listener = Deno.listen({ port: 0 });
+    const port = (listener.addr as Deno.NetAddr).port;
+    listener.close();
+
+    const http = await server.startHttp({ port, onListen: () => {} });
+
+    try {
+      const res = await fetch(`http://localhost:${port}/mcp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 3,
+          method: "tools/list",
+          params: { _meta: { [PROTO_KEY]: "2025-11-25" } },
+        }),
+      });
+
+      assertEquals(res.status, 200);
+      assertEquals(res.headers.get("mcp-protocol-version"), "2025-11-25");
+      const data = await res.json();
+      assertEquals(data.result.tools, []);
+    } finally {
+      await http.shutdown();
+    }
+  },
+);
+
+Deno.test(
   "transport stateless - tools/list works without prior handshake",
   async () => {
     const server = new McpApp({

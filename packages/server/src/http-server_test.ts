@@ -20,6 +20,8 @@ import { MCP_APP_MIME_TYPE } from "./types.ts";
 // MCP-Protocol-Version response header.
 
 const PROTO_KEY = "io.modelcontextprotocol/protocolVersion";
+const CLIENT_INFO_KEY = "io.modelcontextprotocol/clientInfo";
+const CLIENT_CAPABILITIES_KEY = "io.modelcontextprotocol/clientCapabilities";
 
 Deno.test(
   "transport stateless - initialize responds without Mcp-Session-Id and negotiates protocolVersion",
@@ -228,6 +230,130 @@ Deno.test(
       const data = await res.json();
       assertEquals(data.result.tools.length, 1);
       assertEquals(data.result.tools[0].name, "ping");
+    } finally {
+      await http.shutdown();
+    }
+  },
+);
+
+Deno.test(
+  "transport stateless - tools/call exposes clientInfo and clientCapabilities to handler",
+  async () => {
+    const server = new McpApp({
+      name: "stateless-client-meta-test",
+      version: "1.0.0",
+      logger: () => {},
+      transport: "stateless",
+    });
+    const clientInfo = { name: "sep-client", version: "2.3.4" };
+    const clientCapabilities = {
+      roots: { listChanged: true },
+      sampling: {},
+      experimental: { "casys.test": true },
+    };
+    let capturedClientInfo: unknown;
+    let capturedClientCapabilities: unknown;
+
+    server.registerTool(
+      {
+        name: "capture-client-meta",
+        description: "Capture client metadata",
+        inputSchema: { type: "object" },
+      },
+      (_args, ctx) => {
+        capturedClientInfo = ctx?.clientInfo;
+        capturedClientCapabilities = ctx?.clientCapabilities;
+        return "captured";
+      },
+    );
+
+    const listener = Deno.listen({ port: 0 });
+    const port = (listener.addr as Deno.NetAddr).port;
+    listener.close();
+    const http = await server.startHttp({ port, onListen: () => {} });
+
+    try {
+      const res = await fetch(`http://localhost:${port}/mcp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: {
+            _meta: {
+              [PROTO_KEY]: "2026-07-28",
+              [CLIENT_INFO_KEY]: clientInfo,
+              [CLIENT_CAPABILITIES_KEY]: clientCapabilities,
+            },
+            name: "capture-client-meta",
+            arguments: {},
+          },
+        }),
+      });
+
+      const data = await res.json();
+      assertEquals(res.status, 200);
+      assertEquals(data.result.content[0].text, "captured");
+      assertEquals(capturedClientInfo, clientInfo);
+      assertEquals(capturedClientCapabilities, clientCapabilities);
+    } finally {
+      await http.shutdown();
+    }
+  },
+);
+
+Deno.test(
+  "transport stateless - tools/call tolerates absent client metadata",
+  async () => {
+    const server = new McpApp({
+      name: "stateless-client-meta-absent-test",
+      version: "1.0.0",
+      logger: () => {},
+      transport: "stateless",
+    });
+    let capturedClientInfo: unknown = "not-called";
+    let capturedClientCapabilities: unknown = "not-called";
+
+    server.registerTool(
+      {
+        name: "capture-absent-client-meta",
+        description: "Capture absent client metadata",
+        inputSchema: { type: "object" },
+      },
+      (_args, ctx) => {
+        capturedClientInfo = ctx?.clientInfo;
+        capturedClientCapabilities = ctx?.clientCapabilities;
+        return "ok";
+      },
+    );
+
+    const listener = Deno.listen({ port: 0 });
+    const port = (listener.addr as Deno.NetAddr).port;
+    listener.close();
+    const http = await server.startHttp({ port, onListen: () => {} });
+
+    try {
+      const res = await fetch(`http://localhost:${port}/mcp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/call",
+          params: {
+            _meta: { [PROTO_KEY]: "2026-07-28" },
+            name: "capture-absent-client-meta",
+            arguments: {},
+          },
+        }),
+      });
+
+      const data = await res.json();
+      assertEquals(res.status, 200);
+      assertEquals(data.result.content[0].text, "ok");
+      assertEquals(capturedClientInfo, undefined);
+      assertEquals(capturedClientCapabilities, undefined);
     } finally {
       await http.shutdown();
     }

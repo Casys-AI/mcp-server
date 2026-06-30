@@ -15,7 +15,9 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
   type CallToolRequest,
   CallToolRequestSchema,
+  type ClientCapabilities,
   ErrorCode,
+  type Implementation,
   ListResourcesRequestSchema,
   ListToolsRequestSchema,
   type ReadResourceRequest,
@@ -172,6 +174,13 @@ async function readBodyWithLimit(
 /** Namespaced protocolVersion key in params._meta (spec 2026-07-28) */
 const STATELESS_PROTO_KEY = "io.modelcontextprotocol/protocolVersion";
 
+/** Namespaced clientInfo key in params._meta (SEP-2575 stateless transport) */
+const STATELESS_CLIENT_INFO_KEY = "io.modelcontextprotocol/clientInfo";
+
+/** Namespaced clientCapabilities key in params._meta (SEP-2575 stateless transport) */
+const STATELESS_CLIENT_CAPABILITIES_KEY =
+  "io.modelcontextprotocol/clientCapabilities";
+
 /** Protocol versions accepted by this server in stateless mode */
 const STATELESS_SUPPORTED_VERSIONS: readonly string[] = [
   "2026-07-28",
@@ -184,6 +193,11 @@ const STATELESS_FALLBACK_VERSION = "2025-06-18";
 
 const JSONRPC_INVALID_PARAMS = ErrorCode.InvalidParams;
 const MCP_UNSUPPORTED_PROTOCOL_VERSION = -32004;
+
+interface StatelessClientMeta {
+  readonly clientInfo?: Implementation;
+  readonly clientCapabilities?: ClientCapabilities;
+}
 
 /**
  * Narrow type-guard: returns true iff `v` is a plain object (not array, not null).
@@ -640,6 +654,10 @@ export class McpApp {
           ? { sessionId: ctx.sessionId }
           : {}),
         ...(ctx.authInfo ? { authInfo: ctx.authInfo as AuthInfo } : {}),
+        ...(ctx.clientInfo !== undefined ? { clientInfo: ctx.clientInfo } : {}),
+        ...(ctx.clientCapabilities !== undefined
+          ? { clientCapabilities: ctx.clientCapabilities }
+          : {}),
       }));
     });
   }
@@ -660,6 +678,7 @@ export class McpApp {
     request?: Request,
     sessionId?: string,
     preVerifiedAuthInfo?: AuthInfo,
+    clientMeta?: StatelessClientMeta,
   ): Promise<MiddlewareResult> {
     if (!this.middlewareRunner) {
       throw new Error(
@@ -676,6 +695,12 @@ export class McpApp {
       // middleware skips the redundant verifyToken call (avoids JWKS
       // race conditions on concurrent cold-cache requests).
       authInfo: preVerifiedAuthInfo,
+      ...(clientMeta?.clientInfo !== undefined
+        ? { clientInfo: clientMeta.clientInfo }
+        : {}),
+      ...(clientMeta?.clientCapabilities !== undefined
+        ? { clientCapabilities: clientMeta.clientCapabilities }
+        : {}),
     };
 
     // OTel span + metrics
@@ -1707,6 +1732,20 @@ export class McpApp {
         if (method === "tools/call" && params?.name) {
           const toolName = params.name as string;
           const args = (params.arguments as Record<string, unknown>) || {};
+          const statelessClientMeta:
+            | StatelessClientMeta
+            | undefined = this.options.transport === "stateless" &&
+                isRecord(params) &&
+                isRecord(params["_meta"])
+              ? {
+                clientInfo: params["_meta"][STATELESS_CLIENT_INFO_KEY] as
+                  | Implementation
+                  | undefined,
+                clientCapabilities: params["_meta"][
+                  STATELESS_CLIENT_CAPABILITIES_KEY
+                ] as ClientCapabilities | undefined,
+              }
+              : undefined;
 
           try {
             const result = await this.executeToolCall(
@@ -1715,6 +1754,7 @@ export class McpApp {
               c.req.raw,
               reqSessionId,
               httpAuthInfo,
+              statelessClientMeta,
             );
             return c.json({
               jsonrpc: "2.0",

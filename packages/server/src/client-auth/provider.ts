@@ -68,7 +68,7 @@ export class OAuthClientProviderImpl implements OAuthClientProvider {
     return {
       client_name: this.config.clientName ?? "PML Client",
       redirect_uris: [String(this.redirectUrl)],
-      grant_types: ["authorization_code"],
+      grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
       token_endpoint_auth_method: "none", // public client, PKCE only
       application_type: "native", // loopback CLI/desktop — prevents AS rejection of http://127.0.0.1 redirects
@@ -101,9 +101,18 @@ export class OAuthClientProviderImpl implements OAuthClientProvider {
   }
 
   async saveTokens(tokens: OAuthTokens): Promise<void> {
+    // Sequential guard only: keep an existing refresh_token when a later save omits it.
+    // This get/set is not atomic; concurrent saves for one serverUrl are unsupported
+    // because refresh is serialized by the caller.
+    const stored = await this.config.tokenStore.get(this.serverUrl);
+    const tokensToStore = tokens.refresh_token === undefined &&
+        stored?.tokens.refresh_token !== undefined
+      ? { ...tokens, refresh_token: stored.tokens.refresh_token }
+      : tokens;
+
     await this.config.tokenStore.set(this.serverUrl, {
       serverUrl: this.serverUrl,
-      tokens,
+      tokens: tokensToStore,
       obtainedAt: Date.now(),
     });
   }

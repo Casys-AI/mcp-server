@@ -54,6 +54,30 @@ Deno.test("OAuthClientProviderImpl - saveTokens and tokens round-trip", async ()
   assertEquals(tokens.refresh_token, "refresh-456");
 });
 
+Deno.test("OAuthClientProviderImpl - saveTokens preserves existing refresh_token when new tokens omit it", async () => {
+  const store = new MemoryTokenStore();
+  const provider = new OAuthClientProviderImpl("https://mcp.example.com", {
+    clientId: "test-client",
+    tokenStore: store,
+    openBrowser: async () => {},
+  });
+
+  await provider.saveTokens({
+    access_token: "access-123",
+    token_type: "bearer",
+    refresh_token: "refresh-456",
+  });
+  await provider.saveTokens({
+    access_token: "access-789",
+    token_type: "bearer",
+  });
+
+  const tokens = await provider.tokens();
+  assertExists(tokens);
+  assertEquals(tokens.access_token, "access-789");
+  assertEquals(tokens.refresh_token, "refresh-456");
+});
+
 Deno.test("OAuthClientProviderImpl - clientMetadata returns correct shape", () => {
   const provider = new OAuthClientProviderImpl("https://mcp.example.com", {
     clientId: "my-client-id",
@@ -63,7 +87,7 @@ Deno.test("OAuthClientProviderImpl - clientMetadata returns correct shape", () =
   });
   const metadata = provider.clientMetadata;
   assertEquals(metadata.client_name, "Test App");
-  assertEquals(metadata.grant_types?.includes("authorization_code"), true);
+  assertEquals(metadata.grant_types, ["authorization_code", "refresh_token"]);
   assertEquals(metadata.token_endpoint_auth_method, "none");
   assertEquals(metadata.application_type, "native");
 });

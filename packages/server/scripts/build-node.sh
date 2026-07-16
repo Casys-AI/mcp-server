@@ -3,10 +3,11 @@
 #
 # What this does:
 # 1. Copies src/ and mod.ts to dist-node/
-# 2. Replaces runtime.ts with runtime.node.ts (node:http instead of Deno.serve)
-# 3. Remaps Deno-ecosystem imports to npm equivalents:
+#    (runtime selection is handled at load time by src/runtime/runtime.ts,
+#    which picks runtime.deno.ts or runtime.node.ts — no build-time swap)
+# 2. Remaps Deno-ecosystem imports to npm equivalents:
 #    - @std/yaml → yaml
-# 4. Strips .ts extensions from relative imports (Node ESM convention)
+# 3. Strips .ts extensions from relative imports (Node ESM convention)
 #
 # Usage:
 #   cd lib/server && ./scripts/build-node.sh
@@ -25,16 +26,12 @@ echo "[build-node] Building Node.js distribution for @casys/mcp-server..."
 rm -rf "$DIST_DIR"
 mkdir -p "$DIST_DIR"
 
-# Copy source files (exclude tests and runtime.node.ts)
+# Copy source files (exclude tests)
 cp -r "$ROOT_DIR/src" "$DIST_DIR/src"
 cp "$ROOT_DIR/mod.ts" "$DIST_DIR/mod.ts"
 
 # Remove test files from dist
 find "$DIST_DIR" -name "*_test.ts" -o -name "*.test.ts" -o -name "*.bench.ts" | xargs rm -f
-
-# Replace runtime.ts with runtime.node.ts
-cp "$DIST_DIR/src/runtime/runtime.node.ts" "$DIST_DIR/src/runtime/runtime.ts"
-rm "$DIST_DIR/src/runtime/runtime.node.ts"
 
 # Portable in-place sed: GNU sed wants `-i`, BSD/macOS sed wants `-i ''`.
 if sed --version >/dev/null 2>&1; then

@@ -2,10 +2,10 @@
  * Runtime adapter — Deno implementation
  *
  * Implements the RuntimePort contract for Deno.
- * For Node.js, the build script swaps this file with runtime.node.ts.
+ * Selected automatically by runtime.ts (the selector) when running under Deno.
  *
- * @see runtime-types.ts for the port contract
- * @module lib/server/runtime
+ * @see types.ts for the port contract
+ * @module lib/server/runtime.deno
  */
 
 import type {

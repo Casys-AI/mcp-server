@@ -4,6 +4,14 @@
  * Launches the official @modelcontextprotocol/inspector to debug
  * and test MCP servers interactively in a browser.
  *
+ * Runtime-agnostic: process spawning goes through `node:` builtins, which
+ * both Deno (via its Node compat layer) and Node.js support — one code path
+ * instead of a per-runtime adapter. The `node:` modules are imported
+ * dynamically inside the function bodies so nothing process-related enters
+ * the module graph at load time (mod.ts re-exports this module, and its
+ * import must stay side-effect free on constrained runtimes like
+ * Deno Deploy).
+ *
  * Usage from a server script:
  * ```typescript
  * import { launchInspector } from "@casys/mcp-server";
@@ -43,6 +51,9 @@ export async function launchInspector(
   serverArgs: string[],
   options?: InspectorOptions,
 ): Promise<void> {
+  const { spawn } = await import("node:child_process");
+  const { env, exit } = await import("node:process");
+
   const port = options?.port ?? 6274;
   const shouldOpen = options?.open ?? true;
 
@@ -62,23 +73,19 @@ export async function launchInspector(
   );
 
   // Use npx to run the inspector
-  const command = new Deno.Command("npx", {
-    args: [
+  const child = spawn(
+    "npx",
+    [
       "-y",
       "@modelcontextprotocol/inspector",
       serverCommand,
       ...filteredArgs,
     ],
-    env: {
-      ...Deno.env.toObject(),
-      ...inspectorEnv,
+    {
+      env: { ...env, ...inspectorEnv },
+      stdio: "inherit",
     },
-    stdin: "inherit",
-    stdout: "inherit",
-    stderr: "inherit",
-  });
-
-  const process = command.spawn();
+  );
 
   // Open browser after a short delay
   if (shouldOpen) {
@@ -90,10 +97,13 @@ export async function launchInspector(
   }
 
   // Wait for the inspector process to exit
-  const status = await process.status;
-  if (!status.success) {
-    console.error(`[mcp-inspector] Inspector exited with code ${status.code}`);
-    Deno.exit(status.code);
+  const code = await new Promise<number>((resolve, reject) => {
+    child.on("error", reject);
+    child.on("exit", (exitCode) => resolve(exitCode ?? 1));
+  });
+  if (code !== 0) {
+    console.error(`[mcp-inspector] Inspector exited with code ${code}`);
+    exit(code);
   }
 }
 
@@ -101,23 +111,21 @@ export async function launchInspector(
  * Open a URL in the default browser (cross-platform).
  */
 async function openBrowser(url: string): Promise<void> {
-  const os = Deno.build.os;
-  let cmd: string[];
+  const { spawn } = await import("node:child_process");
+  const { platform } = await import("node:process");
 
-  if (os === "darwin") {
+  let cmd: string[];
+  if (platform === "darwin") {
     cmd = ["open", url];
-  } else if (os === "windows") {
+  } else if (platform === "win32") {
     cmd = ["cmd", "/c", "start", url];
   } else {
     cmd = ["xdg-open", url];
   }
 
-  const process = new Deno.Command(cmd[0], {
-    args: cmd.slice(1),
-    stdin: "null",
-    stdout: "null",
-    stderr: "null",
+  const child = spawn(cmd[0], cmd.slice(1), { stdio: "ignore" });
+  await new Promise<void>((resolve, reject) => {
+    child.on("error", reject);
+    child.on("exit", () => resolve());
   });
-
-  await process.spawn().status;
 }

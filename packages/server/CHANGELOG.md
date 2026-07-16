@@ -4,6 +4,41 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
 
 ## [Unreleased]
 
+## [0.21.1] - 2026-07-16
+
+Runtime-portability fix: consumers that bundle the JSR source for Node.js (e.g.
+`@casys/mcp-erpnext`'s npm build) no longer crash with
+`ReferenceError: Deno is not defined` in HTTP mode.
+
+Thanks to **Denny Pradipta**
+([@dennypradipta](https://github.com/dennypradipta)) for reporting and
+documenting the bug in
+[Casys-AI/mcp-erpnext#4](https://github.com/Casys-AI/mcp-erpnext/pull/4).
+
+### Fixed
+
+- **Runtime adapter selected at load time instead of a build-time file swap.**
+  `src/runtime/runtime.ts` is now a selector that probes the host runtime
+  (`Deno.version.deno`) and dynamically imports `runtime.deno.ts` or
+  `runtime.node.ts`. The previous `build-node.sh` swap only applied to our own
+  npm build — JSR consumers bundling for Node shipped `Deno.readTextFile` /
+  `Deno.serve` and crashed in `startHttp()`. The inactive adapter is never
+  evaluated, so Deno Deploy stays clear of `node:http` at load time and Node
+  stays clear of `Deno.*`.
+- **`launchInspector` now works under Node.** The inspector launcher was the
+  last module calling `Deno.*` directly (`Deno.Command`, `Deno.env.toObject`,
+  `Deno.exit`, `Deno.build.os`); it now uses `node:child_process` /
+  `node:process` — supported by both runtimes — imported lazily inside the
+  function bodies.
+
+### Changed
+
+- `build-node.sh` no longer swaps runtime files; the npm dist ships all three
+  (`runtime.ts` selector + both adapters), identical to the JSR source.
+- The npm publish smoke test now covers `McpApp.startHttp()` + an MCP
+  `initialize` round-trip under Node, guarding the runtime selector against
+  regressions.
+
 ## [0.21.0] - 2026-06-30
 
 Stateless transport brought in line with the finalized **SEP-2575**, plus

@@ -1,149 +1,48 @@
 /**
- * Runtime adapter — Deno implementation
+ * Runtime adapter — selector
  *
- * Implements the RuntimePort contract for Deno.
- * For Node.js, the build script swaps this file with runtime.node.ts.
+ * Auto-detects the host runtime and forwards to the Deno or Node adapter.
+ * This is the module every consumer imports. It replaces the previous
+ * build-time file swap (runtime.ts <- runtime.node.ts), which only ever
+ * applied to mcp-server's own npm build and never to JSR consumers that
+ * bundle the Deno source for Node (e.g. @casys/mcp-erpnext via esbuild),
+ * whose bundle therefore embedded `Deno.*` calls and crashed under Node
+ * with "ReferenceError: Deno is not defined".
  *
- * @see runtime-types.ts for the port contract
+ * A *dynamic* import is used on purpose so only the active runtime's adapter
+ * enters the module graph: under Deno, runtime.node.ts — and its top-level
+ * `node:http` / `node:fs/promises` / `node:buffer` imports — is never loaded.
+ * That matters because Deno Deploy (the canonical cloud target) does not
+ * support node:http's raw-TCP `createServer`; eagerly importing it could
+ * crash the deployment at module-graph resolution time. Under Node, the Deno
+ * adapter is likewise never loaded.
+ *
+ * @see types.ts for the RuntimePort contract
+ * @see runtime.deno.ts / runtime.node.ts for the implementations
  * @module lib/server/runtime
  */
 
-import type {
-  FetchHandler,
-  RuntimePort,
-  ServeHandle,
-  ServeOptions,
-} from "./types.ts";
+import type { RuntimePort } from "./types.ts";
 
 // Re-export types so consumers import from a single module
 export type { FetchHandler, ServeHandle, ServeOptions } from "./types.ts";
 
-/**
- * Get an environment variable.
- */
-export function env(key: string): string | undefined {
-  return Deno.env.get(key);
-}
+// Structural detection: a bare `globalThis.Deno = {}` shim (seen in some Node
+// test setups and bundlers) must NOT be mistaken for a real Deno runtime, so
+// probe a concrete field (`Deno.version.deno`) rather than mere existence.
+const isDeno = typeof (globalThis as {
+  Deno?: { version?: { deno?: string } };
+}).Deno?.version?.deno === "string";
 
-/**
- * Read a UTF-8 text file.
- * Returns null if the file does not exist.
- */
-export async function readTextFile(path: string): Promise<string | null> {
-  try {
-    return await Deno.readTextFile(path);
-  } catch (err) {
-    if (err instanceof Deno.errors.NotFound) {
-      return null;
-    }
-    throw err;
-  }
-}
+const impl: RuntimePort = isDeno
+  ? await import("./runtime.deno.ts")
+  : await import("./runtime.node.ts");
 
-/**
- * Write a UTF-8 text file.
- */
-export async function writeTextFile(
-  path: string,
-  content: string,
-  opts?: { mode?: number },
-): Promise<void> {
-  await Deno.writeTextFile(path, content, opts);
-}
-
-/**
- * Create a directory.
- */
-export async function mkdir(
-  path: string,
-  opts?: { recursive?: boolean; mode?: number },
-): Promise<void> {
-  await Deno.mkdir(path, opts);
-}
-
-/**
- * Remove a file or empty directory. No-op if absent.
- */
-export async function remove(path: string): Promise<void> {
-  try {
-    await Deno.remove(path);
-  } catch (err) {
-    if (err instanceof Deno.errors.NotFound) {
-      return;
-    }
-    throw err;
-  }
-}
-
-/**
- * Read directory entry names. Returns [] if absent.
- */
-export async function readDir(path: string): Promise<string[]> {
-  try {
-    const names: string[] = [];
-    for await (const entry of Deno.readDir(path)) {
-      names.push(entry.name);
-    }
-    return names;
-  } catch (err) {
-    if (err instanceof Deno.errors.NotFound) {
-      return [];
-    }
-    throw err;
-  }
-}
-
-/**
- * Start an HTTP server with a fetch-style handler.
- */
-export function serve(
-  options: ServeOptions,
-  handler: FetchHandler,
-): ServeHandle {
-  let server: Deno.HttpServer | null = null;
-  try {
-    server = Deno.serve(
-      {
-        port: options.port,
-        hostname: options.hostname,
-        onListen: options.onListen,
-      },
-      handler,
-    );
-  } catch (err) {
-    const error = toError(err);
-    if (options.onError) {
-      options.onError(error);
-      return {
-        shutdown: () => Promise.resolve(),
-      };
-    }
-    throw error;
-  }
-  return {
-    shutdown: () => server.shutdown(),
-  };
-}
-
-/**
- * Unref a timer so it doesn't block process exit.
- */
-export function unrefTimer(id: number): void {
-  Deno.unrefTimer(id);
-}
-
-/** Compile-time contract check — ensures this module satisfies RuntimePort */
-void ({
-  env,
-  readTextFile,
-  writeTextFile,
-  mkdir,
-  remove,
-  readDir,
-  serve,
-  unrefTimer,
-} satisfies RuntimePort);
-
-function toError(err: unknown): Error {
-  return err instanceof Error ? err : new Error(String(err));
-}
+export const env = impl.env;
+export const readTextFile = impl.readTextFile;
+export const writeTextFile = impl.writeTextFile;
+export const mkdir = impl.mkdir;
+export const remove = impl.remove;
+export const readDir = impl.readDir;
+export const serve = impl.serve;
+export const unrefTimer = impl.unrefTimer;

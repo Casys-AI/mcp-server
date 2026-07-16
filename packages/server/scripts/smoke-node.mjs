@@ -10,6 +10,7 @@ const {
   buildClientIdMetadataDocument,
   CallbackServer,
   FileTokenStore,
+  McpApp,
   MemoryTokenStore,
 } = await import(distEntry);
 
@@ -96,3 +97,44 @@ try {
 }
 
 console.log("node client-auth smoke ok");
+
+// Runtime selector + HTTP transport: McpApp.startHttp() must work under Node.
+// Regression guard for the runtime-selection bug fixed in 0.21.1, where the
+// Deno adapter (Deno.readTextFile / Deno.serve) leaked into Node consumers.
+{
+  const app = new McpApp({
+    name: "node-smoke",
+    version: "0.0.0",
+    maxConcurrent: 2,
+    logger: () => {},
+  });
+  app.registerTools([], {});
+  const http = await app.startHttp({ port: 38988, hostname: "127.0.0.1" });
+  try {
+    const res = await fetch("http://127.0.0.1:38988/mcp", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-06-18",
+          capabilities: {},
+          clientInfo: { name: "node-smoke", version: "0" },
+        },
+      }),
+    });
+    if (res.status !== 200) {
+      throw new Error(`McpApp.startHttp initialize returned ${res.status}`);
+    }
+    await res.body?.cancel();
+  } finally {
+    await http.shutdown();
+  }
+}
+
+console.log("node mcp-app http smoke ok");

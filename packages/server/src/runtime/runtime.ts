@@ -9,13 +9,15 @@
  * whose bundle therefore embedded `Deno.*` calls and crashed under Node
  * with "ReferenceError: Deno is not defined".
  *
- * A *dynamic* import is used on purpose so only the active runtime's adapter
- * enters the module graph: under Deno, runtime.node.ts — and its top-level
- * `node:http` / `node:fs/promises` / `node:buffer` imports — is never loaded.
- * That matters because Deno Deploy (the canonical cloud target) does not
- * support node:http's raw-TCP `createServer`; eagerly importing it could
- * crash the deployment at module-graph resolution time. Under Node, the Deno
- * adapter is likewise never loaded.
+ * A *dynamic* import is used on purpose so the inactive adapter is never
+ * evaluated: under Deno, runtime.node.ts — and its top-level `node:http` /
+ * `node:fs/promises` / `node:buffer` imports — never executes, which keeps
+ * capability-restricted targets like Deno Deploy (the canonical cloud
+ * target, where node:http's raw-TCP `createServer` is unsupported) safe at
+ * load time. Platforms and bundlers that statically analyze
+ * constant-specifier dynamic imports may still fetch or include the
+ * inactive module, but they never run it. Under Node, the Deno adapter is
+ * likewise never evaluated.
  *
  * @see types.ts for the RuntimePort contract
  * @see runtime.deno.ts / runtime.node.ts for the implementations

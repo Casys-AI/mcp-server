@@ -4,6 +4,19 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-07-21
+
+### Added
+
+- `createStaticTokenAuthProvider` / `StaticTokenAuthProvider`: a static (opaque)
+  bearer-token `AuthProvider` for same-network deployments, service-to-service,
+  and CI — validate a fixed set of pre-shared tokens with no OIDC/JWT
+  infrastructure (no issuer, no JWKS, no key management). All valid tokens share
+  one `AuthInfo` (frozen); RFC 9728 metadata is emitted with an empty
+  `authorization_servers` (tokens are provisioned out of band).
+- `docs/guides/securing-your-http-server.md`: task-oriented guide for choosing
+  between static tokens and OAuth/OIDC, plus `requireAuth` and per-tool scopes.
+
 ## [0.21.1] - 2026-07-16
 
 Runtime-portability fix: consumers that bundle the JSR source for Node.js (e.g.

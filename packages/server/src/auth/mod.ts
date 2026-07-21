@@ -80,3 +80,10 @@ export type {
   GoogleAuthConfig,
   OIDCAuthConfig,
 } from "./config.ts";
+
+// Static Token Provider (opaque pre-shared bearer tokens; no OIDC/JWT infra)
+export {
+  createStaticTokenAuthProvider,
+  StaticTokenAuthProvider,
+} from "./static-token-provider.ts";
+export type { StaticTokenAuthProviderOptions } from "./static-token-provider.ts";

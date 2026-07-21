@@ -86,6 +86,29 @@ await server.startHttp({ port: 3000 });
 
 ---
 
+Prefer a **static bearer token** for same-network deployments (Docker/VPN/LAN) —
+no IdP required:
+
+```typescript
+import { createStaticTokenAuthProvider, McpApp } from "@casys/mcp-server";
+
+const app = new McpApp({
+  name: "my-api",
+  version: "1.0.0",
+  auth: {
+    provider: createStaticTokenAuthProvider(
+      (Deno.env.get("MCP_AUTH_TOKENS") ?? "").split(",").filter(Boolean),
+      { resource: "https://my-mcp.example.com" },
+    ),
+  },
+});
+await app.startHttp({ port: 3000, requireAuth: true });
+```
+
+See **[Securing your HTTP server](docs/guides/securing-your-http-server.md)**
+for choosing between static tokens and OAuth/OIDC, `requireAuth`, and per-tool
+scopes.
+
 ## Why Casys MCP Platform?
 
 |                          | Official SDK |       @casys/mcp-server        |

@@ -183,7 +183,15 @@ export {
   createAuthProviderFromConfig,
   loadAuthConfig,
 } from "./src/auth/mod.ts";
+
 export type { AuthConfig, AuthProviderName } from "./src/auth/mod.ts";
+
+// Auth - Static Token Provider (opaque pre-shared bearer tokens)
+export {
+  createStaticTokenAuthProvider,
+  StaticTokenAuthProvider,
+} from "./src/auth/mod.ts";
+export type { StaticTokenAuthProviderOptions } from "./src/auth/mod.ts";
 
 // Client Auth — OAuth client flow + CIMD
 export {

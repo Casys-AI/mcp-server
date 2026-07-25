@@ -16,8 +16,14 @@ Published to both **JSR** (`jsr:@casys/mcp-server`) and **npm**
 ## Commands
 
 ```bash
-# Run all tests
+# Run all tests across the workspace (from repo root)
 deno task test
+
+# Type check all workspace packages (from repo root)
+deno task check
+
+# The full quality gate CI runs — fmt --check, lint, check, test
+deno task ci
 
 # Run a single test file
 deno test --allow-net --allow-read --allow-write --allow-env --no-check src/<file>_test.ts
@@ -30,8 +36,12 @@ deno task test:http        # HTTP + security tests
 bash scripts/build-node.sh
 ```
 
-No separate lint or format task is configured — Deno's built-in `deno fmt` and
-`deno lint` apply.
+Root `test`/`check` fan out to the workspace members with
+`deno task --filter '@casys/*'`. Do not switch them to `--recursive`: `-r`
+re-enters the root task itself and loops forever.
+
+`.github/workflows/test.yml` runs `deno task ci` on every PR and on every push
+to `main`, ahead of `publish.yml`.
 
 ## Architecture
 

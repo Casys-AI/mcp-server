@@ -60,6 +60,12 @@ mcp-server/                  # repo root (Deno workspace)
 # Run all tests across all packages (from repo root)
 deno task test
 
+# Type check all packages (from repo root)
+deno task check
+
+# The full quality gate CI runs — fmt --check, lint, check, test
+deno task ci
+
 # Run tests for a specific package
 cd packages/server && deno task test
 cd packages/compose && deno task test
@@ -74,11 +80,15 @@ cd packages/server && deno task test:security    # HTTP security tests only
 cd packages/server && deno task test:http        # HTTP + security tests
 
 # Build Node.js distribution for server (output: packages/server/dist-node/)
-bash scripts/build-node.sh
+cd packages/server && bash scripts/build-node.sh
 ```
 
-No separate lint or format task is configured — Deno's built-in `deno fmt` and
-`deno lint` apply.
+Root `test`/`check` fan out to the workspace members with
+`deno task --filter '@casys/*'`. Do not switch them to `--recursive`: `-r`
+re-enters the root task itself and loops forever.
+
+`.github/workflows/test.yml` runs `deno task ci` on every PR and on every push
+to `main`, ahead of `publish.yml`.
 
 ## Architecture
 

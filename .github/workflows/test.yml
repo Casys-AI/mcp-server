@@ -1,0 +1,31 @@
+name: Test
+
+# Quality gate for the workspace. Runs on every PR and on every push to main,
+# so `publish.yml` never ships a package that fails fmt/lint/type-check/tests.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  deno:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Format check
+        run: deno fmt --check
+
+      - name: Lint
+        run: deno lint
+
+      - name: Type check (all workspace packages)
+        run: deno task check
+
+      - name: Tests (all workspace packages)
+        run: deno task test

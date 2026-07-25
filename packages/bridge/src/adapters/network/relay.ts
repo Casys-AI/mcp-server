@@ -190,7 +190,7 @@ export class NetworkRelay {
     const requestId = `net_${this.nextRequestId++}`;
     this.inFlightAgents.set(key, (this.inFlightAgents.get(key) ?? 0) + 1);
     const abortController = new AbortController();
-    let timer: number | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     let timedOut = false;
     let busyReleased = false;
     const releaseBusy = () => {

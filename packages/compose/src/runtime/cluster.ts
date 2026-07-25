@@ -261,7 +261,7 @@ export function createCluster(
           tool: toolName,
         } satisfies RuntimeError;
       }
-      return conn.callTool(toolName, args);
+      return await conn.callTool(toolName, args);
     },
 
     getUiBaseUrl(serverName: string): string | undefined {
@@ -300,7 +300,7 @@ async function detectListenUrl(
   const decoder = new TextDecoder();
   const reader = stderr.getReader();
   let buffer = "";
-  let timerId: number;
+  let timerId: ReturnType<typeof setTimeout>;
 
   const timeout = new Promise<never>((_, reject) => {
     timerId = setTimeout(() => {
@@ -348,7 +348,7 @@ async function detectListenUrl(
     }
   };
 
-  return Promise.race([detect(), timeout]);
+  return await Promise.race([detect(), timeout]);
 }
 
 /** Drain a stream in background to prevent pipe backpressure. */
@@ -379,7 +379,7 @@ function createHttpConnection(
       toolName: string,
       args?: Record<string, unknown>,
     ): Promise<unknown> {
-      return httpCallTool(name, baseUrl, toolName, args);
+      return await httpCallTool(name, baseUrl, toolName, args);
     },
   };
 }
@@ -406,7 +406,7 @@ function createStdioConnection(
       toolName: string,
       args?: Record<string, unknown>,
     ): Promise<unknown> {
-      return httpCallTool(name, baseUrl, toolName, args);
+      return await httpCallTool(name, baseUrl, toolName, args);
     },
   };
 }

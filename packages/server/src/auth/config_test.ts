@@ -246,8 +246,9 @@ Deno.test("loadAuthConfig - YAML with auth0 domain", async () => {
     );
 
     const config = await loadAuthConfig(tmpFile);
-    assertEquals(config!.provider, "auth0");
-    assertEquals(config!.domain, "my-tenant.auth0.com");
+    // Narrow the discriminated union so `domain` is visible to the type checker.
+    assert(config?.provider === "auth0");
+    assertEquals(config.domain, "my-tenant.auth0.com");
   } finally {
     await Deno.remove(tmpFile);
   }

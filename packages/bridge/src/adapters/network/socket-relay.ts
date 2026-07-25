@@ -39,7 +39,7 @@ export type NetworkAgentHelloAuthorizer = (
 interface PendingToolCall {
   readonly resolve: (response: NetworkToolCallResponse) => void;
   readonly reject: (error: Error) => void;
-  readonly timer: number;
+  readonly timer: ReturnType<typeof setTimeout>;
   readonly signal?: AbortSignal;
   readonly onAbort?: () => void;
 }

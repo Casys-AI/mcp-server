@@ -53,7 +53,7 @@ export class NetworkTunnelClient {
   private stopped = true;
   private reconnecting = false;
   private reconnectAttempt = 0;
-  private reconnectTimer: number | undefined;
+  private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   private resolveReconnectSleep: (() => void) | undefined;
   private lifecycleRegistered = false;
 

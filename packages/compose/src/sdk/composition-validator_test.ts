@@ -6,7 +6,6 @@
 
 import { assertEquals } from "@std/assert";
 import { validateComposition } from "./composition-validator.ts";
-import type { CompositionIssue, CompositionValidationResult } from "./composition-validator.ts";
 import { uiMeta } from "./ui-meta-builder.ts";
 
 // Helper to build tool definitions with uiMeta

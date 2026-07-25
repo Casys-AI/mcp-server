@@ -71,7 +71,7 @@ import {
   MCP_APP_URI_SCHEME,
 } from "./types.ts";
 import { discoverViewers, resolveViewerDistPath } from "./ui/viewer-utils.ts";
-import type { DirEntry, DiscoverViewersFS } from "./ui/viewer-utils.ts";
+import type { DiscoverViewersFS } from "./ui/viewer-utils.ts";
 import { buildCspHeader, injectCspMetaTag } from "./security/csp.ts";
 import { ServerMetrics } from "./observability/metrics.ts";
 import { endToolCallSpan, startToolCallSpan } from "./observability/otel.ts";
@@ -355,7 +355,7 @@ export class McpApp {
     server.registerCapabilities({ resources: {} });
 
     // resources/list — returns currently registered resources
-    server.setRequestHandler(ListResourcesRequestSchema, async () => {
+    server.setRequestHandler(ListResourcesRequestSchema, () => {
       return {
         resources: Array.from(this.resources.values()).map((r) => ({
           uri: r.resource.uri,
@@ -2403,7 +2403,6 @@ export class McpApp {
    * Pre-formatted results have a `content` array and are passed through
    * without re-wrapping. This supports proxy/gateway patterns.
    */
-  // deno-lint-ignore no-explicit-any
   private isPreformattedResult(
     result: unknown,
   ): result is {

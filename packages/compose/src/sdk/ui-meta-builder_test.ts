@@ -6,7 +6,6 @@
 
 import { assertEquals, assertExists } from "@std/assert";
 import { uiMeta } from "./ui-meta-builder.ts";
-import type { UiMetaOptions } from "./ui-meta-builder.ts";
 
 // --- Basic shape ---
 

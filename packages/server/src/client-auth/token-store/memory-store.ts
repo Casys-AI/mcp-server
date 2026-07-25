@@ -9,19 +9,21 @@ import type { StoredCredentials, TokenStore } from "../types.ts";
 export class MemoryTokenStore implements TokenStore {
   private store = new Map<string, StoredCredentials>();
 
-  async get(serverUrl: string): Promise<StoredCredentials | null> {
-    return this.store.get(serverUrl) ?? null;
+  get(serverUrl: string): Promise<StoredCredentials | null> {
+    return Promise.resolve(this.store.get(serverUrl) ?? null);
   }
 
-  async set(serverUrl: string, credentials: StoredCredentials): Promise<void> {
+  set(serverUrl: string, credentials: StoredCredentials): Promise<void> {
     this.store.set(serverUrl, credentials);
+    return Promise.resolve();
   }
 
-  async delete(serverUrl: string): Promise<void> {
+  delete(serverUrl: string): Promise<void> {
     this.store.delete(serverUrl);
+    return Promise.resolve();
   }
 
-  async list(): Promise<string[]> {
-    return [...this.store.keys()];
+  list(): Promise<string[]> {
+    return Promise.resolve([...this.store.keys()]);
   }
 }

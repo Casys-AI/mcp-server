@@ -9,10 +9,7 @@
  * @module
  */
 
-import type {
-  App,
-  McpUiHostCapabilities,
-} from "@modelcontextprotocol/ext-apps";
+import type { App, McpUiHostCapabilities } from "@modelcontextprotocol/ext-apps";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { MCPViewError } from "./errors.ts";
 

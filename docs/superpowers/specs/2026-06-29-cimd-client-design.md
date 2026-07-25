@@ -193,16 +193,16 @@ fast-fail early). Each emits a structured error (`code` + `context` +
 Machine-readable errors (`code`/`context`/`recovery`), consistent with the
 existing auth error style. Examples:
 
-| Code                        | When                                                                                     | Recovery                                                   |
-| --------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| `cimd_config_conflict`      | both `clientId` and `clientRegistration`                                                 | choose one mode                                            |
-| `cimd_registration_missing` | neither `clientId` nor `clientRegistration` is present where CIMD validation is required | provide `clientRegistration.method = "client_id_metadata"` |
-| `cimd_method_invalid`       | `clientRegistration.method` is not `"client_id_metadata"`                                | set the explicit CIMD method                               |
-| `cimd_url_invalid`          | non-HTTPS / unparseable `clientIdMetadataUrl`                                            | provide an absolute https URL                              |
-| `cimd_port_unfixed`         | `callbackPort` is `0`/unset in CIMD mode                                                 | set a fixed port                                           |
-| `cimd_redirect_mismatch`    | redirect host/port ≠ callback / document                                                 | align redirectUri with callbackPort                        |
-| `cimd_name_missing`         | no `client_name` in CIMD mode                                                            | set client_name                                            |
-| `cimd_reserved_metadata_key` | `metadata.extra` contains a reserved OAuth client metadata key                            | move the field to first-class config                       |
+| Code                         | When                                                                                     | Recovery                                                   |
+| ---------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `cimd_config_conflict`       | both `clientId` and `clientRegistration`                                                 | choose one mode                                            |
+| `cimd_registration_missing`  | neither `clientId` nor `clientRegistration` is present where CIMD validation is required | provide `clientRegistration.method = "client_id_metadata"` |
+| `cimd_method_invalid`        | `clientRegistration.method` is not `"client_id_metadata"`                                | set the explicit CIMD method                               |
+| `cimd_url_invalid`           | non-HTTPS / unparseable `clientIdMetadataUrl`                                            | provide an absolute https URL                              |
+| `cimd_port_unfixed`          | `callbackPort` is `0`/unset in CIMD mode                                                 | set a fixed port                                           |
+| `cimd_redirect_mismatch`     | redirect host/port ≠ callback / document                                                 | align redirectUri with callbackPort                        |
+| `cimd_name_missing`          | no `client_name` in CIMD mode                                                            | set client_name                                            |
+| `cimd_reserved_metadata_key` | `metadata.extra` contains a reserved OAuth client metadata key                           | move the field to first-class config                       |
 
 ## 8. Testing
 

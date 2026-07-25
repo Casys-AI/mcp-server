@@ -75,4 +75,8 @@ await Deno.writeTextFile(outHtml, html);
 const bytes = new TextEncoder().encode(html).length;
 const kb = (bytes / 1024).toFixed(1);
 console.log(`[build] wrote ${outHtml} (${kb} KB)`);
-console.log(`[build] bundle JS: ${(js.length / 1024).toFixed(1)} KB, CSS: ${(css.length / 1024).toFixed(1)} KB`);
+console.log(
+  `[build] bundle JS: ${(js.length / 1024).toFixed(1)} KB, CSS: ${
+    (css.length / 1024).toFixed(1)
+  } KB`,
+);

@@ -73,15 +73,15 @@ always available regardless of the bridge. They reflect raw Telegram theme
 colors:
 
 ```css
---tg-color-scheme           /* "light" | "dark" */
---tg-theme-bg-color
---tg-theme-text-color
---tg-theme-hint-color
---tg-theme-link-color
---tg-theme-button-color
---tg-theme-button-text-color
---tg-theme-secondary-bg-color
-/* etc. */
+--tg-color-scheme /* "light" | "dark" */
+  --tg-theme-bg-color
+  --tg-theme-text-color
+  --tg-theme-hint-color
+  --tg-theme-link-color
+  --tg-theme-button-color
+  --tg-theme-button-text-color
+  --tg-theme-secondary-bg-color
+  /* etc. */
 ```
 
 Use these in your MCP App HTML for Telegram-native theming if you don't need
@@ -95,18 +95,18 @@ on `ui/notifications/host-context-changed`. `bridge.js` applies them to
 compatibility:
 
 ```css
---color-background-primary      /* from bg_color */
---color-background-secondary    /* from secondary_bg_color */
---color-background-header       /* from header_bg_color */
---color-background-section      /* from section_bg_color */
---color-text-primary            /* from text_color */
---color-text-secondary          /* from subtitle_text_color */
---color-text-hint               /* from hint_color */
---color-text-link               /* from link_color */
---color-button-primary          /* from button_color */
---color-button-text             /* from button_text_color */
---color-border-primary          /* from section_separator_color */
---color-ring-primary            /* from accent_text_color */
+--color-background-primary /* from bg_color */
+  --color-background-secondary /* from secondary_bg_color */
+  --color-background-header /* from header_bg_color */
+  --color-background-section /* from section_bg_color */
+  --color-text-primary /* from text_color */
+  --color-text-secondary /* from subtitle_text_color */
+  --color-text-hint /* from hint_color */
+  --color-text-link /* from link_color */
+  --color-button-primary /* from button_color */
+  --color-button-text /* from button_text_color */
+  --color-border-primary /* from section_separator_color */
+  --color-ring-primary /* from accent_text_color */
 ```
 
 `--color-*` variables are only set if the corresponding Telegram theme param is

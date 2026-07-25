@@ -68,7 +68,9 @@ export function createUnauthorizedResponse(
   errorDescription?: string,
 ): Response {
   const parts = [
-    `Bearer resource_metadata="${escapeAuthenticateParam(resourceMetadataUrl)}"`,
+    `Bearer resource_metadata="${
+      escapeAuthenticateParam(resourceMetadataUrl)
+    }"`,
   ];
   if (error) parts.push(`error="${escapeAuthenticateParam(error)}"`);
   if (errorDescription) {
@@ -105,11 +107,11 @@ export function createForbiddenResponse(
 ): Response {
   const requiredScopesDescription = requiredScopes.join(", ");
   const parts = [
-    `Bearer resource_metadata="${escapeAuthenticateParam(resourceMetadataUrl)}"`,
-    `error="insufficient_scope"`,
-    `error_description="${
-      escapeAuthenticateParam(requiredScopesDescription)
+    `Bearer resource_metadata="${
+      escapeAuthenticateParam(resourceMetadataUrl)
     }"`,
+    `error="insufficient_scope"`,
+    `error_description="${escapeAuthenticateParam(requiredScopesDescription)}"`,
   ];
 
   return new Response(

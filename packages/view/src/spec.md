@@ -2,24 +2,22 @@
 
 ## Overview
 
-`view/` is the **View-side SDK** (iframe runtime) for MCP Apps authors. It
-replaces the anti-pattern of calling `app.sendMessage("show details for X")`
-from a UI event handler — a flow that pollutes the chat thread and triggers
-Claude's "the app is trying to speak for you" warning — with a pure intra-iframe
-SPA model: click a row → fetch data via `ctx.callTool` → `ctx.navigate("detail")`
-→ re-render, no roundtrip through the host chat.
+`view/` is the **View-side SDK** (iframe runtime) for MCP Apps authors. It replaces the anti-pattern
+of calling `app.sendMessage("show details for X")` from a UI event handler — a flow that pollutes
+the chat thread and triggers Claude's "the app is trying to speak for you" warning — with a pure
+intra-iframe SPA model: click a row → fetch data via `ctx.callTool` → `ctx.navigate("detail")` →
+re-render, no roundtrip through the host chat.
 
 The module is a thin opinionated wrapper around the `App` class from
-`@modelcontextprotocol/ext-apps`. It owns three things and nothing else:
-lifecycle bootstrap, memory-based view routing, and a capability-gated tool
-call proxy.
+`@modelcontextprotocol/ext-apps`. It owns three things and nothing else: lifecycle bootstrap,
+memory-based view routing, and a capability-gated tool call proxy.
 
 ## Public API
 
 ### `createMcpApp<S>(config: AppConfig<S>): Promise<AppHandle<S>>`
 
-Bootstraps the App: instantiates `ext-apps`' `App`, performs the `ui/initialize`
-handshake (via `App.connect()`), then mounts `initialView`.
+Bootstraps the App: instantiates `ext-apps`' `App`, performs the `ui/initialize` handshake (via
+`App.connect()`), then mounts `initialView`.
 
 ```ts
 const app = await createMcpApp({
@@ -57,15 +55,16 @@ const detailView = defineView<State, { id: string }, Invoice>({
 - `initialArgs?` — args forwarded to `initialView.onEnter`.
 - `initialState?` — initial value of `ctx.state`.
 - `capabilities?` — app-side capabilities (default `{}`).
-- `autoTheme?` — auto-apply host theme/CSS/fonts on handshake and context updates. Default `true`. Set to `false` if the App ships its own complete stylesheet. `ctx.hostContext` remains live regardless.
+- `autoTheme?` — auto-apply host theme/CSS/fonts on handshake and context updates. Default `true`.
+  Set to `false` if the App ships its own complete stylesheet. `ctx.hostContext` remains live
+  regardless.
 
 ### `AppContext<S>` (passed to every view hook)
 
 - `navigate(name, args?)` — switch view, internal only, no MCP traffic.
-- `callTool(name, args?)` — proxy to `App.callServerTool`. Throws if the host
-  did not advertise `serverTools` capability, or if the underlying transport
-  errors. Tool-level errors (`isError: true`) are returned, not thrown — the
-  view decides.
+- `callTool(name, args?)` — proxy to `App.callServerTool`. Throws if the host did not advertise
+  `serverTools` capability, or if the underlying transport errors. Tool-level errors
+  (`isError: true`) are returned, not thrown — the view decides.
 - `capabilities` — frozen snapshot of `McpUiHostCapabilities` from the handshake.
 - `state` — mutable ref to user state `S` (shared across views).
 - `app` — the underlying `App` instance, escape hatch for advanced use.
@@ -89,69 +88,64 @@ ctx.navigate("detail", { id })
   └─ replace DOM content of config.root
 ```
 
-Re-render on same view: `navigate(currentView, newArgs)` is allowed and
-re-runs `onEnter → render`. No implicit state diffing.
+Re-render on same view: `navigate(currentView, newArgs)` is allowed and re-runs `onEnter → render`.
+No implicit state diffing.
 
 ## Error codes
 
-All errors thrown by the SDK are instances of `MCPViewError` (extends `Error`) with a stable `.code` field. Match on `.code`, not on `.message`.
+All errors thrown by the SDK are instances of `MCPViewError` (extends `Error`) with a stable `.code`
+field. Match on `.code`, not on `.message`.
 
-| Code | Thrown when |
-|---|---|
-| `INVALID_CONFIG_ROOT` | `config.root` is absent or falsy |
-| `INVALID_CONFIG_VIEWS` | `config.views` is empty or missing |
-| `INVALID_CONFIG_INITIAL_VIEW` | `config.initialView` is absent or falsy |
-| `ORPHAN_INITIAL_VIEW` | `config.initialView` names a view not registered in `config.views`; `.data.initialView` + `.data.registered` |
-| `MISSING_RENDER` | A view in `config.views` has no `render` function; `.data.view` |
-| `MISSING_SERVER_TOOLS_CAPABILITY` | `ctx.callTool` called without `serverTools` host capability; `.data.tool` |
-| `HANDSHAKE_NO_CAPABILITIES` | `ui/initialize` handshake returned no host capabilities (malformed host) |
-| `NO_PARENT_WINDOW` | `window.parent` unavailable — SDK not running inside an iframe |
-| `UNKNOWN_VIEW` | `ctx.navigate(name)` with an unregistered name; `.data.view` + `.data.registered` |
-| `ROUTER_NOT_INITIALIZED` | Internal: `Router.goto` called before `setContext` (should never reach user code) |
+| Code                              | Thrown when                                                                                                  |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `INVALID_CONFIG_ROOT`             | `config.root` is absent or falsy                                                                             |
+| `INVALID_CONFIG_VIEWS`            | `config.views` is empty or missing                                                                           |
+| `INVALID_CONFIG_INITIAL_VIEW`     | `config.initialView` is absent or falsy                                                                      |
+| `ORPHAN_INITIAL_VIEW`             | `config.initialView` names a view not registered in `config.views`; `.data.initialView` + `.data.registered` |
+| `MISSING_RENDER`                  | A view in `config.views` has no `render` function; `.data.view`                                              |
+| `MISSING_SERVER_TOOLS_CAPABILITY` | `ctx.callTool` called without `serverTools` host capability; `.data.tool`                                    |
+| `HANDSHAKE_NO_CAPABILITIES`       | `ui/initialize` handshake returned no host capabilities (malformed host)                                     |
+| `NO_PARENT_WINDOW`                | `window.parent` unavailable — SDK not running inside an iframe                                               |
+| `UNKNOWN_VIEW`                    | `ctx.navigate(name)` with an unregistered name; `.data.view` + `.data.registered`                            |
+| `ROUTER_NOT_INITIALIZED`          | Internal: `Router.goto` called before `setContext` (should never reach user code)                            |
 
 ## Error contract
 
-- `createMcpApp` throws if `connect()` fails (host unreachable, handshake
-  rejected, transport gone). Caller wraps in try/catch; no Result type.
+- `createMcpApp` throws if `connect()` fails (host unreachable, handshake rejected, transport gone).
+  Caller wraps in try/catch; no Result type.
 - `ctx.callTool` throws when:
   1. `capabilities.serverTools` is absent (pre-flight check),
   2. `App.callServerTool` rejects (timeout, transport loss, host refusal).
 - `ctx.navigate(name)` throws synchronously if `name` is not a registered view.
-- User errors inside `onEnter`/`render` propagate up. The router does NOT
-  catch them — view author handles or crashes visibly. Rationale: silent
-  error handlers in a routing layer always mask bugs.
+- User errors inside `onEnter`/`render` propagate up. The router does NOT catch them — view author
+  handles or crashes visibly. Rationale: silent error handlers in a routing layer always mask bugs.
 
 ## Bundling rules
 
-- **No `import.meta.url`.** Must tree-shake and bundle cleanly through esbuild
-  in IIFE mode with no external hints.
-- **No Node built-ins at module top-level.** `@modelcontextprotocol/ext-apps`
-  is imported but must resolve to a browser-compatible entry (its
-  `PostMessageTransport` is pure DOM). If an `ext-apps` subpath drags
-  `node:crypto` etc, the bundler config in examples will alias; we do not
-  reach into `ext-apps` internals.
-- **Deno + Node compat.** Types reference only `@modelcontextprotocol/ext-apps`
-  types and DOM lib. No `Deno.*`, no `process.*`, no `Buffer`.
-- **ESM-only.** Output of consumers is `<script type="module">` or IIFE bundle;
-  we don't ship CJS.
-- Published as dedicated workspace member `@casys/mcp-view`
-  (`packages/view/`). See `packages/compose/docs/decision-records/0002`
-  addendum for the rationale of the split.
+- **No `import.meta.url`.** Must tree-shake and bundle cleanly through esbuild in IIFE mode with no
+  external hints.
+- **No Node built-ins at module top-level.** `@modelcontextprotocol/ext-apps` is imported but must
+  resolve to a browser-compatible entry (its `PostMessageTransport` is pure DOM). If an `ext-apps`
+  subpath drags `node:crypto` etc, the bundler config in examples will alias; we do not reach into
+  `ext-apps` internals.
+- **Deno + Node compat.** Types reference only `@modelcontextprotocol/ext-apps` types and DOM lib.
+  No `Deno.*`, no `process.*`, no `Buffer`.
+- **ESM-only.** Output of consumers is `<script type="module">` or IIFE bundle; we don't ship CJS.
+- Published as dedicated workspace member `@casys/mcp-view` (`packages/view/`). See
+  `packages/compose/docs/decision-records/0002` addendum for the rationale of the split.
 
 ## Non-goals (MVP)
 
 Explicitly **out of scope** for v0.1.0; may ship later:
 
-- `sendMessage`, `updateModelContext`, `requestDisplayMode`, `openLink`,
-  `downloadFile` wrappers — authors call `ctx.app.<method>` directly.
+- `sendMessage`, `updateModelContext`, `requestDisplayMode`, `openLink`, `downloadFile` wrappers —
+  authors call `ctx.app.<method>` directly.
 - URL-based routing / history API integration.
 - State persistence across teardown.
 - React / Vue / Svelte bindings (future: `@casys/mcp-view-react`, etc.).
 - Data-loader caching, suspense, optimistic updates.
 - Route guards, nested views, layout components.
-- Automatic `ontoolresult` → view refresh wiring. Authors opt in via
-  `ctx.app.addEventListener`.
+- Automatic `ontoolresult` → view refresh wiring. Authors opt in via `ctx.app.addEventListener`.
 
-The type surface is designed so each of the above can be added without
-breaking existing `AppConfig` / `ViewDefinition` / `AppContext` shapes
-(all extension points are optional fields).
+The type surface is designed so each of the above can be added without breaking existing `AppConfig`
+/ `ViewDefinition` / `AppContext` shapes (all extension points are optional fields).

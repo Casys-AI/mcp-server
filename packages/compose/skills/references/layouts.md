@@ -6,18 +6,18 @@
 
 Pass a string to `orchestration.layout` in `buildCompositeUi`.
 
-| Preset    | Description                          |
-|-----------|--------------------------------------|
-| `"split"` | Two panels side-by-side              |
-| `"tabs"`  | Tabbed interface (one panel at a time)|
-| `"grid"`  | Auto-fit grid (equal-size cells)     |
-| `"stack"` | Vertical stack (default)             |
+| Preset    | Description                            |
+| --------- | -------------------------------------- |
+| `"split"` | Two panels side-by-side                |
+| `"tabs"`  | Tabbed interface (one panel at a time) |
+| `"grid"`  | Auto-fit grid (equal-size cells)       |
+| `"stack"` | Vertical stack (default)               |
 
 ```typescript
 const descriptor = buildCompositeUi(resources, { layout: "split" });
 const descriptor = buildCompositeUi(resources, { layout: "tabs" });
 const descriptor = buildCompositeUi(resources, { layout: "grid" });
-const descriptor = buildCompositeUi(resources);  // layout defaults to "stack"
+const descriptor = buildCompositeUi(resources); // layout defaults to "stack"
 ```
 
 ---
@@ -28,23 +28,25 @@ Use `UiLayoutAreas` when you need custom proportions or named regions.
 
 ```typescript
 interface UiLayoutAreas {
-  areas: string[][];                                   // required — 2D grid of source IDs
-  columns?: number[];                                  // proportional column widths
-  rows?: number[];                                     // proportional row heights
-  gap?: "none" | "compact" | "normal" | "spacious";   // default: "normal"
+  areas: string[][]; // required — 2D grid of source IDs
+  columns?: number[]; // proportional column widths
+  rows?: number[]; // proportional row heights
+  gap?: "none" | "compact" | "normal" | "spacious"; // default: "normal"
 }
 ```
 
-The `areas` array is a 2D grid where each cell contains a **tool name** (the `source` field of a `CollectedUiResource`). Repeating the same name in adjacent cells spans that panel across multiple cells.
+The `areas` array is a 2D grid where each cell contains a **tool name** (the `source` field of a
+`CollectedUiResource`). Repeating the same name in adjacent cells spans that panel across multiple
+cells.
 
 ```typescript
 const layout: UiLayoutAreas = {
   areas: [
-    ["filter", "list",  "detail"],
-    ["filter", "chart", "chart" ],
+    ["filter", "list", "detail"],
+    ["filter", "chart", "chart"],
   ],
-  columns: [1, 2, 2],   // filter=1fr, list=2fr, detail=2fr
-  rows: [3, 1],         // top row taller than bottom
+  columns: [1, 2, 2], // filter=1fr, list=2fr, detail=2fr
+  rows: [3, 1], // top row taller than bottom
   gap: "normal",
 };
 
@@ -52,6 +54,7 @@ const descriptor = buildCompositeUi(resources, { layout });
 ```
 
 Gap values map to:
+
 - `"none"` → 0px
 - `"compact"` → 4px
 - `"normal"` → 8px
@@ -63,15 +66,16 @@ Use `isLayoutAreas(layout)` / `isLayoutPreset(layout)` from `/core` to narrow th
 
 ## Sync rules
 
-Sync rules wire cross-UI events. Written with **tool names** in `UiSyncRule`, resolved to **slot indices** in `ResolvedSyncRule` by `buildCompositeUi`.
+Sync rules wire cross-UI events. Written with **tool names** in `UiSyncRule`, resolved to **slot
+indices** in `ResolvedSyncRule` by `buildCompositeUi`.
 
 ### Shape
 
 ```typescript
 interface UiSyncRule {
-  from: string;   // source tool name, e.g. "postgres:query"
-  event: string;  // event type the source emits, e.g. "filter"
-  to: string;     // target tool name or "*" for broadcast
+  from: string; // source tool name, e.g. "postgres:query"
+  event: string; // event type the source emits, e.g. "filter"
+  to: string; // target tool name or "*" for broadcast
   action: string; // action to trigger on the target, e.g. "update"
 }
 ```
@@ -95,8 +99,10 @@ interface UiSyncRule {
 ### Resolution behavior
 
 `buildCompositeUi` calls `resolveSyncRules` internally:
+
 - `from`/`to` tool names are mapped to their slot indices
-- Rules where `from` or `to` tool name is not found among collected resources are **silently excluded**
+- Rules where `from` or `to` tool name is not found among collected resources are **silently
+  excluded**
 - Broadcast rules (`to: "*"`) are kept as-is (resolved `to` remains `"*"`)
 
 If you need to detect bad rules before building, call `validateSyncRules` first.
@@ -109,7 +115,7 @@ If you need to detect bad rules before building, call `validateSyncRules` first.
 import { validateSyncRules } from "@casys/mcp-compose/core";
 
 const resources = collector.getResources();
-const knownSources = resources.map(r => r.source);
+const knownSources = resources.map((r) => r.source);
 const syncRules: UiSyncRule[] = [/* ... */];
 
 const result = validateSyncRules(syncRules, knownSources);
@@ -133,10 +139,10 @@ if (result.valid) {
 
 ### Error codes
 
-| Code                     | Cause                                               |
-|--------------------------|-----------------------------------------------------|
-| `ORPHAN_SYNC_REFERENCE`  | `from` or `to` tool name not in collected resources |
-| `CIRCULAR_SYNC_RULE`     | `from === to` (non-broadcast)                       |
+| Code                    | Cause                                               |
+| ----------------------- | --------------------------------------------------- |
+| `ORPHAN_SYNC_REFERENCE` | `from` or `to` tool name not in collected resources |
+| `CIRCULAR_SYNC_RULE`    | `from === to` (non-broadcast)                       |
 
 ---
 
@@ -158,22 +164,24 @@ if (result.valid) {
 ### Tabs layout behavior
 
 In `"tabs"` layout:
+
 - First tab is active by default
 - Tab buttons are labeled with the tool name (`child.source`)
 - Tab switching is handled by the inlined JavaScript
 
 ### Areas layout behavior
 
-Source IDs in `areas` must match tool names exactly. The renderer maps each `CollectedUiResource` to its named grid area using `areaMap` (populated by the composer from the areas grid).
+Source IDs in `areas` must match tool names exactly. The renderer maps each `CollectedUiResource` to
+its named grid area using `areaMap` (populated by the composer from the areas grid).
 
 ---
 
 ## Common mistakes
 
-| Wrong | Right |
-|-------|-------|
-| `buildCompositeUi({ resources, layout, sync })` | `buildCompositeUi(resources, { layout, sync })` |
-| `collector.collect(...)` on `McpSdkCollector` | `collector.collectFromSdk(...)` |
+| Wrong                                                                   | Right                                                            |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `buildCompositeUi({ resources, layout, sync })`                         | `buildCompositeUi(resources, { layout, sync })`                  |
+| `collector.collect(...)` on `McpSdkCollector`                           | `collector.collectFromSdk(...)`                                  |
 | Passing `buildCompositeUi` to renderer before calling `renderComposite` | `renderComposite` takes a `CompositeUiDescriptor`, not resources |
-| Assuming invalid sync rules throw | Invalid rules are silently excluded — use `validateSyncRules` |
-| Assuming `renderComposite` opens a browser | Use `serveDashboard` from `/host` for that |
+| Assuming invalid sync rules throw                                       | Invalid rules are silently excluded — use `validateSyncRules`    |
+| Assuming `renderComposite` opens a browser                              | Use `serveDashboard` from `/host` for that                       |

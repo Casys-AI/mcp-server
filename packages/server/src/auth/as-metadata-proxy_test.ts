@@ -10,8 +10,8 @@
 
 import { assertEquals, assertThrows } from "@std/assert";
 import {
-  createAsMetadataHandler,
   type AsMetadataProxyOptions,
+  createAsMetadataHandler,
 } from "./as-metadata-proxy.ts";
 
 // ─── Fixtures ────────────────────────────────────────────────────────
@@ -24,8 +24,7 @@ const UPSTREAM_METADATA = {
   scopes_supported: ["openid", "profile"],
 };
 
-const UPSTREAM_URL =
-  "https://idp.example.com/.well-known/openid-configuration";
+const UPSTREAM_URL = "https://idp.example.com/.well-known/openid-configuration";
 const REGISTRATION_URL = "https://my-app.example.com/oauth/register";
 
 /** Creates a fake fetch that returns the given metadata. */
@@ -75,7 +74,9 @@ function countingFetch(
   return { fetch: fn, callCount: () => count, lastUrl: () => capturedUrl };
 }
 
-function opts(overrides: Partial<AsMetadataProxyOptions> = {}): AsMetadataProxyOptions {
+function opts(
+  overrides: Partial<AsMetadataProxyOptions> = {},
+): AsMetadataProxyOptions {
   return {
     upstreamMetadataUrl: UPSTREAM_URL,
     registrationEndpoint: REGISTRATION_URL,
@@ -93,10 +94,11 @@ const dummyRequest = new Request(
 
 Deno.test("throws on invalid upstreamMetadataUrl at construction", () => {
   assertThrows(
-    () => createAsMetadataHandler(opts({
-      upstreamMetadataUrl: "not-a-url",
-      fetch: fakeFetch(),
-    })),
+    () =>
+      createAsMetadataHandler(opts({
+        upstreamMetadataUrl: "not-a-url",
+        fetch: fakeFetch(),
+      })),
     Error,
     "upstreamMetadataUrl",
   );
@@ -104,11 +106,12 @@ Deno.test("throws on invalid upstreamMetadataUrl at construction", () => {
 
 Deno.test("throws on invalid upstreamIssuer at construction", () => {
   assertThrows(
-    () => createAsMetadataHandler(opts({
-      upstreamMetadataUrl: undefined,
-      upstreamIssuer: "not-a-url",
-      fetch: fakeFetch(),
-    })),
+    () =>
+      createAsMetadataHandler(opts({
+        upstreamMetadataUrl: undefined,
+        upstreamIssuer: "not-a-url",
+        fetch: fakeFetch(),
+      })),
     Error,
     "upstreamIssuer",
   );
@@ -116,10 +119,11 @@ Deno.test("throws on invalid upstreamIssuer at construction", () => {
 
 Deno.test("throws on invalid registrationEndpoint at construction", () => {
   assertThrows(
-    () => createAsMetadataHandler(opts({
-      registrationEndpoint: "ftp://bad-scheme.example.com",
-      fetch: fakeFetch(),
-    })),
+    () =>
+      createAsMetadataHandler(opts({
+        registrationEndpoint: "ftp://bad-scheme.example.com",
+        fetch: fakeFetch(),
+      })),
     Error,
     "registrationEndpoint",
   );
@@ -127,12 +131,13 @@ Deno.test("throws on invalid registrationEndpoint at construction", () => {
 
 Deno.test("throws when both upstreamMetadataUrl and upstreamIssuer are set", () => {
   assertThrows(
-    () => createAsMetadataHandler({
-      upstreamMetadataUrl: UPSTREAM_URL,
-      upstreamIssuer: "https://idp.example.com",
-      registrationEndpoint: REGISTRATION_URL,
-      fetch: fakeFetch(),
-    }),
+    () =>
+      createAsMetadataHandler({
+        upstreamMetadataUrl: UPSTREAM_URL,
+        upstreamIssuer: "https://idp.example.com",
+        registrationEndpoint: REGISTRATION_URL,
+        fetch: fakeFetch(),
+      }),
     Error,
     "not both",
   );
@@ -140,10 +145,11 @@ Deno.test("throws when both upstreamMetadataUrl and upstreamIssuer are set", () 
 
 Deno.test("throws when neither upstreamMetadataUrl nor upstreamIssuer is set", () => {
   assertThrows(
-    () => createAsMetadataHandler({
-      registrationEndpoint: REGISTRATION_URL,
-      fetch: fakeFetch(),
-    }),
+    () =>
+      createAsMetadataHandler({
+        registrationEndpoint: REGISTRATION_URL,
+        fetch: fakeFetch(),
+      }),
     Error,
     "is required",
   );
@@ -162,12 +168,16 @@ Deno.test("url form: returns enriched metadata with registration_endpoint", asyn
   const body = await res.json();
   assertEquals(body.registration_endpoint, REGISTRATION_URL);
   assertEquals(body.issuer, UPSTREAM_METADATA.issuer);
-  assertEquals(body.authorization_endpoint, UPSTREAM_METADATA.authorization_endpoint);
+  assertEquals(
+    body.authorization_endpoint,
+    UPSTREAM_METADATA.authorization_endpoint,
+  );
   assertEquals(body.token_endpoint, UPSTREAM_METADATA.token_endpoint);
 });
 
 Deno.test("url form: fetches the exact URL provided", async () => {
-  const customUrl = "https://as.example.com/.well-known/oauth-authorization-server";
+  const customUrl =
+    "https://as.example.com/.well-known/oauth-authorization-server";
   const { fetch: countFetch, lastUrl } = countingFetch();
   const handler = createAsMetadataHandler(opts({
     upstreamMetadataUrl: customUrl,
@@ -191,7 +201,10 @@ Deno.test("issuer form: derives .well-known/openid-configuration URL", async () 
   });
 
   await handler(dummyRequest);
-  assertEquals(lastUrl(), "https://idp.example.com/.well-known/openid-configuration");
+  assertEquals(
+    lastUrl(),
+    "https://idp.example.com/.well-known/openid-configuration",
+  );
 });
 
 Deno.test("issuer form: strips trailing slash before deriving URL", async () => {
@@ -203,7 +216,10 @@ Deno.test("issuer form: strips trailing slash before deriving URL", async () => 
   });
 
   await handler(dummyRequest);
-  assertEquals(lastUrl(), "https://idp.example.com/.well-known/openid-configuration");
+  assertEquals(
+    lastUrl(),
+    "https://idp.example.com/.well-known/openid-configuration",
+  );
 });
 
 Deno.test("issuer form: returns enriched metadata", async () => {
@@ -449,10 +465,13 @@ Deno.test("returns 502 when upstream returns non-object JSON", async () => {
 Deno.test("returns 502 when upstream metadata lacks issuer field", async () => {
   const noIssuerFetch = ((_input: string | URL | Request) =>
     Promise.resolve(
-      new Response(JSON.stringify({ authorization_endpoint: "https://example.com/auth" }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
+      new Response(
+        JSON.stringify({ authorization_endpoint: "https://example.com/auth" }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
     )) as typeof globalThis.fetch;
 
   const handler = createAsMetadataHandler(opts({ fetch: noIssuerFetch }));
@@ -489,7 +508,8 @@ Deno.test("throws on negative cacheTtlMs at construction", () => {
 
 Deno.test("throws on NaN cacheTtlMs at construction", () => {
   assertThrows(
-    () => createAsMetadataHandler(opts({ cacheTtlMs: NaN, fetch: fakeFetch() })),
+    () =>
+      createAsMetadataHandler(opts({ cacheTtlMs: NaN, fetch: fakeFetch() })),
     Error,
     "cacheTtlMs",
   );

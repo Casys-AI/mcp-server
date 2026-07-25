@@ -40,7 +40,7 @@ await app.start();
 ## 2. HTTP server with Auth0 auth
 
 ```typescript
-import { McpApp, createAuth0AuthProvider } from "@casys/mcp-server";
+import { createAuth0AuthProvider, McpApp } from "@casys/mcp-server";
 
 const app = new McpApp({
   name: "my-api-server",
@@ -92,10 +92,19 @@ const loggingMiddleware: Middleware = async (ctx, next) => {
   console.log(`[${new Date().toISOString()}] → ${ctx.toolName}`);
   try {
     const result = await next();
-    console.log(`[${new Date().toISOString()}] ← ${ctx.toolName} (${Date.now() - start}ms)`);
+    console.log(
+      `[${new Date().toISOString()}] ← ${ctx.toolName} (${
+        Date.now() - start
+      }ms)`,
+    );
     return result;
   } catch (err) {
-    console.error(`[${new Date().toISOString()}] ✗ ${ctx.toolName} (${Date.now() - start}ms)`, err);
+    console.error(
+      `[${new Date().toISOString()}] ✗ ${ctx.toolName} (${
+        Date.now() - start
+      }ms)`,
+      err,
+    );
     throw err;
   }
 };
@@ -105,9 +114,13 @@ app.use(loggingMiddleware);
 
 // Access auth info set by auth middleware upstream:
 const authAwareMiddleware: Middleware = async (ctx, next) => {
-  const authInfo = ctx.authInfo as { subject: string; scopes: string[] } | undefined;
+  const authInfo = ctx.authInfo as
+    | { subject: string; scopes: string[] }
+    | undefined;
   if (authInfo) {
-    console.log(`User: ${authInfo.subject}, scopes: ${authInfo.scopes.join(", ")}`);
+    console.log(
+      `User: ${authInfo.subject}, scopes: ${authInfo.scopes.join(", ")}`,
+    );
   }
   return next();
 };
@@ -121,7 +134,7 @@ app.use(authAwareMiddleware);
 Register both a resource (HTML viewer) and a tool that references it:
 
 ```typescript
-import { McpApp, MCP_APP_MIME_TYPE } from "@casys/mcp-server";
+import { MCP_APP_MIME_TYPE, McpApp } from "@casys/mcp-server";
 import { uiMeta } from "@casys/mcp-server";
 
 const app = new McpApp({
@@ -188,7 +201,12 @@ const summary = app.registerViewers({
   viewers: ["table-viewer", "chart-viewer", "form-viewer"],
   readFile: (path) => Deno.readTextFile(path),
   exists: (path) => {
-    try { Deno.statSync(path); return true; } catch { return false; }
+    try {
+      Deno.statSync(path);
+      return true;
+    } catch {
+      return false;
+    }
   },
 });
 
@@ -205,7 +223,11 @@ await app.start();
 One `McpApp` per tenant, cached and served from a shared HTTP layer:
 
 ```typescript
-import { McpApp, createAuth0AuthProvider, createMultiTenantMiddleware } from "@casys/mcp-server";
+import {
+  createAuth0AuthProvider,
+  createMultiTenantMiddleware,
+  McpApp,
+} from "@casys/mcp-server";
 
 const tenantCache = new Map<string, ReturnType<McpApp["getFetchHandler"]>>();
 
@@ -249,10 +271,13 @@ async function getHandlerForTenant(tenantId: string) {
 
 ```typescript
 import { Hono } from "hono";
-import { McpApp, createGoogleAuthProvider } from "@casys/mcp-server";
+import { createGoogleAuthProvider, McpApp } from "@casys/mcp-server";
 
 const app = new McpApp({ name: "my-server", version: "1.0.0" });
-app.registerTool({ name: "hello", description: "Hello", inputSchema: {} }, () => "hi");
+app.registerTool(
+  { name: "hello", description: "Hello", inputSchema: {} },
+  () => "hi",
+);
 
 const mcpHandler = await app.getFetchHandler({
   requireAuth: true,
@@ -285,7 +310,10 @@ import { McpApp } from "@casys/mcp-server";
 
 // Instantiate once at module level (Fresh keeps this in memory)
 const app = new McpApp({ name: "fresh-mcp", version: "1.0.0" });
-app.registerTool({ name: "ping", description: "Ping", inputSchema: {} }, () => "pong");
+app.registerTool(
+  { name: "ping", description: "Ping", inputSchema: {} },
+  () => "pong",
+);
 
 const handler = await app.getFetchHandler({ requireAuth: false });
 
@@ -331,7 +359,15 @@ const app = new McpApp({
 });
 
 app.registerTool(
-  { name: "get_item", description: "Get item by ID", inputSchema: { type: "object", properties: { id: { type: "string" } }, required: ["id"] } },
+  {
+    name: "get_item",
+    description: "Get item by ID",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string" } },
+      required: ["id"],
+    },
+  },
   async (args) => {
     const item = await db.findById(args.id as string);
     if (!item) throw new NotFoundError(args.id as string);
@@ -352,8 +388,8 @@ const app = new McpApp({
   version: "1.0.0",
   rateLimit: {
     maxRequests: 10,
-    windowMs: 60_000,              // 10 calls per minute
-    onLimitExceeded: "reject",     // or "wait" (default)
+    windowMs: 60_000, // 10 calls per minute
+    onLimitExceeded: "reject", // or "wait" (default)
     keyExtractor: (ctx) => {
       // Rate-limit per tool
       return ctx.toolName;
@@ -385,8 +421,8 @@ await app.startHttp({
 
 ## 11. Structured tool results (separate LLM text from data)
 
-Use `StructuredToolResult` when the data payload is large and you want to keep the
-LLM context clean:
+Use `StructuredToolResult` when the data payload is large and you want to keep
+the LLM context clean:
 
 ```typescript
 import { type StructuredToolResult } from "@casys/mcp-server";
@@ -395,7 +431,11 @@ app.registerTool(
   {
     name: "query_table",
     description: "Query a database table",
-    inputSchema: { type: "object", properties: { sql: { type: "string" } }, required: ["sql"] },
+    inputSchema: {
+      type: "object",
+      properties: { sql: { type: "string" } },
+      required: ["sql"],
+    },
     outputSchema: {
       type: "object",
       properties: {
@@ -451,7 +491,7 @@ function onServiceDisconnected(service: { name: string; tools: MCPTool[] }) {
 ## 13. GitHub Actions OIDC auth (machine-to-machine)
 
 ```typescript
-import { McpApp, createGitHubAuthProvider } from "@casys/mcp-server";
+import { createGitHubAuthProvider, McpApp } from "@casys/mcp-server";
 
 const app = new McpApp({
   name: "ci-tools",
@@ -471,7 +511,11 @@ app.registerTool(
   {
     name: "deploy",
     description: "Deploy an artifact",
-    inputSchema: { type: "object", properties: { artifact: { type: "string" } }, required: ["artifact"] },
+    inputSchema: {
+      type: "object",
+      properties: { artifact: { type: "string" } },
+      required: ["artifact"],
+    },
     requiredScopes: ["deploy"],
   },
   async (args) => deployArtifact(args.artifact as string),
@@ -487,7 +531,7 @@ await app.startHttp({ port: 3000, requireAuth: true });
 React after the MCP handshake completes (e.g., to check client capabilities):
 
 ```typescript
-import { McpApp, MCP_APP_MIME_TYPE } from "@casys/mcp-server";
+import { MCP_APP_MIME_TYPE, McpApp } from "@casys/mcp-server";
 
 const app = new McpApp({ name: "my-server", version: "1.0.0" });
 

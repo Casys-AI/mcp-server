@@ -1,7 +1,8 @@
 # @casys/mcp-compose — Reference Skill
 
-**Registry:** `jsr:@casys/mcp-compose`  
-**Purpose:** Lightweight UI composition library for assembling MCP tool results into multi-panel dashboards.
+**Registry:** `jsr:@casys/mcp-compose`\
+**Purpose:** Lightweight UI composition library for assembling MCP tool results into multi-panel
+dashboards.
 
 No runtime dependencies beyond optional MCP SDK integration.
 
@@ -21,7 +22,8 @@ deno add jsr:@casys/mcp-compose
 Collector  →  Composer  →  Renderer
 ```
 
-1. **Collector** — inspects MCP tool results for `_meta.ui.resourceUri`, accumulates `CollectedUiResource[]`
+1. **Collector** — inspects MCP tool results for `_meta.ui.resourceUri`, accumulates
+   `CollectedUiResource[]`
 2. **Composer** — assembles resources + optional orchestration into a `CompositeUiDescriptor`
 3. **Renderer** — turns the descriptor into a self-contained HTML document with sandboxed iframes
 
@@ -30,7 +32,7 @@ Collector  →  Composer  →  Renderer
 ## Quick example
 
 ```typescript
-import { createCollector, buildCompositeUi } from "@casys/mcp-compose/core";
+import { buildCompositeUi, createCollector } from "@casys/mcp-compose/core";
 import { renderComposite } from "@casys/mcp-compose/host";
 
 // Stage 1 — collect
@@ -56,14 +58,14 @@ const html = renderComposite(descriptor);
 
 ## Subpath exports
 
-| Subpath              | Contents                                                     |
-|----------------------|--------------------------------------------------------------|
-| `@casys/mcp-compose` | Root re-exports (same as `/core` + `uiMeta` from `/sdk`)     |
-| `/core`              | Types, `createCollector`, `buildCompositeUi`, `validateSyncRules` |
+| Subpath              | Contents                                                                  |
+| -------------------- | ------------------------------------------------------------------------- |
+| `@casys/mcp-compose` | Root re-exports (same as `/core` + `uiMeta` from `/sdk`)                  |
+| `/core`              | Types, `createCollector`, `buildCompositeUi`, `validateSyncRules`         |
 | `/sdk`               | `createMcpSdkCollector`, `uiMeta`, `composeEvents`, `validateComposition` |
-| `/host`              | `renderComposite`, `serveDashboard`                          |
-| `/runtime`           | `composeDashboard`, `composeDashboardFromFiles`              |
-| `/deploy`            | Deploy types (`DeployRequest`, `DeployResult`, etc.)         |
+| `/host`              | `renderComposite`, `serveDashboard`                                       |
+| `/runtime`           | `composeDashboard`, `composeDashboardFromFiles`                           |
+| `/deploy`            | Deploy types (`DeployRequest`, `DeployResult`, etc.)                      |
 
 ---
 
@@ -72,16 +74,16 @@ const html = renderComposite(descriptor);
 ```typescript
 // A single UI resource collected from one tool call
 interface CollectedUiResource {
-  source: string;           // tool name, e.g. "postgres:query"
-  resourceUri: string;      // e.g. "ui://pg/table/1"
-  slot: number;             // auto-incremented index (0-based)
+  source: string; // tool name, e.g. "postgres:query"
+  resourceUri: string; // e.g. "ui://pg/table/1"
+  slot: number; // auto-incremented index (0-based)
   context?: Record<string, unknown>;
 }
 
 // Output of buildCompositeUi — input to renderComposite
 interface CompositeUiDescriptor {
   type: "composite";
-  resourceUri: string;      // auto-generated ui://mcp-compose/workflow/<uuid>
+  resourceUri: string; // auto-generated ui://mcp-compose/workflow/<uuid>
   layout: UiLayout;
   children: CollectedUiResource[];
   sync: ResolvedSyncRule[]; // slot indices, not tool names
@@ -90,9 +92,9 @@ interface CompositeUiDescriptor {
 
 // Sync rule — use tool names here (resolved to slots by buildCompositeUi)
 interface UiSyncRule {
-  from: string;   // source tool name
-  event: string;  // e.g. "filter", "change"
-  to: string;     // target tool name, or "*" for broadcast
+  from: string; // source tool name
+  event: string; // e.g. "filter", "change"
+  to: string; // target tool name, or "*" for broadcast
   action: string; // e.g. "update", "refresh"
 }
 
@@ -100,9 +102,9 @@ interface UiSyncRule {
 type UiLayout = "split" | "tabs" | "grid" | "stack" | UiLayoutAreas;
 
 interface UiLayoutAreas {
-  areas: string[][];         // 2D grid of source IDs (tool names)
-  columns?: number[];        // column proportions
-  rows?: number[];           // row proportions
+  areas: string[][]; // 2D grid of source IDs (tool names)
+  columns?: number[]; // column proportions
+  rows?: number[]; // row proportions
   gap?: "none" | "compact" | "normal" | "spacious";
 }
 ```
@@ -115,7 +117,11 @@ Created via `createCollector()` from `/core`.
 
 ```typescript
 interface UiCollector {
-  collect(toolName: string, result: unknown, context?: Record<string, unknown>): CollectedUiResource | null;
+  collect(
+    toolName: string,
+    result: unknown,
+    context?: Record<string, unknown>,
+  ): CollectedUiResource | null;
   getResources(): CollectedUiResource[];
   clear(): void;
 }
@@ -147,14 +153,19 @@ const resources = collector.getResources();
 
 ```typescript
 interface McpSdkCollector {
-  collectFromSdk(toolName: string, result: McpSdkCallToolResult, context?: Record<string, unknown>): CollectedUiResource | null;
+  collectFromSdk(
+    toolName: string,
+    result: McpSdkCallToolResult,
+    context?: Record<string, unknown>,
+  ): CollectedUiResource | null;
   getResources(): CollectedUiResource[];
   clear(): void;
-  readonly inner: UiCollector;  // access the underlying core collector
+  readonly inner: UiCollector; // access the underlying core collector
 }
 ```
 
 Key difference from `UiCollector`:
+
 - Method is `collectFromSdk`, not `collect`
 - Automatically skips results where `isError: true`
 - Accepts the MCP SDK `CallToolResult` shape (structural duck-typing, no SDK import needed)
@@ -167,34 +178,36 @@ Key difference from `UiCollector`:
 function buildCompositeUi(
   resources: CollectedUiResource[],
   orchestration?: UiOrchestration,
-): CompositeUiDescriptor
+): CompositeUiDescriptor;
 ```
 
 The second argument is `orchestration?` — an optional object with:
 
 ```typescript
 interface UiOrchestration {
-  layout?: UiLayout;           // default: "stack"
-  sync?: UiSyncRule[];         // tool-name-based sync rules
-  sharedContext?: string[];    // keys to extract from resource contexts
+  layout?: UiLayout; // default: "stack"
+  sync?: UiSyncRule[]; // tool-name-based sync rules
+  sharedContext?: string[]; // keys to extract from resource contexts
 }
 ```
 
 **Do not** pass `{ resources, layout, sync }` — resources is the first positional argument.
 
-Sync rules in `orchestration.sync` use **tool names** (resolved to slot indices internally). Invalid rules are silently excluded — call `validateSyncRules` beforehand for upfront error detection.
+Sync rules in `orchestration.sync` use **tool names** (resolved to slot indices internally). Invalid
+rules are silently excluded — call `validateSyncRules` beforehand for upfront error detection.
 
 ---
 
 ## Validation
 
-Validation is **explicit, not automatic**. Call `validateSyncRules` before `buildCompositeUi` if you want to surface issues:
+Validation is **explicit, not automatic**. Call `validateSyncRules` before `buildCompositeUi` if you
+want to surface issues:
 
 ```typescript
 import { validateSyncRules } from "@casys/mcp-compose/core";
 
 const resources = collector.getResources();
-const knownSources = resources.map(r => r.source);
+const knownSources = resources.map((r) => r.source);
 
 const result = validateSyncRules(syncRules, knownSources);
 if (!result.valid) {
@@ -205,6 +218,7 @@ if (!result.valid) {
 ```
 
 `validateSyncRules(rules, knownSources)` checks for:
+
 - Orphan references — tool names not in `knownSources`
 - Circular routes — `from === to` (non-broadcast)
 

@@ -9,10 +9,7 @@
  * @module sdk/ui-meta-builder
  */
 
-import type {
-  McpUiResourceCsp,
-  McpUiResourcePermissions,
-} from "../core/types/mcp-apps.ts";
+import type { McpUiResourceCsp, McpUiResourcePermissions } from "../core/types/mcp-apps.ts";
 
 /**
  * UI metadata fields for `_meta.ui`, combining SEP-1865 standard fields

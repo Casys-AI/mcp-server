@@ -21,12 +21,7 @@ import type {
   McpUiToolMeta,
 } from "@modelcontextprotocol/ext-apps";
 
-export type {
-  McpUiResourceCsp,
-  McpUiResourceMeta,
-  McpUiResourcePermissions,
-  McpUiToolMeta,
-};
+export type { McpUiResourceCsp, McpUiResourceMeta, McpUiResourcePermissions, McpUiToolMeta };
 
 /**
  * @deprecated Renamed upstream to `McpUiResourceCsp`. Import the new name from

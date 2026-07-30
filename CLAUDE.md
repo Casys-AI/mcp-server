@@ -15,8 +15,8 @@ This is a **monorepo** containing 4 packages that form the Casys MCP Platform:
   for building MCP tools and resources with reusable primitives, plus a
   multi-iframe dashboard host. **Server-side.**
 - **`@casys/mcp-view`** (`packages/view/`) — View-side SDK for MCP Apps
-  (`createMcpApp`, `defineView`): lets authors build SPAs with internal
-  routing instead of the `ui/message` anti-pattern. Thin wrapper over
+  (`createMcpApp`, `defineView`): lets authors build SPAs with internal routing
+  instead of the `ui/message` anti-pattern. Thin wrapper over
   `@modelcontextprotocol/ext-apps`' `App` class. **Browser-side (iframe).**
 - **`@casys/mcp-bridge`** (`packages/bridge/`) — Bridge layer for connecting MCP
   servers to external systems and protocols. **Server-side.**
@@ -121,17 +121,17 @@ compatibility — it points to the same class and will be removed in v1.0.)
 
 Composable helpers for assembling MCP tools and resources from reusable
 primitives, plus a multi-iframe dashboard host. Re-exported by
-`@casys/mcp-server` for convenience. Server-side only (Deno/Node), no DOM
-types in `compilerOptions.lib`.
+`@casys/mcp-server` for convenience. Server-side only (Deno/Node), no DOM types
+in `compilerOptions.lib`.
 
 ### `@casys/mcp-view` (`packages/view/`)
 
-View-side SDK for MCP Apps. `createMcpApp({ views, initialView })` + `defineView`
-lets authors build SPAs with in-iframe navigation (`ctx.navigate`, `ctx.callTool`)
-instead of the `ui/message` anti-pattern that pollutes the chat. Thin wrapper
-over `@modelcontextprotocol/ext-apps` `App` class. Browser-only: `deno.json`
-sets `compilerOptions.lib` to include `dom`, `dom.iterable`, `dom.asynciterable`.
-See ADRs `docs/decision-records/0001` (Deno-first) and
+View-side SDK for MCP Apps. `createMcpApp({ views, initialView })` +
+`defineView` lets authors build SPAs with in-iframe navigation (`ctx.navigate`,
+`ctx.callTool`) instead of the `ui/message` anti-pattern that pollutes the chat.
+Thin wrapper over `@modelcontextprotocol/ext-apps` `App` class. Browser-only:
+`deno.json` sets `compilerOptions.lib` to include `dom`, `dom.iterable`,
+`dom.asynciterable`. See ADRs `docs/decision-records/0001` (Deno-first) and
 `packages/compose/docs/decision-records/0002`, `0003` (positioning + non-goals).
 
 ### `@casys/mcp-bridge` (`packages/bridge/`)
@@ -151,8 +151,9 @@ Bridge layer for connecting MCP servers to external systems and protocols.
 - **Dual transport**: STDIO for local/CLI usage, HTTP (Streamable HTTP + SSE)
   for remote. Auth only applies to HTTP transport.
 - **Publishing**: On push to `main`, CI publishes all 4 packages to JSR (via
-  `npx jsr publish`) and npm (via the Node build script for server/compose/bridge;
-  view ships ESM-only). Version for each package is in its own `deno.json`.
+  `npx jsr publish`) and npm (via the Node build script for
+  server/compose/bridge; view ships ESM-only). Version for each package is in
+  its own `deno.json`.
 - **Browser/server split**: only `@casys/mcp-view` uses `lib: dom`. Other
   packages MUST NOT add DOM globals — doing so invites `document.getElementById`
   calls in server code that crash at runtime under Deno Deploy.

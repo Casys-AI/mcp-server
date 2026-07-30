@@ -2813,7 +2813,11 @@ export class McpApp {
                 // "complete" — that is an ordinary RPC response which happens to
                 // describe a task. The spec states this distinction three times;
                 // conflating them is the likeliest mistake here.
-                result: { ...task, resultType: "task" },
+                result: this.stampResult(
+                  { ...task },
+                  statelessVersion,
+                  "task",
+                ),
               });
             }
 
@@ -3955,12 +3959,16 @@ export class McpApp {
   private stampResult(
     result: Record<string, unknown>,
     negotiatedVersion?: string,
+    resultType: "complete" | "task" = "complete",
   ): Record<string, unknown> {
     if (negotiatedVersion !== SPEC_2026_07_28) return result;
-    return completeResult(result, {
-      name: this.options.name,
-      version: this.options.version,
-    });
+    return {
+      ...completeResult(result, {
+        name: this.options.name,
+        version: this.options.version,
+      }),
+      resultType,
+    };
   }
 
   /**

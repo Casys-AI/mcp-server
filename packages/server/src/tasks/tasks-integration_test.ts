@@ -112,6 +112,13 @@ Deno.test("tasks - a descriptor-returning tool yields resultType 'task', not 'co
     assertEquals(data.result.resultType, "task");
     assertExists(data.result.taskId, "taskId must be flat on the result");
     assertEquals(typeof data.result.status, "string");
+    // `task` is still a 2026 Result, so it needs the same server identity stamp
+    // as every other result type. Omitting it makes task creation uniquely
+    // anonymous to clients that partition response handling by server identity.
+    assertEquals(data.result._meta?.["io.modelcontextprotocol/serverInfo"], {
+      name: "tasks-integration",
+      version: "1.0.0",
+    });
   } finally {
     await http.shutdown();
   }

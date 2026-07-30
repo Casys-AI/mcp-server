@@ -101,6 +101,24 @@ import {
 } from "./subscriptions/subscription-registry.ts";
 import { ServerMetrics } from "./observability/metrics.ts";
 import { endToolCallSpan, startToolCallSpan } from "./observability/otel.ts";
+import {
+  BodyTooLargeError,
+  DEFAULT_MAX_BODY_BYTES,
+  getClientIpFromHeaders,
+  readBodyWithLimit,
+} from "./http/body.ts";
+import {
+  bytesToHexLocal,
+  callerPrincipal,
+  noOwnerKeyError,
+  noPrincipalError,
+  taskOwnerKeyFor,
+} from "./http/request-guards.ts";
+import {
+  isRecord,
+  jsonRpcResponse,
+  MRTR_NO_AUTH_PRINCIPAL,
+} from "./http/wire.ts";
 
 /**
  * Tool definition with handler
@@ -115,65 +133,6 @@ interface ToolWithHandler extends MCPTool {
 interface RegisteredResourceInfo {
   resource: MCPResource;
   handler: ResourceHandler;
-}
-
-const DEFAULT_MAX_BODY_BYTES = 1_000_000;
-
-class BodyTooLargeError extends Error {
-  constructor(maxBytes: number) {
-    super(`Payload too large. Max ${maxBytes} bytes.`);
-    this.name = "BodyTooLargeError";
-  }
-}
-
-function getClientIpFromHeaders(headers: Headers): string {
-  const forwarded = headers.get("x-forwarded-for");
-  if (forwarded) {
-    return forwarded.split(",")[0]?.trim() || "unknown";
-  }
-  return headers.get("x-real-ip") ??
-    headers.get("cf-connecting-ip") ??
-    "unknown";
-}
-
-async function readBodyWithLimit(
-  request: Request,
-  maxBytes: number | null,
-): Promise<Uint8Array> {
-  const contentLength = request.headers.get("content-length");
-  if (maxBytes !== null && contentLength) {
-    const length = Number(contentLength);
-    if (!Number.isNaN(length) && length > maxBytes) {
-      throw new BodyTooLargeError(maxBytes);
-    }
-  }
-
-  if (!request.body) {
-    return new Uint8Array();
-  }
-
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (!value) continue;
-    total += value.length;
-    if (maxBytes !== null && total > maxBytes) {
-      throw new BodyTooLargeError(maxBytes);
-    }
-    chunks.push(value);
-  }
-
-  const body = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    body.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return body;
 }
 
 // ── Track A (spec 2026-07-28) — Stateless transport constants ───────────────
@@ -281,155 +240,6 @@ function readLogLevel(meta: Record<string, unknown>): McpLogLevel | undefined {
   return typeof raw === "string" && MCP_LOG_LEVELS.includes(raw as McpLogLevel)
     ? raw as McpLogLevel
     : undefined;
-}
-
-/**
- * Sentinel used when there is no authentication at all.
- *
- * Deliberately not a plausible subject value: the NUL prefix cannot appear in a
- * JWT `sub`, so it can never collide with a real principal.
- */
-const MRTR_NO_AUTH_PRINCIPAL = "\u0000unauthenticated";
-
-/**
- * Principal to bind a `requestState` to.
- *
- * Three cases, only two of which are acceptable:
- *
- * 1. **No auth configured** — every caller shares one authority by definition, so
- *    there is no boundary to enforce and the sentinel above is honest about it.
- *    The method and argument bindings still apply.
- * 2. **Authenticated with a subject** — the binding separates callers, which is
- *    the case it exists for.
- * 3. **Authenticated without a usable subject** — `AuthInfo.subject` falls back to
- *    `"unknown"` for a valid token carrying no `sub` claim. Sealing against that
- *    would put every such caller under one identity: a token minted for one could
- *    be spent by another, while the code reads as though the binding were
- *    enforced. That is worse than no auth, because it is invisible. Throws.
- */
-function callerPrincipal(authInfo: AuthInfo | undefined): string | null {
-  if (authInfo === undefined) return MRTR_NO_AUTH_PRINCIPAL;
-  const subject = authInfo.subject;
-  if (subject === undefined || subject === "" || subject === "unknown") {
-    // `null`, not a throw: the task handlers call this outside any try/catch, so
-    // a throw would surface through the POST-level catch as -32700 "Parse error"
-    // — a diagnosis pointing nowhere near a misconfigured auth provider. The
-    // caller turns this into an explicit error instead.
-    return null;
-  }
-  return subject;
-}
-
-/**
- * Authorization key for a task-related request.
- *
- * Defaults to the authenticated principal. A consumer whose authorization depends
- * on more than identity — a tenant, an organisation, a workspace — supplies
- * `taskOwnerKey` so that dimension becomes part of the key. Without it, binding to
- * the subject alone leaves a task created under one tenant reachable from another
- * by the same user.
- */
-async function taskOwnerKeyFor(
-  options: McpAppOptions,
-  authInfo: AuthInfo | undefined,
-  request: Request | undefined,
-  principal: string,
-): Promise<string | null> {
-  if (options.taskOwnerKey === undefined || request === undefined) {
-    return principal;
-  }
-  let key: unknown;
-  try {
-    key = await options.taskOwnerKey(authInfo, request);
-  } catch {
-    // A throwing hook is a consumer bug, but it must fail closed and legibly —
-    // not escape to the POST-level catch and be reported as -32700 Parse error.
-    return null;
-  }
-  // An empty or non-string key would put every caller under one owner, undoing
-  // the isolation the hook exists to provide — and `""` is exactly what the
-  // obvious implementation yields when a header is missing. Refuse it rather
-  // than silently sharing tasks between callers.
-  if (typeof key !== "string" || key.length === 0) return null;
-  return key;
-}
-
-/** The error to return when `taskOwnerKey` produced an unusable value. */
-function noOwnerKeyError(id: unknown, version: string): Response {
-  return jsonRpcResponse(
-    {
-      jsonrpc: "2.0",
-      id,
-      error: {
-        code: ErrorCode.InternalError,
-        message:
-          "taskOwnerKey returned an empty or non-string value, which would place every caller under one owner.",
-        data: {
-          problem: "invalid_task_owner_key",
-          recovery:
-            'Return a non-empty string. If the value it derives from can be absent, decide explicitly what an anonymous caller\'s key is rather than letting it fall to "".',
-        },
-      },
-    },
-    500,
-    { "MCP-Protocol-Version": version },
-  );
-}
-
-/** The error to return when no caller boundary can be established. */
-function noPrincipalError(id: unknown, version: string): Response {
-  return jsonRpcResponse(
-    {
-      jsonrpc: "2.0",
-      id,
-      error: {
-        code: ErrorCode.InternalError,
-        message:
-          "Server cannot establish a caller identity: the auth provider returned no usable subject for an authenticated request.",
-        data: {
-          problem: "no_caller_principal",
-          recovery:
-            "Configure the auth provider to supply a subject claim, or disable auth if all callers genuinely share one authority.",
-        },
-      },
-    },
-    500,
-    { "MCP-Protocol-Version": version },
-  );
-}
-
-/** Lowercase hex encoding, for the requestState nonce. */
-function bytesToHexLocal(bytes: Uint8Array): string {
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-/**
- * Build a JSON-RPC response with an explicit HTTP status.
- *
- * Module-scoped rather than nested in `startHttp`: request-validation helpers on
- * the class need it too, and duplicating the header defaults is how a response
- * ends up missing its Content-Type.
- */
-function jsonRpcResponse(
-  payload: Record<string, unknown>,
-  status: number,
-  headers?: Record<string, string>,
-): Response {
-  return new Response(JSON.stringify(payload), {
-    status,
-    headers: {
-      "Content-Type": "application/json",
-      ...(headers ?? {}),
-    },
-  });
-}
-
-/**
- * Narrow type-guard: returns true iff `v` is a plain object (not array, not null).
- * Used to safely extract fields from JSON-RPC `params` without unsafe casts.
- */
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
 /**

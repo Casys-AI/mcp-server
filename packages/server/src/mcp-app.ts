@@ -455,6 +455,69 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 }
 
 /**
+ * Validate the client-owned subscriptions/listen filter before it reaches the
+ * registry. The registry deliberately works with a typed SubscriptionFilter;
+ * casting untrusted JSON into it made truthy values subscribe to list changes
+ * and let invalid URI entries reach the SSE acknowledgement.
+ */
+function validateSubscriptionFilter(
+  filter: Record<string, unknown>,
+):
+  | { ok: true; filter: SubscriptionFilter }
+  | {
+    ok: false;
+    message: string;
+    bodyField: string;
+    recovery: string;
+  } {
+  for (
+    const field of [
+      "toolsListChanged",
+      "promptsListChanged",
+      "resourcesListChanged",
+    ] as const
+  ) {
+    if (filter[field] !== undefined && typeof filter[field] !== "boolean") {
+      return {
+        ok: false,
+        message: `${field} must be a boolean when present`,
+        bodyField: `params.notifications.${field}`,
+        recovery:
+          `Send ${field} as true or false, or omit it when that notification type is not requested.`,
+      };
+    }
+  }
+
+  for (const field of ["resourceSubscriptions", "taskIds"] as const) {
+    const value = filter[field];
+    if (value === undefined) continue;
+    if (!Array.isArray(value)) {
+      return {
+        ok: false,
+        message: `${field} must be an array of strings when present`,
+        bodyField: `params.notifications.${field}`,
+        recovery:
+          `Send ${field} as an array of strings, or omit it when no identifiers are requested.`,
+      };
+    }
+    const malformedIndex = value.findIndex((entry) =>
+      typeof entry !== "string"
+    );
+    if (malformedIndex !== -1) {
+      return {
+        ok: false,
+        message: `${field} entries must be strings`,
+        bodyField: `params.notifications.${field}[${malformedIndex}]`,
+        recovery:
+          `Send only string entries in ${field}; remove or replace the malformed entry.`,
+      };
+    }
+  }
+
+  return { ok: true, filter: filter as SubscriptionFilter };
+}
+
+/**
  * Stamp a result with the spec-2026-07-28 envelope: the required `resultType`
  * (SEP-2322) and the server's identity under `_meta` (SEP-2575, SHOULD).
  *
@@ -2965,7 +3028,28 @@ export class McpApp {
               400,
             );
           }
-          const requested = params["notifications"] as SubscriptionFilter;
+          const filter = validateSubscriptionFilter(
+            params["notifications"] as Record<string, unknown>,
+          );
+          if (!filter.ok) {
+            return jsonRpcResponse(
+              {
+                jsonrpc: "2.0",
+                id,
+                error: {
+                  code: JSONRPC_INVALID_PARAMS,
+                  message: filter.message,
+                  data: {
+                    problem: "malformed_field",
+                    bodyField: filter.bodyField,
+                    recovery: filter.recovery,
+                  },
+                },
+              },
+              400,
+            );
+          }
+          const requested = filter.filter;
 
           // Recognising `taskIds` is mandatory even though pushing task updates is
           // not: a client that asks for task notifications without declaring the

@@ -316,6 +316,60 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 }
 
 /**
+ * Reduce a task input request to the exact JSON shape the task snapshot will
+ * expose, then verify the required InputRequest fields on that shape.
+ *
+ * Task handlers are TypeScript callers, but a JavaScript handler (or an `any`
+ * escape hatch) can pass any value here. Storing it first was unsafe: a non-string
+ * key could throw only when a later tasks/get built its snapshot, and `null`
+ * requests were emitted as invalid protocol objects. Canonicalising once at the
+ * boundary keeps the stored value and the wire value identical.
+ */
+function canonicaliseTaskInputRequest(
+  key: unknown,
+  request: unknown,
+):
+  | { ok: true; key: string; request: InputRequest }
+  | { ok: false; message: string } {
+  if (typeof key !== "string") {
+    return {
+      ok: false,
+      message: "Invalid task input request key: expected a string.",
+    };
+  }
+
+  let canonical: unknown;
+  try {
+    const serialised = JSON.stringify(request);
+    if (serialised === undefined) throw new Error("not JSON-serialisable");
+    canonical = JSON.parse(serialised);
+  } catch {
+    return {
+      ok: false,
+      message:
+        "Invalid task input request: it must be a JSON-serialisable object with a string method and object params.",
+    };
+  }
+
+  if (
+    !isRecord(canonical) || typeof canonical["method"] !== "string" ||
+    !isRecord(canonical["params"])
+  ) {
+    return {
+      ok: false,
+      message:
+        "Invalid task input request: expected an object with a string method and object params.",
+    };
+  }
+
+  return {
+    ok: true,
+    key,
+    request: canonical as unknown as InputRequest,
+  };
+}
+
+/**
  * Determine whether a thrown value looks like a JSON-RPC error.
  *
  * Spec: "The 'failed' status MUST NOT be used for non-JSON-RPC errors."
@@ -353,10 +407,11 @@ function toDetailedTask(internal: InternalTask): DetailedTask {
     case "working":
       return { ...base, status: "working" };
     case "input_required": {
-      const inputRequests: Record<string, InputRequest> = {};
-      for (const [k, v] of internal.inputRequests) {
-        inputRequests[k] = v;
-      }
+      // Object.fromEntries creates own data properties even for `__proto__`,
+      // `constructor`, and `toString`. Assigning those keys to `{}` can mutate
+      // or shadow its prototype instead of faithfully producing the JSON map the
+      // client must receive.
+      const inputRequests = Object.fromEntries(internal.inputRequests);
       return { ...base, status: "input_required", inputRequests };
     }
     case "completed":
@@ -536,28 +591,62 @@ export class TaskStore {
         key: string,
         request: InputRequest,
       ): Promise<Record<string, unknown>> => {
+        const validated = canonicaliseTaskInputRequest(key, request);
+        if (!validated.ok) {
+          // A malformed server-side request cannot be sent back to the client.
+          // Unlike an HTTP request, the correct boundary response is a terminal
+          // task: the caller already holds this task's id and can observe the
+          // concrete failure through tasks/get. Mark it before rejecting so a
+          // handler that catches the rejection cannot accidentally complete the
+          // task afterwards.
+          if (!isTerminal(internal.status)) {
+            internal.status = "failed";
+            internal.error = {
+              code: -32603,
+              message: validated.message,
+            };
+            internal.lastUpdatedAt = new Date().toISOString();
+            internal.terminalAt = Date.now();
+            // Reject any earlier outstanding input waits too. Their abort
+            // handlers remove the requests, so no stale input can survive this
+            // terminal state.
+            abortController.abort();
+            this._notify(internal);
+          }
+          return Promise.reject(new Error(validated.message));
+        }
+        const canonicalKey = validated.key;
+
+        if (isTerminal(internal.status)) {
+          return Promise.reject(
+            new Error(
+              `Cannot require task input after the task is ${internal.status}.`,
+            ),
+          );
+        }
+
         // Spec §Task Update Requests: key uniqueness is lifetime-scoped, not
         // just to currently-outstanding requests. A key used, answered, and
         // re-submitted is a server bug, not a client one.
-        if (internal.answeredKeys.has(key)) {
+        if (internal.answeredKeys.has(canonicalKey)) {
           return Promise.reject(
             new Error(
-              `Input request key "${key}" has already been answered in this task ` +
+              `Input request key "${canonicalKey}" has already been answered in this task ` +
                 `and cannot be reused (spec §Task Update Requests prohibits key reuse ` +
                 `after the client has delivered a response).`,
             ),
           );
         }
-        if (internal.pendingResolvers.has(key)) {
+        if (internal.pendingResolvers.has(canonicalKey)) {
           return Promise.reject(
             new Error(
-              `Input request key "${key}" is already outstanding in this task.`,
+              `Input request key "${canonicalKey}" is already outstanding in this task.`,
             ),
           );
         }
 
         // Register the outstanding request and transition to input_required.
-        internal.inputRequests.set(key, request);
+        internal.inputRequests.set(canonicalKey, validated.request);
         internal.lastUpdatedAt = new Date().toISOString();
         if (internal.status === "working") {
           internal.status = "input_required";
@@ -565,15 +654,15 @@ export class TaskStore {
         }
 
         return new Promise<Record<string, unknown>>((resolve, reject) => {
-          internal.pendingResolvers.set(key, resolve);
+          internal.pendingResolvers.set(canonicalKey, resolve);
 
           // Fire immediately if the abort already happened (race-free via
           // the AbortSignal contract: addEventListener fires synchronously
           // when the signal is already aborted).
           const onAbort = () => {
-            if (!internal.pendingResolvers.has(key)) return; // already answered
-            internal.pendingResolvers.delete(key);
-            internal.inputRequests.delete(key);
+            if (!internal.pendingResolvers.has(canonicalKey)) return; // already answered
+            internal.pendingResolvers.delete(canonicalKey);
+            internal.inputRequests.delete(canonicalKey);
             reject(new DOMException("Task was cancelled", "AbortError"));
           };
 

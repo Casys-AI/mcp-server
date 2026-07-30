@@ -263,7 +263,7 @@ Deno.test("mrtr - a signal with neither inputRequests nor requestState is a serv
   // Server rule 6. Surfaces as -32603 rather than being emitted as an invalid
   // MRTR result for the client to puzzle over: it is the server author's bug.
   const { server } = buildServer({ signingKey: KEY });
-  const { http, url } = await start(server);
+  const { http } = await start(server);
   try {
     // No signing key path would add a requestState, so run this one unsigned.
     const bare = buildServer();

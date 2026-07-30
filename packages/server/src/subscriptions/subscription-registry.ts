@@ -258,10 +258,15 @@ export interface SubscriptionRegistryOptions {
   readonly keepAliveIntervalMs?: number;
   /**
    * Server capability mask — which notification types this server can deliver.
-   * Omitted fields default to supported. Set a field to false / empty array to
-   * opt-out of delivering that type entirely.
    *
-   * Default (all omitted): all four types are supported.
+   * An **allowlist**: a supplied mask must name every type it wants delivered,
+   * because an omitted field means "not supported". This is deliberate — an
+   * operator narrowing delivery should not have a type they forgot to mention
+   * granted back to them.
+   *
+   * Omit the option entirely (the default) to support all four types. Supplying
+   * `{}` therefore supports none, which is a legal way to accept subscriptions
+   * while delivering nothing.
    */
   readonly serverSupports?: SubscriptionFilter;
 }
@@ -315,8 +320,23 @@ export class SubscriptionRegistry {
     this.opts = {
       serverInfo: options.serverInfo,
       keepAliveIntervalMs: options.keepAliveIntervalMs ?? 30_000,
+      // Whole-object fallback, deliberately: a supplied mask is an ALLOWLIST, so
+      // an omitted field means "not supported". Merging per-field would instead
+      // make a partial mask grant everything it forgot to mention — the opposite
+      // of what an operator restricting delivery intends. Fail closed.
       serverSupports: options.serverSupports ?? defaultSupports,
     };
+  }
+
+  /**
+   * The subset of `requested` this server will actually honour.
+   *
+   * Exposed so a caller can build the acknowledgement from the same value the
+   * registry will enforce. Computing it independently on both sides is how a
+   * client ends up told it subscribed to something the registry then ignores.
+   */
+  computeAgreedFilter(requested: SubscriptionFilter): SubscriptionFilter {
+    return intersectFilter(requested, this.opts.serverSupports);
   }
 
   /**

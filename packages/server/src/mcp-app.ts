@@ -84,6 +84,13 @@ import {
   isAsyncTaskDescriptor,
   TaskStore,
 } from "./tasks/mod.ts";
+import {
+  buildAcknowledgedMessage,
+  encodeSSEEvent,
+  type SubscriptionFilter,
+  SubscriptionRegistry,
+  type SubscriptionSink,
+} from "./subscriptions/subscription-registry.ts";
 import { ServerMetrics } from "./observability/metrics.ts";
 import { endToolCallSpan, startToolCallSpan } from "./observability/otel.ts";
 
@@ -402,6 +409,15 @@ export class McpApp {
    * method it is (404 + -32601) rather than hitting an empty store.
    */
   private readonly taskStore: TaskStore | null;
+
+  /**
+   * Live `subscriptions/listen` streams, or `null` outside stateless mode.
+   *
+   * Core protocol rather than an extension, so it is unconditional on the
+   * stateless path. The stateful transport keeps its own session-keyed SSE
+   * machinery, which this replaces once that path is retired.
+   */
+  private subscriptions: SubscriptionRegistry | null = null;
 
   /**
    * Validated `ttlMs`. The spec requires servers to provide a value `>= 0`, and
@@ -1296,6 +1312,13 @@ export class McpApp {
       this.taskStore.dispose();
     }
 
+    // Tear down live subscription streams: sends notifications/cancelled and the
+    // graceful-close result on each, so clients can tell a clean shutdown from a
+    // dropped connection, then stops the keep-alive ticker.
+    if (this.subscriptions) {
+      this.subscriptions.shutdown();
+    }
+
     // Close all SSE clients BEFORE shutting down HTTP server.
     // Deno.serve().shutdown() waits for all connections to drain,
     // so long-lived SSE connections must be closed first to avoid blocking.
@@ -1390,6 +1413,20 @@ export class McpApp {
     this.buildPipeline();
 
     const hostname = options.hostname ?? "0.0.0.0";
+    if (this.options.transport === "stateless" && this.subscriptions === null) {
+      this.subscriptions = new SubscriptionRegistry({
+        serverInfo: { name: this.options.name, version: this.options.version },
+      });
+      // Unref'd: a keep-alive ticker must not by itself hold the process open.
+      // The cast matches the existing session-timer call sites — `UnrefTimerFn`
+      // is typed for Deno's numeric handle, while Node's `setInterval` returns a
+      // Timeout object.
+      this.subscriptions.startKeepAlive(
+        setInterval,
+        (id) => unrefTimer(id as unknown as number),
+      );
+    }
+
     const enableCors = options.cors ?? true;
     const corsOrigins = options.corsOrigins ?? "*";
     const maxBodyBytes = options.maxBodyBytes === null
@@ -2278,6 +2315,106 @@ export class McpApp {
               },
             });
           }
+        }
+
+        // ── subscriptions/listen (SEP-2575) ──────────────────────────────
+        //
+        // Replaces the removed HTTP GET stream and resources/subscribe. The
+        // response IS the stream: a long-lived SSE body carrying only the
+        // notification types the client opted into.
+        if (
+          method === "subscriptions/listen" && this.subscriptions !== null
+        ) {
+          const registry = this.subscriptions;
+
+          // A notification-shaped listen makes no sense: the response IS the
+          // stream, and the subscription id IS this request's id — with no id
+          // there is nothing to correlate notifications to.
+          if (id === undefined) {
+            return jsonRpcResponse(
+              {
+                jsonrpc: "2.0",
+                id: null,
+                error: {
+                  code: JSONRPC_INVALID_PARAMS,
+                  message:
+                    "subscriptions/listen requires a JSON-RPC id: the response is the notification stream, and the id identifies the subscription",
+                },
+              },
+              400,
+            );
+          }
+          const subscriptionId: string | number = id as string | number;
+          const requested: SubscriptionFilter =
+            isRecord(params) && isRecord(params["notifications"])
+              ? params["notifications"] as SubscriptionFilter
+              : {};
+
+          // Computed ONCE by the registry and reused for both the
+          // acknowledgement and the registration. Deriving it independently here
+          // is how a client ends up told it subscribed to a set the registry does
+          // not actually enforce.
+          const agreed = registry.computeAgreedFilter(requested);
+
+          let internalKey: string | null = null;
+          const stream = new ReadableStream<Uint8Array>({
+            start: (controller) => {
+              let closed = false;
+              const sink: SubscriptionSink = {
+                enqueue(chunk) {
+                  // The cancel() callback fires before unregister(), so a write
+                  // can race a closed controller on every client disconnect.
+                  if (closed) return;
+                  try {
+                    controller.enqueue(chunk);
+                  } catch {
+                    closed = true;
+                  }
+                },
+                close() {
+                  if (closed) return;
+                  closed = true;
+                  try {
+                    controller.close();
+                  } catch { /* already closed */ }
+                },
+                get isClosed() {
+                  return closed;
+                },
+              };
+
+              // The acknowledgement MUST be the first message on the stream, so
+              // it is enqueued BEFORE registering — otherwise a fan-out landing
+              // in between would precede it.
+              sink.enqueue(
+                encodeSSEEvent(
+                  buildAcknowledgedMessage(subscriptionId, agreed),
+                ),
+              );
+              internalKey = registry.register(subscriptionId, agreed, sink);
+            },
+            cancel: () => {
+              // Client closed the stream: that IS the cancellation signal on
+              // HTTP, and the server must send nothing further.
+              if (internalKey !== null) {
+                registry.unregister(internalKey, "client");
+              }
+            },
+          });
+
+          return new Response(stream, {
+            status: 200,
+            headers: {
+              "Content-Type": "text/event-stream",
+              "Cache-Control": "no-cache",
+              Connection: "keep-alive",
+              // Tells nginx and friends not to buffer, without which events sit
+              // in a proxy until the buffer fills.
+              "X-Accel-Buffering": "no",
+              "MCP-Protocol-Version": statelessVersion ??
+                STATELESS_FALLBACK_VERSION,
+            },
+          });
         }
 
         // ── Tasks extension (io.modelcontextprotocol/tasks) ──────────────

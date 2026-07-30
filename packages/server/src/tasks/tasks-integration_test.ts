@@ -181,8 +181,11 @@ Deno.test("tasks - the capability guard covers all four entry points", async () 
       const data = await res.json();
       assertEquals(res.status, 400, `${method} must be refused`);
       assertEquals(data.error.code, -32021, `${method} code`);
-      // The client needs to know WHICH capability to add.
-      assertEquals(data.error.data.requiredCapabilities, [TASKS_ID]);
+      // ClientCapabilities-shaped per the schema, so a typed client can read it
+      // directly rather than mapping an array of names back onto the type.
+      assertEquals(data.error.data.requiredCapabilities, {
+        extensions: { [TASKS_ID]: {} },
+      });
     }
   } finally {
     await http.shutdown();
@@ -318,10 +321,186 @@ Deno.test("tasks - cancel reports through and the task reaches a terminal state"
 
     const cancelled = await (await post(url, "tasks/cancel", { taskId }))
       .json();
-    assertEquals(cancelled.result.cancelled, true);
+    // MUST be an empty acknowledgement beyond the envelope. Returning task state
+    // here would be non-conformant, and the spec calls the ack eventually
+    // consistent — any state included could already be stale.
+    assertEquals(cancelled.result, {
+      resultType: "complete",
+      _meta: {
+        "io.modelcontextprotocol/serverInfo": {
+          name: "tasks-cancel",
+          version: "1.0.0",
+        },
+      },
+    });
 
     const after = await (await post(url, "tasks/get", { taskId })).json();
     assertEquals(after.result.status, "cancelled");
+  } finally {
+    await http.shutdown();
+  }
+});
+
+// ── Findings from the final adversarial review ───────────────────────────────
+
+Deno.test("tasks - a task is bound to its creator; another caller cannot reach it", async () => {
+  // Spec: "Servers MUST perform authentication and authorization checks on each
+  // task-related request to ensure that the client has permission to access a
+  // task." A task id is an unguessable bearer token, but that is one line of
+  // defence: anyone who learns an id could otherwise read, answer or cancel it.
+  //
+  // Two distinct principals via static bearer tokens.
+  const { createStaticTokenAuthProvider } = await import(
+    "../auth/static-token-provider.ts"
+  );
+  const server = new McpApp({
+    name: "tasks-owner",
+    version: "1.0.0",
+    logger: () => {},
+    transport: "stateless",
+    extensions: { [TASKS_ID]: {} },
+    auth: {
+      provider: createStaticTokenAuthProvider(["token-alice"], {
+        resource: "https://example.test/mcp",
+        subject: "alice",
+      }),
+    },
+  });
+  server.registerTool(
+    { name: "scan", description: "Scan", inputSchema: { type: "object" } },
+    () => createTask({}, () => new Promise(() => {/* never settles */})),
+  );
+
+  const { http, url } = await start(server);
+  try {
+    const create = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer token-alice",
+        "MCP-Protocol-Version": V,
+        "Mcp-Method": "tools/call",
+        "Mcp-Name": "scan",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: {
+          name: "scan",
+          arguments: {},
+          _meta: { [PROTO_KEY]: V, [CAPS_KEY]: WITH_TASKS },
+        },
+      }),
+    });
+    const created = await create.json();
+    const taskId = created.result.taskId as string;
+    assertExists(taskId);
+
+    // Alice can read her own task.
+    const own = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer token-alice",
+        "MCP-Protocol-Version": V,
+        "Mcp-Method": "tasks/get",
+        "Mcp-Name": taskId,
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tasks/get",
+        params: { taskId, _meta: { [PROTO_KEY]: V, [CAPS_KEY]: WITH_TASKS } },
+      }),
+    });
+    assertEquals((await own.json()).result.taskId, taskId);
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("tasks - a completed task carries a CallToolResult, not the raw return value", async () => {
+  // Spec: CreateTaskResult stands in for the standard result of the augmented
+  // request. So the eventual result must be shaped like what tools/call would
+  // have returned — otherwise a client has to special-case task results.
+  const server = new McpApp({
+    name: "tasks-result-shape",
+    version: "1.0.0",
+    logger: () => {},
+    transport: "stateless",
+    extensions: { [TASKS_ID]: {} },
+  });
+  server.registerTool(
+    {
+      name: "rows",
+      description: "Returns rows",
+      inputSchema: { type: "object" },
+    },
+    () => createTask({}, () => Promise.resolve({ rows: 42 })),
+  );
+
+  const { http, url } = await start(server);
+  try {
+    const created = await (await post(url, "tools/call", {
+      name: "rows",
+      arguments: {},
+    })).json();
+    const taskId = created.result.taskId as string;
+
+    // Let the microtask settle.
+    await new Promise((r) => setTimeout(r, 20));
+
+    const got = await (await post(url, "tasks/get", { taskId })).json();
+    assertEquals(got.result.status, "completed");
+    // The shape a synchronous tools/call would have produced: content[], not
+    // the bare { rows: 42 }.
+    assertExists(got.result.result.content);
+    assertEquals(got.result.result.content[0].type, "text");
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("tasks - a 2025 peer cannot reach the extension at all", async () => {
+  // Spec MUST NOT: a 2026-only extension must not be usable by a peer that
+  // negotiated an earlier revision, even one declaring the capability.
+  const { http, url } = await start(buildServer({ declareExtension: true }));
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "MCP-Protocol-Version": "2025-11-25",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tasks/get",
+        params: {
+          taskId: "anything",
+          _meta: { [PROTO_KEY]: "2025-11-25", [CAPS_KEY]: WITH_TASKS },
+        },
+      }),
+    });
+    const data = await res.json();
+    assertEquals(res.status, 404);
+    assertEquals(data.error.code, -32601);
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("tasks - an unknown taskId is an error, not a successful no-op", async () => {
+  const { http, url } = await start(buildServer({ declareExtension: true }));
+  try {
+    for (const method of ["tasks/get", "tasks/update", "tasks/cancel"]) {
+      const params = method === "tasks/update"
+        ? { taskId: "no-such-task", inputResponses: {} }
+        : { taskId: "no-such-task" };
+      const data = await (await post(url, method, params)).json();
+      assertEquals(data.error?.code, -32602, `${method} must report an error`);
+    }
   } finally {
     await http.shutdown();
   }

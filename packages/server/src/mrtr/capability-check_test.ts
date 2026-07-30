@@ -124,8 +124,13 @@ Deno.test("checkInputRequestCapabilities — unknown method rejected fail-safe",
   );
   assertEquals(result.ok, false);
   if (!result.ok) {
-    // The missing key is the method name itself (since no mapping exists).
-    assertEquals(result.missingCapabilities, ["unknown/method"]);
+    // Reported as an unsupported METHOD rather than as a missing capability of
+    // that name. The previous behaviour mapped it to its own name, which a
+    // client could "satisfy" by declaring a capability called "unknown/method" —
+    // no capability at all.
+    assertEquals(result.missingCapabilities, [
+      "<unsupported inputRequest method: unknown/method>",
+    ]);
   }
 });
 

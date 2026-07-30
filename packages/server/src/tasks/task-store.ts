@@ -227,6 +227,14 @@ export interface TaskStoreOptions {
    * Track G ships.
    */
   onNotification?: (task: DetailedTask) => void;
+
+  /**
+   * Runtime hook to unref the sweep timer, so it cannot hold the process open.
+   *
+   * Injected rather than imported: the store is runtime-agnostic, and Deno and
+   * Node expose different mechanisms for this.
+   */
+  unrefTimer?: (id: ReturnType<typeof setInterval>) => void;
 }
 
 // ── Private internal representation ──────────────────────────────────────────
@@ -250,6 +258,15 @@ function isTerminal(
  */
 interface InternalTask {
   taskId: string;
+  /**
+   * Principal that created the task.
+   *
+   * The spec requires an authorization check on every task-related request. A
+   * task id is an unguessable bearer token, but that alone is one line of
+   * defence: any caller who learns an id could otherwise read, answer or cancel
+   * another caller's task. Comparing the owner closes that.
+   */
+  owner: string;
   status: "working" | "input_required" | "completed" | "cancelled" | "failed";
   statusMessage?: string;
   createdAt: string;
@@ -442,6 +459,10 @@ export class TaskStore {
         () => this._sweep(),
         this._options.cleanupIntervalMs,
       );
+      // Unref'd: a housekeeping ticker must never be the reason a process cannot
+      // exit. Without this, forgetting dispose() — or failing before ever
+      // reaching it — hangs the runtime instead of merely leaking a timer.
+      this._options.unrefTimer?.(this._cleanupTimer);
     }
   }
 
@@ -459,7 +480,11 @@ export class TaskStore {
    * must resolve immediately." Fulfilled: we insert into `_tasks` before
    * returning.
    */
-  spawn(descriptor: AsyncTaskDescriptor): CreateTaskResultFields {
+  spawn(
+    descriptor: AsyncTaskDescriptor,
+    owner: string,
+    formatResult?: (raw: unknown) => Record<string, unknown>,
+  ): CreateTaskResultFields {
     const taskId = generateTaskId();
     const now = new Date().toISOString();
 
@@ -477,6 +502,7 @@ export class TaskStore {
     // between allocation and assignment.
     const internal: InternalTask = {
       taskId,
+      owner,
       status: "working",
       createdAt: now,
       lastUpdatedAt: now,
@@ -526,7 +552,7 @@ export class TaskStore {
         internal.lastUpdatedAt = new Date().toISOString();
         if (internal.status === "working") {
           internal.status = "input_required";
-          this._options.onNotification?.(toDetailedTask(internal));
+          this._notify(internal);
         }
 
         return new Promise<Record<string, unknown>>((resolve, reject) => {
@@ -565,10 +591,17 @@ export class TaskStore {
         if (isTerminal(internal.status)) return;
 
         internal.status = "completed";
-        internal.result = normaliseResult(rawResult);
+        // A completed task carries the result the original request would have
+        // returned — a CallToolResult for tools/call — not the handler's raw
+        // return value. The store stays ignorant of MCP result shapes: the
+        // transport injects the conversion it already uses for synchronous
+        // calls, so both paths produce identical output for the same handler.
+        internal.result = formatResult
+          ? formatResult(rawResult)
+          : normaliseResult(rawResult);
         internal.lastUpdatedAt = new Date().toISOString();
         internal.terminalAt = Date.now();
-        this._options.onNotification?.(toDetailedTask(internal));
+        this._notify(internal);
       },
       (error: unknown) => {
         if (isTerminal(internal.status)) return; // TTL/eviction won the race
@@ -595,7 +628,7 @@ export class TaskStore {
             message: error instanceof Error ? error.message : String(error),
           };
         }
-        this._options.onNotification?.(toDetailedTask(internal));
+        this._notify(internal);
       },
     );
 
@@ -621,9 +654,13 @@ export class TaskStore {
    * with result; if 'cancelled', return Task with status 'cancelled'; if
    * 'failed', return Task with error."
    */
-  get(taskId: string): DetailedTask | null {
+  get(taskId: string, caller: string): DetailedTask | null {
     const internal = this._tasks.get(taskId);
     if (!internal) return null;
+    // Indistinguishable from "unknown task" on purpose: telling a caller that a
+    // task exists but is not theirs confirms the id, which is exactly what an
+    // unguessable handle is meant to withhold.
+    if (internal.owner !== caller) return null;
     return toDetailedTask(internal);
   }
 
@@ -647,9 +684,10 @@ export class TaskStore {
   update(
     taskId: string,
     inputResponses: Record<string, unknown>,
+    caller: string,
   ): boolean {
     const internal = this._tasks.get(taskId);
-    if (!internal) return false;
+    if (!internal || internal.owner !== caller) return false;
 
     for (const [key, rawValue] of Object.entries(inputResponses)) {
       const resolver = internal.pendingResolvers.get(key);
@@ -678,7 +716,7 @@ export class TaskStore {
     ) {
       internal.status = "working";
       internal.lastUpdatedAt = new Date().toISOString();
-      this._options.onNotification?.(toDetailedTask(internal));
+      this._notify(internal);
     }
 
     return true;
@@ -698,9 +736,9 @@ export class TaskStore {
    * reserves a dedicated `notifications/tasks/statusChanged` notification for
    * Track G instead.
    */
-  cancel(taskId: string): boolean {
+  cancel(taskId: string, caller: string): boolean {
     const internal = this._tasks.get(taskId);
-    if (!internal) return false;
+    if (!internal || internal.owner !== caller) return false;
 
     if (!isTerminal(internal.status)) {
       // Signal the AbortController so run() can observe ctrl.signal.aborted.
@@ -731,7 +769,24 @@ export class TaskStore {
    * Must be called after drain() in McpApp.stop() to release the timer
    * and let the process exit cleanly.
    */
+  /** True once dispose() ran; suppresses any late notification. */
+  private _disposed = false;
+
+  /**
+   * Emit a status change, unless the store was disposed.
+   *
+   * A drained task's `run()` promise can still settle after dispose() — abort is
+   * cooperative, so work that ignores the signal keeps going. Pushing that
+   * transition to a subscriber whose transport is already torn down is at best
+   * useless and at worst a write to a closed stream.
+   */
+  private _notify(internal: InternalTask): void {
+    if (this._disposed) return;
+    this._options.onNotification?.(toDetailedTask(internal));
+  }
+
   dispose(): void {
+    this._disposed = true;
     if (this._cleanupTimer !== null) {
       clearInterval(this._cleanupTimer);
       this._cleanupTimer = null;
@@ -776,7 +831,7 @@ export class TaskStore {
       };
       internal.lastUpdatedAt = new Date().toISOString();
       internal.terminalAt = now;
-      this._options.onNotification?.(toDetailedTask(internal));
+      this._notify(internal);
     }
   }
 

@@ -305,6 +305,45 @@ function readLogLevel(meta: Record<string, unknown>): McpLogLevel | undefined {
     : undefined;
 }
 
+/**
+ * Sentinel used when there is no authentication at all.
+ *
+ * Deliberately not a plausible subject value: the NUL prefix cannot appear in a
+ * JWT `sub`, so it can never collide with a real principal.
+ */
+const MRTR_NO_AUTH_PRINCIPAL = "\u0000unauthenticated";
+
+/**
+ * Principal to bind a `requestState` to.
+ *
+ * Three cases, only two of which are acceptable:
+ *
+ * 1. **No auth configured** — every caller shares one authority by definition, so
+ *    there is no boundary to enforce and the sentinel above is honest about it.
+ *    The method and argument bindings still apply.
+ * 2. **Authenticated with a subject** — the binding separates callers, which is
+ *    the case it exists for.
+ * 3. **Authenticated without a usable subject** — `AuthInfo.subject` falls back to
+ *    `"unknown"` for a valid token carrying no `sub` claim. Sealing against that
+ *    would put every such caller under one identity: a token minted for one could
+ *    be spent by another, while the code reads as though the binding were
+ *    enforced. That is worse than no auth, because it is invisible. Throws.
+ */
+function mrtrPrincipal(authInfo: AuthInfo | undefined): string {
+  if (authInfo === undefined) return MRTR_NO_AUTH_PRINCIPAL;
+  const subject = authInfo.subject;
+  if (subject === undefined || subject === "" || subject === "unknown") {
+    throw new Error(
+      "[McpApp] MRTR cannot bind requestState to a caller: the auth provider " +
+        "returned no usable subject for an authenticated request. Every such " +
+        "caller would share one identity, so a token minted for one could be " +
+        "spent by another. Configure the provider to supply a subject claim, or " +
+        "disable auth if callers genuinely share one authority.",
+    );
+  }
+  return subject;
+}
+
 /** Lowercase hex encoding, for the requestState nonce. */
 function bytesToHexLocal(bytes: Uint8Array): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
@@ -504,7 +543,10 @@ export class McpApp {
     this.cacheTtlMs = ttlMs;
 
     this.taskStore = options.extensions?.[TASKS_EXTENSION_ID] !== undefined
-      ? new TaskStore({ onNotification: (task) => this.onTaskChanged(task) })
+      ? new TaskStore({
+        onNotification: (task) => this.onTaskChanged(task),
+        unrefTimer: (id) => unrefTimer(id as unknown as number),
+      })
       : null;
 
     // Validate the shape of the MRTR key here rather than on first use. The
@@ -1356,6 +1398,19 @@ export class McpApp {
    * Stop the server gracefully
    */
   async stop(): Promise<void> {
+    // Release the subsystems whose timers exist from construction, BEFORE the
+    // `started` guard. They are created in the constructor, so a server that
+    // failed during startup — or was never started — still has them armed, and
+    // returning early left them running with no way to reach them again.
+    if (this.taskStore) {
+      this.taskStore.drain();
+      this.taskStore.dispose();
+    }
+    if (this.subscriptions) {
+      this.subscriptions.shutdown();
+      this.subscriptions = null;
+    }
+
     if (!this.started) {
       return;
     }
@@ -1369,20 +1424,6 @@ export class McpApp {
     // Cancel pending sampling requests
     if (this.samplingBridge) {
       this.samplingBridge.cancelAll();
-    }
-
-    // Abort in-flight tasks and stop the sweep timer. drain() aborts the work;
-    // dispose() releases the timer, without which the process would not exit.
-    if (this.taskStore) {
-      this.taskStore.drain();
-      this.taskStore.dispose();
-    }
-
-    // Tear down live subscription streams: sends notifications/cancelled and the
-    // graceful-close result on each, so clients can tell a clean shutdown from a
-    // dropped connection, then stops the keep-alive ticker.
-    if (this.subscriptions) {
-      this.subscriptions.shutdown();
     }
 
     // Close all SSE clients BEFORE shutting down HTTP server.
@@ -2230,6 +2271,15 @@ export class McpApp {
           // it has no meaning on the legacy path — and the client capabilities it
           // needs only arrive per-request there.
           const mrtrEnabled = statelessVersion === SPEC_2026_07_28;
+
+          // Digest of the arguments AS RECEIVED, taken before the middleware
+          // pipeline runs. Re-deriving it at seal time would hash whatever the
+          // pipeline left in `args` — validation coercion, defaults, redaction —
+          // so a client replaying the request byte-for-byte would fail
+          // `wrong_params` through no fault of its own.
+          const ingressDigest = mrtrEnabled
+            ? await paramsDigest({ arguments: args, name: toolName })
+            : "";
           const echoedResponses = mrtrEnabled && isRecord(params) &&
               isRecord(params["inputResponses"])
             ? params["inputResponses"]
@@ -2240,6 +2290,35 @@ export class McpApp {
             : undefined;
 
           let retryVerified: boolean | undefined;
+
+          // A retry carrying answers but no token cannot be verified, and the
+          // server always issues a token when it has a key. So this combination
+          // is either a confused client or an attempt to inject answers past the
+          // verification gate — refuse it rather than forwarding unverified
+          // responses to the handler.
+          if (
+            echoedResponses !== undefined && echoedState === undefined &&
+            await this.getMrtrKey() !== null
+          ) {
+            return jsonRpcResponse(
+              {
+                jsonrpc: "2.0",
+                id,
+                error: {
+                  code: JSONRPC_INVALID_PARAMS,
+                  message:
+                    "inputResponses supplied without the requestState issued with them",
+                  data: {
+                    problem: "missing_request_state",
+                    recovery:
+                      "Echo back the exact requestState string from the InputRequiredResult alongside inputResponses.",
+                  },
+                },
+              },
+              400,
+            );
+          }
+
           if (echoedState !== undefined) {
             const key = await this.getMrtrKey();
             if (key === null) {
@@ -2253,14 +2332,11 @@ export class McpApp {
               // nothing — correctly so: without auth there is no user boundary to
               // cross, and any caller could invoke the tool directly anyway. The
               // method and argument bindings still apply in both cases.
-              const principal = httpAuthInfo?.subject ?? "anonymous";
+              const principal = mrtrPrincipal(httpAuthInfo);
               const verdict = await verifyRequestState(echoedState, key, {
                 principal,
                 method: "tools/call",
-                paramsDigest: await paramsDigest({
-                  arguments: args,
-                  name: toolName,
-                }),
+                paramsDigest: ingressDigest,
               });
               if (!verdict.ok) {
                 // Attacker-controlled input that failed its integrity or binding
@@ -2310,9 +2386,9 @@ export class McpApp {
                 result as unknown as InputRequiredSignal,
                 {
                   clientCapabilities: statelessClientMeta?.clientCapabilities,
-                  principal: httpAuthInfo?.subject ?? "anonymous",
+                  principal: mrtrPrincipal(httpAuthInfo),
                   method: "tools/call",
-                  salientParams: { arguments: args, name: toolName },
+                  paramsDigest: ingressDigest,
                 },
               );
               if (!built.ok) {
@@ -2320,7 +2396,11 @@ export class McpApp {
                   {
                     jsonrpc: "2.0",
                     id,
-                    error: { code: built.code, message: built.message },
+                    error: {
+                      code: built.code,
+                      message: built.message,
+                      ...(built.data !== undefined ? { data: built.data } : {}),
+                    },
                   },
                   400,
                 );
@@ -2331,13 +2411,42 @@ export class McpApp {
             // Tasks extension: the handler asked for a task handle instead of
             // a synchronous result.
             if (isAsyncTaskDescriptor(result)) {
+              if (statelessVersion !== SPEC_2026_07_28) {
+                // The handler asked for a task, but this peer cannot be handed
+                // one. Surfacing the server-side misconfiguration is better than
+                // silently degrading to a synchronous call whose duration is the
+                // reason the handler wanted a task in the first place.
+                return jsonRpcResponse(
+                  {
+                    jsonrpc: "2.0",
+                    id,
+                    error: {
+                      code: ErrorCode.InternalError,
+                      message:
+                        `Tool "${toolName}" returned a task, but the client negotiated ${
+                          statelessVersion ?? "a pre-2026 revision"
+                        }; the Tasks extension requires 2026-07-28.`,
+                    },
+                  },
+                  400,
+                );
+              }
               const guard = this.requireTasksCapability(
                 statelessClientMeta?.clientCapabilities,
                 id,
               );
               if (guard) return guard;
 
-              const task = this.taskStore!.spawn(result);
+              // Owner binding: the spec requires an authorization check on every
+              // task-related request, and a task id alone is only one line of
+              // defence.
+              const task = this.taskStore!.spawn(
+                result,
+                mrtrPrincipal(httpAuthInfo),
+                // Same conversion the synchronous path uses, so a handler's
+                // return value produces an identical result either way.
+                (raw) => this.buildToolCallResult(toolName, raw),
+              );
               return c.json({
                 jsonrpc: "2.0",
                 id,
@@ -2518,7 +2627,8 @@ export class McpApp {
         // response IS the stream: a long-lived SSE body carrying only the
         // notification types the client opted into.
         if (
-          method === "subscriptions/listen" && this.subscriptions !== null
+          method === "subscriptions/listen" && this.subscriptions !== null &&
+          statelessVersion === SPEC_2026_07_28
         ) {
           const registry = this.subscriptions;
 
@@ -2540,10 +2650,30 @@ export class McpApp {
             );
           }
           const subscriptionId: string | number = id as string | number;
-          const requested: SubscriptionFilter =
-            isRecord(params) && isRecord(params["notifications"])
-              ? params["notifications"] as SubscriptionFilter
-              : {};
+          // A missing or non-object filter is malformed, not "subscribe to
+          // nothing": a client that meant to subscribe would otherwise get a
+          // 200 stream that stays silent forever, with no way to tell why.
+          if (!isRecord(params) || !isRecord(params["notifications"])) {
+            return jsonRpcResponse(
+              {
+                jsonrpc: "2.0",
+                id,
+                error: {
+                  code: JSONRPC_INVALID_PARAMS,
+                  message:
+                    "subscriptions/listen requires a 'notifications' object naming the types to receive",
+                  data: {
+                    problem: "missing_field",
+                    bodyField: "params.notifications",
+                    recovery:
+                      'Send params.notifications, e.g. { toolsListChanged: true } or { resourceSubscriptions: ["ui://x"] }.',
+                  },
+                },
+              },
+              400,
+            );
+          }
+          const requested = params["notifications"] as SubscriptionFilter;
 
           // Computed ONCE by the registry and reused for both the
           // acknowledgement and the registration. Deriving it independently here
@@ -2619,8 +2749,13 @@ export class McpApp {
         // non-declaring client issuing tasks/get, tasks/update OR tasks/cancel.
         // Guarding creation alone would still let such a client poll and cancel
         // tasks it could never have been handed.
+        // Version-gated as well as capability-gated: a 2026-only extension must
+        // not be reachable by a peer that negotiated 2025-11-25, which the Tasks
+        // spec states as a MUST NOT. Falling through leaves it a 404, which is
+        // what an unimplemented method looks like from that peer's perspective.
         if (
           this.taskStore !== null &&
+          statelessVersion === SPEC_2026_07_28 &&
           (method === "tasks/get" || method === "tasks/update" ||
             method === "tasks/cancel")
         ) {
@@ -2653,8 +2788,10 @@ export class McpApp {
             );
           }
 
+          const caller = mrtrPrincipal(httpAuthInfo);
+
           if (method === "tasks/get") {
-            const task = store.get(taskId);
+            const task = store.get(taskId, caller);
             if (task === null) {
               return c.json({
                 jsonrpc: "2.0",
@@ -2692,28 +2829,47 @@ export class McpApp {
                 400,
               );
             }
-            const applied = store.update(taskId, responses);
-            const snapshot = store.get(taskId);
+            if (!store.update(taskId, responses, caller)) {
+              // SHOULD be an error for an unknown id — and an id belonging to
+              // another caller is reported identically, so the response never
+              // confirms that someone else's task exists.
+              return c.json({
+                jsonrpc: "2.0",
+                id,
+                error: {
+                  code: JSONRPC_INVALID_PARAMS,
+                  message: `Unknown taskId: ${taskId}`,
+                },
+              });
+            }
+            // MUST be an EMPTY acknowledgement (beyond the resultType envelope).
+            // Returning the task state instead would look helpful and be
+            // non-conformant — and the spec calls the ack eventually consistent,
+            // so any state returned here could already be stale.
             return c.json({
               jsonrpc: "2.0",
               id,
-              result: this.stampResult(
-                { applied, ...(snapshot ?? {}) },
-                statelessVersion,
-              ),
+              result: this.stampResult({}, statelessVersion),
             });
           }
 
-          // tasks/cancel
-          const cancelled = store.cancel(taskId);
-          const snapshot = store.get(taskId);
+          // tasks/cancel — likewise an empty ack. Cancellation is cooperative:
+          // the server acknowledges intent, and the task may still finish or
+          // reach a different terminal status.
+          if (!store.cancel(taskId, caller)) {
+            return c.json({
+              jsonrpc: "2.0",
+              id,
+              error: {
+                code: JSONRPC_INVALID_PARAMS,
+                message: `Unknown taskId: ${taskId}`,
+              },
+            });
+          }
           return c.json({
             jsonrpc: "2.0",
             id,
-            result: this.stampResult(
-              { cancelled, ...(snapshot ?? {}) },
-              statelessVersion,
-            ),
+            result: this.stampResult({}, statelessVersion),
           });
         }
 
@@ -3419,13 +3575,15 @@ export class McpApp {
       clientCapabilities: ClientCapabilities | undefined;
       principal: string;
       method: string;
-      salientParams: unknown;
+      /** Digest of the arguments as received, taken before the pipeline ran. */
+      paramsDigest: string;
     },
   ): Promise<
     { ok: true; result: Record<string, unknown> } | {
       ok: false;
       message: string;
       code: number;
+      data?: Record<string, unknown>;
     }
   > {
     const requests = signal.inputRequests;
@@ -3456,6 +3614,13 @@ export class McpApp {
             `Cannot request input for capabilities the client did not declare: ${
               check.missingCapabilities.join(", ")
             }`,
+          // ClientCapabilities-shaped so a typed client can read it directly and
+          // learn which capability to declare.
+          data: {
+            requiredCapabilities: Object.fromEntries(
+              check.missingCapabilities.map((cap) => [cap, {}]),
+            ),
+          },
         };
       }
     }
@@ -3475,7 +3640,7 @@ export class McpApp {
       requestState = await sealRequestState({
         sub: context.principal,
         method: context.method,
-        paramsDigest: await paramsDigest(context.salientParams),
+        paramsDigest: context.paramsDigest,
         exp: Math.floor(Date.now() / 1000) + ttl,
         nonce: bytesToHexLocal(crypto.getRandomValues(new Uint8Array(16))),
       }, key);
@@ -3536,7 +3701,12 @@ export class McpApp {
           code: MCP_MISSING_REQUIRED_CLIENT_CAPABILITY,
           message:
             `Client did not declare the "${TASKS_EXTENSION_ID}" extension`,
-          data: { requiredCapabilities: [TASKS_EXTENSION_ID] },
+          // ClientCapabilities-shaped, per the schema: capability keys mapping
+          // to their settings object. An array of names would not deserialise
+          // into `ClientCapabilities` on a typed client.
+          data: {
+            requiredCapabilities: { extensions: { [TASKS_EXTENSION_ID]: {} } },
+          },
         },
       },
       400,

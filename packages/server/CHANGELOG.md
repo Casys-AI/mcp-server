@@ -48,6 +48,66 @@ earlier revision over the stateless transport also sees the 0.22.0 shape.
   including `subscriptions/listen` until Track G lands. Special-casing the two
   removed methods would have left every other unknown method answering 200.
 
+### Fixed — conformance and security, from adversarial review
+
+A final review round found eleven blocking defects in the newly wired tracks.
+All are fixed; each is listed because several were only visible on the wire, not
+in the modules.
+
+**Security**
+
+- **`inputResponses` without a `requestState` bypassed verification entirely.**
+  The two fields were read independently, so a caller could supply answers with
+  no token and the handler received them unverified. Refused now, before
+  dispatch.
+- **Tasks had no owner.** Any authenticated caller who learned another caller's
+  task id could read, answer or cancel it. The spec makes this a MUST: "Servers
+  MUST perform authentication and authorization checks on each task-related
+  request." Tasks are bound to their creating principal, and a foreign id is
+  reported exactly like an unknown one — telling a caller that a task exists but
+  is not theirs would confirm the id an unguessable handle is meant to withhold.
+- **An authenticated token with no `sub` collapsed every caller onto one
+  identity.** `AuthInfo.subject` falls back to `"unknown"`, and sealing against
+  that made the principal binding look enforced while separating nothing. Now
+  throws: worse than no auth, because it is invisible.
+- **Unknown MRTR methods could be "satisfied".** An unrecognised
+  `inputRequests[*].method` was mapped to its own name, so a client declaring a
+  capability of that name passed the check. MRTR permits exactly elicitation,
+  sampling and roots; anything else now fails unconditionally.
+
+**Conformance**
+
+- `tasks/update` and `tasks/cancel` return **empty acknowledgements**. Returning
+  task state was non-conformant and, since the spec calls these acks eventually
+  consistent, potentially stale.
+- A completed task now carries the **result shape the original request would
+  have returned** (a `CallToolResult`), not the handler's raw return value. The
+  store stays MCP-agnostic: the transport injects the same conversion the
+  synchronous path uses, so both produce identical output for the same handler.
+- Tasks and `subscriptions/listen` are **gated on the negotiated version**, not
+  just the capability. A `2025-11-25` peer could previously use a 2026-only
+  extension, which the spec forbids outright.
+- `requiredCapabilities` is a **`ClientCapabilities` object**, not an array of
+  names, on both the Tasks and MRTR errors — and the MRTR one now carries `data`
+  at all.
+- An absent or non-object `notifications` filter on `subscriptions/listen` is
+  **rejected** rather than read as `{}`, which had produced a 200 stream that
+  stayed silent forever with no way to tell why.
+- An unknown `taskId` is an error on all three task methods, not a successful
+  no-op.
+
+**Robustness**
+
+- The MRTR argument digest is **snapshotted at ingress**. It was re-derived at
+  seal time from the same mutable `args` the middleware pipeline had already
+  touched, so a client replaying its request byte-for-byte could fail
+  `wrong_params` through no fault of its own.
+- The task sweep timer is **unref'd**, and `stop()` disposes the task store and
+  subscription registry **before** its `started` guard — a server that failed
+  during startup previously left both armed with no way to reach them.
+  Notifications are suppressed after disposal, since a drained task's work can
+  still settle afterwards (abort is cooperative).
+
 ### Added — Tracks G, B and I: subscriptions, MRTR and Tasks
 
 All three are now reachable from the transport, not just present as modules.

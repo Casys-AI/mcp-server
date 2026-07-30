@@ -360,3 +360,99 @@ Deno.test("mrtr - a legacy peer never enters the MRTR path", async () => {
     await http.shutdown();
   }
 });
+
+// ── Findings from the final adversarial review ───────────────────────────────
+
+Deno.test("mrtr - inputResponses without a requestState is refused, not forwarded", async () => {
+  // This was a real bypass: the two fields were read independently, so a caller
+  // could supply answers with no token and the handler received them unverified.
+  // The server always issues a token when it holds a key, so this combination is
+  // either a confused client or an injection attempt.
+  const { server, seen } = buildServer({ signingKey: KEY });
+  const { http, url } = await start(server);
+  try {
+    const res = await call(url, "ask", {
+      inputResponses: {
+        github_login: { action: "accept", content: { name: "mallory" } },
+      },
+    });
+    const data = await res.json();
+
+    assertEquals(res.status, 400);
+    assertEquals(data.error.code, -32602);
+    assertEquals(data.error.data.problem, "missing_request_state");
+    // Never reached the handler.
+    assertEquals(seen.inputResponses, undefined);
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("mrtr - the capability error names the capability as ClientCapabilities", async () => {
+  const { server } = buildServer({ signingKey: KEY });
+  const { http, url } = await start(server);
+  try {
+    const data = await (await call(url, "needs_sampling", {}, WITH_ELICITATION))
+      .json();
+    assertEquals(data.error.code, -32021);
+    // Object, not an array of names: the schema types this as ClientCapabilities.
+    assertEquals(data.error.data.requiredCapabilities, { sampling: {} });
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("mrtr - an argument-normalising middleware does not break a legitimate retry", async () => {
+  // The digest was re-derived at seal time from the same mutable `args` object
+  // the pipeline had already touched, so a client replaying its request
+  // byte-for-byte could fail `wrong_params` through no fault of its own. The
+  // digest is now snapshotted at ingress.
+  const server = new McpApp({
+    name: "mrtr-normalising",
+    version: "1.0.0",
+    logger: () => {},
+    transport: "stateless",
+    mrtr: { signingKey: KEY },
+  });
+  // Mutates the arguments in place, as a validation or defaulting layer would.
+  server.use((ctx, next) => {
+    (ctx.args as Record<string, unknown>).injectedByMiddleware = true;
+    return next();
+  });
+  server.registerTool(
+    { name: "ask", description: "Asks", inputSchema: { type: "object" } },
+    (_args, ctx) =>
+      ctx?.inputResponses !== undefined ? "done" : {
+        resultType: "input_required",
+        inputRequests: {
+          k: {
+            method: "elicitation/create",
+            params: { mode: "form", message: "?", requestedSchema: {} },
+          },
+        },
+      },
+  );
+
+  const { http, url } = await start(server);
+  try {
+    const first = await (await call(url, "ask")).json();
+    const requestState = first.result.requestState as string;
+
+    const retry = await (await call(
+      url,
+      "ask",
+      {
+        requestState,
+        inputResponses: { k: { action: "accept" } },
+      },
+      WITH_ELICITATION,
+      2,
+    )).json();
+
+    // Would be -32602 wrong_params if the digest had been taken after the
+    // middleware mutated the arguments.
+    assertEquals(retry.result?.resultType, "complete");
+  } finally {
+    await http.shutdown();
+  }
+});

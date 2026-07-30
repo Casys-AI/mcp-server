@@ -84,12 +84,18 @@ export function checkInputRequestCapabilities(
   for (const entry of Object.values(inputRequests)) {
     const capKey = METHOD_TO_CAPABILITY[entry.method];
     if (capKey === undefined) {
-      // Unknown method — conservatively map to the method name itself so the
-      // error response identifies which unrecognised method caused the failure.
-      required.add(entry.method);
-    } else {
-      required.add(capKey);
+      // MRTR permits exactly three methods. An unknown one is invalid outright,
+      // so it must fail regardless of what the client declared — mapping it to
+      // its own name let a client "satisfy" it by declaring a capability of the
+      // same name, which is not a capability at all.
+      return {
+        ok: false,
+        missingCapabilities: [
+          `<unsupported inputRequest method: ${entry.method}>`,
+        ],
+      };
     }
+    required.add(capKey);
   }
 
   if (required.size === 0) {

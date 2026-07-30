@@ -15,6 +15,11 @@
  * @module lib/server/tasks/task-store_test
  */
 
+// Owner threaded through every call: the store binds each task to its creator,
+// and the caller is a required argument rather than a defaulted one — a silent
+// default is the one thing an authorization check must never have.
+const OWNER = "test-owner";
+
 import { assertEquals, assertInstanceOf, assertNotEquals } from "@std/assert";
 import {
   createTask,
@@ -86,11 +91,11 @@ Deno.test("generateTaskId — negligible collision probability across 1000 sampl
 Deno.test("spawn — task immediately visible via get()", () => {
   const store = makeStore();
   const descriptor = createTask({}, () => Promise.resolve({ done: true }));
-  const fields = store.spawn(descriptor);
+  const fields = store.spawn(descriptor, OWNER);
 
   // Spec §Task Creation: "a subsequent tasks/get for the returned taskId must
   // resolve immediately" — synchronously after spawn() returns.
-  const task = store.get(fields.taskId);
+  const task = store.get(fields.taskId, OWNER);
   assertEquals(task?.taskId, fields.taskId);
   assertEquals(task?.status, "working");
 });
@@ -101,7 +106,7 @@ Deno.test("spawn — returns CreateTaskResultFields with correct base fields", (
     { pollIntervalMs: 2_000, statusMessage: "Scanning" },
     () => Promise.resolve({}),
   );
-  const fields = store.spawn(descriptor);
+  const fields = store.spawn(descriptor, OWNER);
 
   assertEquals(typeof fields.taskId, "string");
   assertEquals(fields.status, "working");
@@ -113,7 +118,7 @@ Deno.test("spawn — returns CreateTaskResultFields with correct base fields", (
 
 Deno.test("get — returns null for unknown taskId", () => {
   const store = makeStore();
-  assertEquals(store.get("nonexistent-task-id"), null);
+  assertEquals(store.get("nonexistent-task-id", OWNER), null);
 });
 
 // ── State machine: working → completed ───────────────────────────────────────
@@ -121,11 +126,11 @@ Deno.test("get — returns null for unknown taskId", () => {
 Deno.test("state machine — working → completed on successful run()", async () => {
   const store = makeStore();
   const descriptor = createTask({}, () => Promise.resolve({ rows: 42 }));
-  const { taskId } = store.spawn(descriptor);
+  const { taskId } = store.spawn(descriptor, OWNER);
 
   await flushMicrotasks();
 
-  const task = store.get(taskId);
+  const task = store.get(taskId, OWNER);
   assertEquals(task?.status, "completed");
   if (task?.status === "completed") {
     assertEquals(task.result, { rows: 42 });
@@ -134,11 +139,14 @@ Deno.test("state machine — working → completed on successful run()", async (
 
 Deno.test("state machine — non-object result is boxed under 'value'", async () => {
   const store = makeStore();
-  const { taskId } = store.spawn(createTask({}, () => Promise.resolve(99)));
+  const { taskId } = store.spawn(
+    createTask({}, () => Promise.resolve(99)),
+    OWNER,
+  );
 
   await flushMicrotasks();
 
-  const task = store.get(taskId);
+  const task = store.get(taskId, OWNER);
   assertEquals(task?.status, "completed");
   if (task?.status === "completed") {
     assertEquals(task.result, { value: 99 });
@@ -153,11 +161,11 @@ Deno.test("state machine — working → failed when run() throws JSON-RPC error
     {},
     () => Promise.reject({ code: -32603, message: "Internal error in task" }),
   );
-  const { taskId } = store.spawn(descriptor);
+  const { taskId } = store.spawn(descriptor, OWNER);
 
   await flushMicrotasks();
 
-  const task = store.get(taskId);
+  const task = store.get(taskId, OWNER);
   assertEquals(task?.status, "failed");
   if (task?.status === "failed") {
     assertEquals(task.error.code, -32603);
@@ -171,11 +179,11 @@ Deno.test("state machine — working → failed when run() throws plain Error (w
     {},
     () => Promise.reject(new Error("unexpected crash")),
   );
-  const { taskId } = store.spawn(descriptor);
+  const { taskId } = store.spawn(descriptor, OWNER);
 
   await flushMicrotasks();
 
-  const task = store.get(taskId);
+  const task = store.get(taskId, OWNER);
   assertEquals(task?.status, "failed");
   if (task?.status === "failed") {
     assertEquals(task.error.code, -32603);
@@ -195,34 +203,38 @@ Deno.test("state machine — working → cancelled when run() observes abort and
       });
     });
   });
-  const { taskId } = store.spawn(descriptor);
+  const { taskId } = store.spawn(descriptor, OWNER);
 
-  store.cancel(taskId);
+  store.cancel(taskId, OWNER);
   await flushMicrotasks();
 
-  const task = store.get(taskId);
+  const task = store.get(taskId, OWNER);
   assertEquals(task?.status, "cancelled");
 });
 
 Deno.test("cancel — returns true for known task, false for unknown", () => {
   const store = makeStore();
-  const { taskId } = store.spawn(createTask({}, () => Promise.resolve({})));
-  assertEquals(store.cancel(taskId), true);
-  assertEquals(store.cancel("ghost"), false);
+  const { taskId } = store.spawn(
+    createTask({}, () => Promise.resolve({})),
+    OWNER,
+  );
+  assertEquals(store.cancel(taskId, OWNER), true);
+  assertEquals(store.cancel("ghost", OWNER), false);
 });
 
 Deno.test("cancel — cancelling a completed task returns true (task is found) but does not change status", async () => {
   const store = makeStore();
   const { taskId } = store.spawn(
     createTask({}, () => Promise.resolve({ ok: true })),
+    OWNER,
   );
 
   await flushMicrotasks(); // let it complete
 
-  assertEquals(store.get(taskId)?.status, "completed");
+  assertEquals(store.get(taskId, OWNER)?.status, "completed");
   // Cancel on a terminal task: found → true, status unchanged.
-  assertEquals(store.cancel(taskId), true);
-  assertEquals(store.get(taskId)?.status, "completed");
+  assertEquals(store.cancel(taskId, OWNER), true);
+  assertEquals(store.get(taskId, OWNER)?.status, "completed");
 });
 
 // ── State machine: working → input_required → working → completed ──────────
@@ -239,11 +251,11 @@ Deno.test("state machine — working → input_required → working → complete
     return { answer: response["text"] };
   });
 
-  const { taskId } = store.spawn(descriptor);
+  const { taskId } = store.spawn(descriptor, OWNER);
   await flushMicrotasks();
 
   // Should be in input_required now
-  const pendingTask = store.get(taskId);
+  const pendingTask = store.get(taskId, OWNER);
   assertEquals(pendingTask?.status, "input_required");
   if (pendingTask?.status === "input_required") {
     assertEquals(Object.keys(pendingTask.inputRequests), ["step-1"]);
@@ -254,11 +266,15 @@ Deno.test("state machine — working → input_required → working → complete
   }
 
   // Deliver response via tasks/update
-  const ok = store.update(taskId, { "step-1": { text: "Hello from client" } });
+  const ok = store.update(
+    taskId,
+    { "step-1": { text: "Hello from client" } },
+    OWNER,
+  );
   assertEquals(ok, true);
   await flushMicrotasks();
 
-  const doneTask = store.get(taskId);
+  const doneTask = store.get(taskId, OWNER);
   assertEquals(doneTask?.status, "completed");
   if (doneTask?.status === "completed") {
     assertEquals(doneTask.result, { answer: "Hello from client" });
@@ -291,11 +307,11 @@ Deno.test("requireInput — rejects on reuse of an already-answered key", async 
     return {};
   });
 
-  const { taskId } = store.spawn(descriptor);
+  const { taskId } = store.spawn(descriptor, OWNER);
   await flushMicrotasks();
 
   // Answer the first call
-  store.update(taskId, { "key-once": { ok: true } });
+  store.update(taskId, { "key-once": { ok: true } }, OWNER);
   await flushMicrotasks(); // run() re-tries with same key
   await flushMicrotasks(); // run() catches the error and returns
 
@@ -327,6 +343,7 @@ Deno.test("requireInput — rejects on use of a currently-outstanding key", asyn
       }
       return {};
     }),
+    OWNER,
   );
 
   await flushMicrotasks();
@@ -343,6 +360,7 @@ Deno.test("update — ignores responses for unknown keys (spec SHOULD)", async (
       await ctrl.requireInput("real-key", { method: "m", params: {} });
       return {};
     }),
+    OWNER,
   );
 
   await flushMicrotasks();
@@ -351,21 +369,21 @@ Deno.test("update — ignores responses for unknown keys (spec SHOULD)", async (
   const ok = store.update(taskId, {
     "ghost-key": { ignored: true },
     "real-key": { answer: "yes" },
-  });
+  }, OWNER);
   assertEquals(ok, true);
   await flushMicrotasks();
 
-  assertEquals(store.get(taskId)?.status, "completed");
+  assertEquals(store.get(taskId, OWNER)?.status, "completed");
 });
 
 Deno.test("update — returns false for unknown taskId", () => {
   const store = makeStore();
-  assertEquals(store.update("ghost", { key: {} }), false);
+  assertEquals(store.update("ghost", { key: {} }, OWNER), false);
 });
 
 Deno.test("update — returns false for unknown taskId (SHOULD -32602)", () => {
   const store = makeStore();
-  assertEquals(store.update("no-such-task", { x: {} }), false);
+  assertEquals(store.update("no-such-task", { x: {} }, OWNER), false);
 });
 
 // ── setStatusMessage ──────────────────────────────────────────────────────────
@@ -381,10 +399,10 @@ Deno.test("setStatusMessage — visible on subsequent get()", async () => {
     return {};
   });
 
-  const { taskId } = store.spawn(descriptor);
+  const { taskId } = store.spawn(descriptor, OWNER);
   await flushMicrotasks();
 
-  const task = store.get(taskId);
+  const task = store.get(taskId, OWNER);
   if (task?.status === "working" || task?.status === "completed") {
     // setStatusMessage may have run by now or not — just check it's a string
     const msg = task.statusMessage;
@@ -413,6 +431,7 @@ Deno.test("TTL expiry — sweep marks task failed", async () => {
         });
       });
     }),
+    OWNER,
   );
 
   // Wait past the TTL then manually sweep.
@@ -426,7 +445,7 @@ Deno.test("TTL expiry — sweep marks task failed", async () => {
   // Actually, the cleanest approach: access the private method via type assertion.
   (store as unknown as { _sweep(): void })._sweep();
 
-  const task = store.get(taskId);
+  const task = store.get(taskId, OWNER);
   assertEquals(task?.status, "failed");
   if (task?.status === "failed") {
     assertEquals(task.error.code, -32603);
@@ -452,15 +471,16 @@ Deno.test("TTL expiry — null TTL (no expiry) is respected", async () => {
         });
       });
     }),
+    OWNER,
   );
 
   // Sweep with defaultTtlMs: 1 would expire a task with ttlMs: 1, but ttlMs: null is exempt.
   await new Promise<void>((resolve) => setTimeout(resolve, 5));
   (store as unknown as { _sweep(): void })._sweep();
 
-  assertEquals(store.get(taskId)?.status, "working");
+  assertEquals(store.get(taskId, OWNER)?.status, "working");
 
-  store.cancel(taskId);
+  store.cancel(taskId, OWNER);
   store.dispose();
 });
 
@@ -470,12 +490,18 @@ Deno.test("eviction — terminal tasks evicted before non-terminal when at cap",
   const store = makeStore({ maxTasks: 3 });
 
   // Spawn two tasks and let them complete.
-  const d1 = store.spawn(createTask({}, () => Promise.resolve({ i: 1 })));
-  const d2 = store.spawn(createTask({}, () => Promise.resolve({ i: 2 })));
+  const d1 = store.spawn(
+    createTask({}, () => Promise.resolve({ i: 1 })),
+    OWNER,
+  );
+  const d2 = store.spawn(
+    createTask({}, () => Promise.resolve({ i: 2 })),
+    OWNER,
+  );
   await flushMicrotasks();
 
-  assertEquals(store.get(d1.taskId)?.status, "completed");
-  assertEquals(store.get(d2.taskId)?.status, "completed");
+  assertEquals(store.get(d1.taskId, OWNER)?.status, "completed");
+  assertEquals(store.get(d2.taskId, OWNER)?.status, "completed");
 
   // Spawn a blocking (non-terminal) task at size 2.
   const d3 = store.spawn(
@@ -487,19 +513,23 @@ Deno.test("eviction — terminal tasks evicted before non-terminal when at cap",
         );
       });
     }),
+    OWNER,
   );
 
   // Now spawn a fourth — should evict oldest terminal task (d1, terminalAt < d2.terminalAt).
-  const d4 = store.spawn(createTask({}, () => Promise.resolve({ i: 4 })));
+  const d4 = store.spawn(
+    createTask({}, () => Promise.resolve({ i: 4 })),
+    OWNER,
+  );
   await flushMicrotasks();
 
   // d1 was evicted (oldest terminal); d2, d3, d4 remain.
-  assertEquals(store.get(d1.taskId), null);
-  assertNotEquals(store.get(d2.taskId), null);
-  assertNotEquals(store.get(d3.taskId), null);
-  assertNotEquals(store.get(d4.taskId), null);
+  assertEquals(store.get(d1.taskId, OWNER), null);
+  assertNotEquals(store.get(d2.taskId, OWNER), null);
+  assertNotEquals(store.get(d3.taskId, OWNER), null);
+  assertNotEquals(store.get(d4.taskId, OWNER), null);
 
-  store.cancel(d3.taskId);
+  store.cancel(d3.taskId, OWNER);
   store.dispose();
 });
 
@@ -517,19 +547,19 @@ Deno.test("eviction — oldest non-terminal evicted when no terminal tasks remai
       });
     });
 
-  const d1 = store.spawn(blocker("first"));
-  const d2 = store.spawn(blocker("second"));
+  const d1 = store.spawn(blocker("first"), OWNER);
+  const d2 = store.spawn(blocker("second"), OWNER);
 
   // Spawn third at cap — d1 (oldest) must be evicted.
-  const d3 = store.spawn(blocker("third"));
+  const d3 = store.spawn(blocker("third"), OWNER);
   await flushMicrotasks();
 
-  assertEquals(store.get(d1.taskId), null);
-  assertNotEquals(store.get(d2.taskId), null);
-  assertNotEquals(store.get(d3.taskId), null);
+  assertEquals(store.get(d1.taskId, OWNER), null);
+  assertNotEquals(store.get(d2.taskId, OWNER), null);
+  assertNotEquals(store.get(d3.taskId, OWNER), null);
 
-  store.cancel(d2.taskId);
-  store.cancel(d3.taskId);
+  store.cancel(d2.taskId, OWNER);
+  store.cancel(d3.taskId, OWNER);
   store.dispose();
 });
 
@@ -548,8 +578,8 @@ Deno.test("drain — signals all in-flight tasks", async () => {
       });
     });
 
-  store.spawn(makeBlocker());
-  store.spawn(makeBlocker());
+  store.spawn(makeBlocker(), OWNER);
+  store.spawn(makeBlocker(), OWNER);
   await flushMicrotasks();
 
   store.drain();
@@ -579,7 +609,7 @@ Deno.test("notification callback — fires on spawn (initial working state)", ()
     onNotification: (t) => notifications.push(t),
   });
 
-  store.spawn(createTask({}, () => Promise.resolve({})));
+  store.spawn(createTask({}, () => Promise.resolve({})), OWNER);
 
   // No notification on spawn itself — the task starts working silently.
   // Notification fires on transition INTO input_required or INTO a terminal state.
@@ -597,7 +627,7 @@ Deno.test("notification callback — fires when task completes", async () => {
     onNotification: (t) => notifications.push(t),
   });
 
-  store.spawn(createTask({}, () => Promise.resolve({ result: "done" })));
+  store.spawn(createTask({}, () => Promise.resolve({ result: "done" })), OWNER);
   await flushMicrotasks();
 
   assertEquals(notifications.length, 1);
@@ -620,6 +650,7 @@ Deno.test("notification callback — fires on input_required transition", async 
       await ctrl.requireInput("q", { method: "m", params: {} });
       return {};
     }),
+    OWNER,
   );
   await flushMicrotasks();
 
@@ -633,7 +664,7 @@ Deno.test("notification callback — fires on input_required transition", async 
     assertEquals("q" in inputReqNotif.inputRequests, true);
   }
 
-  store.update(taskId, { q: { text: "answer" } });
+  store.update(taskId, { q: { text: "answer" } }, OWNER);
   await flushMicrotasks();
 
   // working notification then completed
@@ -667,18 +698,19 @@ Deno.test("multiple concurrent requireInput — all visible in inputRequests", a
       ]);
       return { a: a["v"], b: b["v"] };
     }),
+    OWNER,
   );
   await flushMicrotasks();
 
-  const task = store.get(taskId) as InputRequiredTask;
+  const task = store.get(taskId, OWNER) as InputRequiredTask;
   assertEquals(task.status, "input_required");
   assertEquals(Object.keys(task.inputRequests).sort(), ["alpha", "beta"]);
 
   // Deliver both responses
-  store.update(taskId, { alpha: { v: 1 }, beta: { v: 2 } });
+  store.update(taskId, { alpha: { v: 1 }, beta: { v: 2 } }, OWNER);
   await flushMicrotasks();
 
-  const done = store.get(taskId);
+  const done = store.get(taskId, OWNER);
   assertEquals(done?.status, "completed");
   if (done?.status === "completed") {
     assertEquals(done.result, { a: 1, b: 2 });
@@ -702,10 +734,11 @@ Deno.test("cancel during requireInput — promise rejects with AbortError", asyn
       }
       return {};
     }),
+    OWNER,
   );
   await flushMicrotasks();
 
-  store.cancel(taskId);
+  store.cancel(taskId, OWNER);
   await flushMicrotasks();
 
   assertInstanceOf(caughtError, DOMException);
@@ -724,10 +757,11 @@ Deno.test("spec: tool-level isError does NOT produce failed status", async () =>
         content: [{ type: "text", text: "Not found" }],
         isError: true,
       })),
+    OWNER,
   );
   await flushMicrotasks();
 
-  const task = store.get(taskId);
+  const task = store.get(taskId, OWNER);
   assertEquals(task?.status, "completed");
   if (task?.status === "completed") {
     assertEquals(task.result["isError"], true);

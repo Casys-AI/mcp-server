@@ -152,12 +152,31 @@ export interface McpAppOptions {
    * - `"stateless"`: per-request transport, spec 2026-07-28. No handshake, no
    *   `Mcp-Session-Id`. `protocolVersion` is read from
    *   `params._meta["io.modelcontextprotocol/protocolVersion"]` on every
-   *   request. `GET /mcp` returns 405 (Track B will replace the SSE channel).
+   *   request. `GET /mcp` returns 405 (Track G replaces the SSE channel with
+   *   `subscriptions/listen`).
+   *
+   * The mode also gates the spec-2026-07-28 result envelope: `"stateless"`
+   * results carry `resultType` and `_meta` serverInfo, `"stateful"` ones stay on
+   * the 2025-11-25 shape.
    *
    * Default: `"stateful"`.
    */
   // Track A — transport mode, défaut "stateful"
   transport?: "stateful" | "stateless";
+
+  /**
+   * Protocol extensions this server declares (spec 2026-07-28).
+   *
+   * Keyed by reverse-DNS extension identifier — e.g.
+   * `{ "io.modelcontextprotocol/tasks": {} }`. Surfaced under
+   * `capabilities.extensions` on `server/discover` and `initialize`, and only
+   * when non-empty: an empty object would assert "no extensions supported",
+   * which is a claim the framework cannot make on a consumer's behalf.
+   *
+   * Declaring an extension here does not implement it — it advertises what the
+   * consumer has wired up.
+   */
+  extensions?: Readonly<Record<string, unknown>>;
 }
 
 // ============================================
@@ -473,6 +492,16 @@ export interface ToolHandlerContext {
   readonly authInfo?: import("./auth/types.ts").AuthInfo;
   readonly clientInfo?: Implementation;
   readonly clientCapabilities?: ClientCapabilities;
+
+  /**
+   * Log level requested for this call (spec 2026-07-28), read from
+   * `params._meta["io.modelcontextprotocol/logLevel"]`.
+   *
+   * `undefined` means the client requested no logging. A handler **MUST NOT**
+   * emit `notifications/message` in that case — the level is not a filter you
+   * may default, it is the client's opt-in.
+   */
+  readonly logLevel?: import("./middleware/types.ts").McpLogLevel;
 }
 
 export type ToolHandler = (

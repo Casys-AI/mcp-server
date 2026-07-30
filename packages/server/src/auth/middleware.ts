@@ -12,6 +12,18 @@ import type { AuthInfo } from "./types.ts";
 import type { Middleware } from "../middleware/types.ts";
 import { isOtelEnabled, recordAuthEvent } from "../observability/otel.ts";
 
+/**
+ * 403 Forbidden, distinct from the 401's `-32001`.
+ *
+ * Spec 2026-07-28 partitions the JSON-RPC server-error range: `-32000`..`-32019`
+ * stays implementation-defined (existing SDK usage grandfathered), `-32020`
+ * onwards is reserved for the specification. `-32002` sits in the former, so a
+ * server-specific meaning is legitimate here and needs no migration.
+ *
+ * Note for anyone re-deriving this choice: 0.21.0 justified it by "SEP-2575
+ * reserves `-32003`". That reservation moved to `-32021` in the final spec, so
+ * the original argument is void even though the code it produced is still right.
+ */
 const JSONRPC_FORBIDDEN = -32002;
 
 function escapeAuthenticateParam(s: string): string {
@@ -68,7 +80,9 @@ export function createUnauthorizedResponse(
   errorDescription?: string,
 ): Response {
   const parts = [
-    `Bearer resource_metadata="${escapeAuthenticateParam(resourceMetadataUrl)}"`,
+    `Bearer resource_metadata="${
+      escapeAuthenticateParam(resourceMetadataUrl)
+    }"`,
   ];
   if (error) parts.push(`error="${escapeAuthenticateParam(error)}"`);
   if (errorDescription) {
@@ -105,11 +119,11 @@ export function createForbiddenResponse(
 ): Response {
   const requiredScopesDescription = requiredScopes.join(", ");
   const parts = [
-    `Bearer resource_metadata="${escapeAuthenticateParam(resourceMetadataUrl)}"`,
-    `error="insufficient_scope"`,
-    `error_description="${
-      escapeAuthenticateParam(requiredScopesDescription)
+    `Bearer resource_metadata="${
+      escapeAuthenticateParam(resourceMetadataUrl)
     }"`,
+    `error="insufficient_scope"`,
+    `error_description="${escapeAuthenticateParam(requiredScopesDescription)}"`,
   ];
 
   return new Response(

@@ -247,6 +247,11 @@ export function createCluster(
       }
     },
 
+    // `async` is load-bearing despite the absence of `await`: the synchronous
+    // `throw` below must reach callers as a rejected Promise. Dropping `async`
+    // would make it throw synchronously, and `cluster.callTool(...).catch(...)`
+    // would stop catching it.
+    // deno-lint-ignore require-await
     async callTool(
       serverName: string,
       toolName: string,
@@ -292,6 +297,9 @@ export function createCluster(
  * Read stderr line by line until a URL matching the listen pattern is found.
  * Times out with a RuntimeError if no URL appears.
  */
+// `async` keeps a synchronous throw from `getReader()` inside the returned
+// Promise, matching what callers expect from a `Promise<string>`-typed function.
+// deno-lint-ignore require-await
 async function detectListenUrl(
   serverName: string,
   stderr: ReadableStream<Uint8Array>,
@@ -300,7 +308,7 @@ async function detectListenUrl(
   const decoder = new TextDecoder();
   const reader = stderr.getReader();
   let buffer = "";
-  let timerId: number;
+  let timerId: ReturnType<typeof setTimeout>;
 
   const timeout = new Promise<never>((_, reject) => {
     timerId = setTimeout(() => {
@@ -375,7 +383,7 @@ function createHttpConnection(
     transportType: "http",
     uiBaseUrl: baseUrl,
     async close() {/* no-op for http connections */},
-    async callTool(
+    callTool(
       toolName: string,
       args?: Record<string, unknown>,
     ): Promise<unknown> {
@@ -402,7 +410,7 @@ function createStdioConnection(
         await process.status;
       } catch { /* ignore */ }
     },
-    async callTool(
+    callTool(
       toolName: string,
       args?: Record<string, unknown>,
     ): Promise<unknown> {

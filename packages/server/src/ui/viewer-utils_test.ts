@@ -103,7 +103,7 @@ Deno.test("discoverViewers - finds directories containing index.html", () => {
     { name: "build-all.mjs", isDirectory: false },
   ];
   const readDir = () => entries;
-  const hasIndexHtml = (dir: string, name: string) =>
+  const hasIndexHtml = (_dir: string, name: string) =>
     ["invoice-viewer", "doclist-viewer"].includes(name);
 
   const result = discoverViewers("/fake/ui", { readDir, hasIndexHtml });

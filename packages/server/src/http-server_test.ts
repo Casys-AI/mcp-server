@@ -109,7 +109,7 @@ Deno.test(
 );
 
 Deno.test(
-  "transport stateless - mismatched MCP-Protocol-Version header returns -32602",
+  "transport stateless - mismatched MCP-Protocol-Version header returns -32020 (HeaderMismatch)",
   async () => {
     const server = new McpApp({
       name: "stateless-header-mismatch-test",
@@ -142,7 +142,10 @@ Deno.test(
       const data = await res.json();
       assertEquals(res.status, 400);
       assertEquals(res.headers.get("mcp-protocol-version"), "2025-06-18");
-      assertEquals(data.error.code, -32602);
+      // Spec 2026-07-28 renumbered HeaderMismatch from the RC's -32001 to -32020,
+      // and it supersedes InvalidParams here: the body is well-formed, it is the
+      // header that disagrees with it.
+      assertEquals(data.error.code, -32020);
       assertEquals(
         data.error.message,
         'MCP-Protocol-Version header "2025-11-25" does not match _meta protocolVersion "2026-07-28"',
@@ -619,7 +622,7 @@ Deno.test(
 );
 
 Deno.test(
-  "transport stateless - unsupported protocolVersion returns -32004",
+  "transport stateless - unsupported protocolVersion returns -32022 (UnsupportedProtocolVersion)",
   async () => {
     const server = new McpApp({
       name: "stateless-badversion-test",
@@ -652,7 +655,7 @@ Deno.test(
 
       assertEquals(res.status, 400);
       const data = await res.json();
-      assertEquals(data.error.code, -32004);
+      assertEquals(data.error.code, -32022);
       assertEquals(data.id, 2);
     } finally {
       await http.shutdown();
@@ -748,7 +751,7 @@ Deno.test(
 // ── Track A corrections (post-Codex review) ─────────────────────────────────
 
 Deno.test(
-  "transport stateless - -32004 error carries MCP-Protocol-Version header",
+  "transport stateless - -32022 error carries MCP-Protocol-Version header",
   async () => {
     const server = new McpApp({
       name: "stateless-errheader-test",
@@ -775,7 +778,7 @@ Deno.test(
       // Error responses must ALSO carry the header (server's fallback version)
       assertExists(res.headers.get("mcp-protocol-version"));
       const data = await res.json();
-      assertEquals(data.error.code, -32004);
+      assertEquals(data.error.code, -32022);
     } finally {
       await http.shutdown();
     }
@@ -817,7 +820,7 @@ Deno.test(
 );
 
 Deno.test(
-  "transport stateless - -32004 error body carries data.supported and data.requested (AX)",
+  "transport stateless - -32022 error body carries data.supported and data.requested (AX)",
   async () => {
     const server = new McpApp({
       name: "stateless-errdata-test",
@@ -842,7 +845,7 @@ Deno.test(
       });
       assertEquals(res.status, 400);
       const data = await res.json();
-      assertEquals(data.error.code, -32004);
+      assertEquals(data.error.code, -32022);
       assertEquals(data.id, 3);
       // Machine-readable: client knows what's supported and what it sent
       assertExists(data.error.data);
@@ -1100,7 +1103,7 @@ Deno.test(
 );
 
 Deno.test(
-  "transport stateless - ping with version succeeds and carries MCP-Protocol-Version",
+  "transport stateless - ping returns 404 / -32601 (removed in spec 2026-07-28)",
   async () => {
     const server = new McpApp({
       name: "stateless-ping-test",
@@ -1124,10 +1127,83 @@ Deno.test(
         }),
       });
       const data = await res.json(); // consume first
-      assertEquals(res.status, 200);
-      // ping passes through per-request version validation → header is echoed
+      // 0.21.0 answered `{}` here for backward compatibility. The final spec
+      // removed `ping` outright, and requires 404 + -32601 for an unimplemented
+      // method — which is also the signal a client uses to tell a modern server
+      // from a legacy HTTP+SSE one. Answering `{}` broke that probe.
+      assertEquals(res.status, 404);
+      assertEquals(data.error.code, -32601);
+      // Falls through to the generic method-not-found branch rather than being
+      // special-cased, so the message is the plain one. The status is what
+      // carries the meaning here.
+      assertStringIncludes(data.error.message, "Method not found: ping");
+      // Version validation still ran first, so the header is echoed.
       assertEquals(res.headers.get("mcp-protocol-version"), "2026-07-28");
-      assertEquals(data.result, {});
+    } finally {
+      await http.shutdown();
+    }
+  },
+);
+
+Deno.test(
+  "transport stateless - logging/setLevel returns 404 / -32601 (removed in spec 2026-07-28)",
+  async () => {
+    const server = new McpApp({
+      name: "stateless-setlevel-test",
+      version: "1.0.0",
+      logger: () => {},
+      transport: "stateless",
+    });
+    const listener = Deno.listen({ port: 0 });
+    const port = (listener.addr as Deno.NetAddr).port;
+    listener.close();
+    const http = await server.startHttp({ port, onListen: () => {} });
+    try {
+      const res = await fetch(`http://localhost:${port}/mcp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 100,
+          method: "logging/setLevel",
+          params: { level: "debug", _meta: { [PROTO_KEY]: "2026-07-28" } },
+        }),
+      });
+      const data = await res.json();
+      assertEquals(res.status, 404);
+      assertEquals(data.error.code, -32601);
+    } finally {
+      await http.shutdown();
+    }
+  },
+);
+
+Deno.test(
+  "transport stateful - ping and logging/setLevel still answered (2025-11-25 peers)",
+  async () => {
+    const server = new McpApp({
+      name: "stateful-legacy-methods-test",
+      version: "1.0.0",
+      logger: () => {},
+      // no transport option → "stateful", the default
+    });
+    const listener = Deno.listen({ port: 0 });
+    const port = (listener.addr as Deno.NetAddr).port;
+    listener.close();
+    const http = await server.startHttp({ port, onListen: () => {} });
+    try {
+      for (const method of ["ping", "logging/setLevel"]) {
+        const res = await fetch(`http://localhost:${port}/mcp`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params: {} }),
+        });
+        const data = await res.json();
+        assertEquals(res.status, 200, `${method} should still succeed`);
+        assertEquals(data.result, {}, `${method} should return {}`);
+        // The 2026-07-28 envelope must NOT leak onto the legacy path.
+        assertEquals(data.result.resultType, undefined);
+      }
     } finally {
       await http.shutdown();
     }

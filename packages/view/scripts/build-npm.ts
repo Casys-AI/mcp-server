@@ -49,7 +49,7 @@ await build({
     ],
   },
   compilerOptions: {
-    lib: ["ES2022", "DOM", "DOM.Iterable", "DOM.AsyncIterable"],
+    lib: ["ES2022", "DOM", "DOM.Iterable"],
     target: "ES2022",
   },
   typeCheck: false,

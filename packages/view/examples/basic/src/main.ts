@@ -64,6 +64,25 @@ function bootLocal(root: HTMLElement): AppHandle<AppState> {
     callTool: () => {
       throw new Error("callTool unavailable in local mode (no MCP host)");
     },
+    // `sample` needs a host round-trip, so local mode can only refuse it —
+    // same as `callTool` above.
+    sample: () => {
+      throw new Error("sample unavailable in local mode (no MCP host)");
+    },
+    // `tools` only flips what the host is told about the current view's tools.
+    // With no host there is nothing to announce, so these are no-ops rather
+    // than throws: a view calling `tools.disable()` on a dirty form is doing
+    // nothing wrong, and it should still run in local mode.
+    //
+    // Typed rather than cast to `any` on purpose: when `AppContext` grows a
+    // member, this example should stop compiling until someone decides what
+    // local mode does with it.
+    tools: {
+      enable: () => {},
+      disable: () => {},
+      update: () => {},
+      remove: () => {},
+    },
     // deno-lint-ignore no-explicit-any
     capabilities: {} as any,
     hostContext: {},

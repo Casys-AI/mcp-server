@@ -4,6 +4,83 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
 
 ## [Unreleased]
 
+MCP **2026-07-28 is Final** (shipped 2026-07-28). Tracks A–F were built against
+the May 2026 Release Candidate, which the final revision changed in ways that
+made part of 0.21.0 non-conformant. This entry covers **Track H** (result
+envelope + removals) and the **Track F fix** (error-code renumbering).
+
+All changes are confined to peers that negotiate `2026-07-28`. The default
+**stateful** transport is byte-identical to 0.22.0, and a peer negotiating an
+earlier revision over the stateless transport also sees the 0.22.0 shape.
+
+> **This does not make the stateless transport `2026-07-28`-conformant yet.**
+> Still missing (Track C): validation of the required `Mcp-Method` / `Mcp-Name`
+> headers — a missing header must be rejected with `-32020`, and today it is
+> accepted — and the required `ttlMs` / `cacheScope` fields on `tools/list`,
+> `prompts/list`, `resources/list`, `resources/read` and
+> `resources/templates/list`. Treat this release as partial support for the
+> revision, not as support for it.
+
+### Changed — BREAKING on the stateless transport
+
+- **Error codes renumbered** to match the final allocation policy, which
+  partitions the JSON-RPC server-error range: `-32000`..`-32019` stays
+  implementation-defined (existing SDK usage grandfathered), `-32020`..`-32099`
+  is reserved for the specification.
+
+  | Condition                            | 0.21.0 (RC) | Now      |
+  | ------------------------------------ | ----------- | -------- |
+  | Unsupported `protocolVersion`        | `-32004`    | `-32022` |
+  | `MCP-Protocol-Version` header ≠ body | `-32602`    | `-32020` |
+
+  The 403-forbidden code stays `-32002`: it sits in the grandfathered range, so
+  a server-specific meaning is legitimate there. Its original justification —
+  "SEP-2575 reserves `-32003`" — no longer holds, since that reservation moved
+  to `-32021`; only the inline rationale changed.
+
+- **`ping` and `logging/setLevel` now return HTTP 404 + `-32601`.** The final
+  spec **removes** both methods rather than deprecating them. 0.21.0
+  deliberately kept answering `ping` with `{}` for backward compatibility; that
+  turned out to be actively harmful — a client probing for a modern server
+  distinguishes it from a legacy HTTP+SSE server precisely by the 404 + `-32601`
+  response, so answering `{}` defeated the probe. Both methods still work on the
+  stateful path, whose peers negotiate `2025-06-18`.
+
+  The 404 applies to **any** unimplemented stateless RPC, not just these two —
+  including `subscriptions/listen` until Track G lands. Special-casing the two
+  removed methods would have left every other unknown method answering 200.
+
+### Added
+
+- **`resultType: "complete"` on every stateless result** (SEP-2322), plus the
+  server's identity under `_meta["io.modelcontextprotocol/serverInfo"]`
+  (SEP-2575). A tool's own `_meta` is merged, never replaced — MCP Apps viewers
+  carry their UI hints there.
+
+  Gated on the **negotiated version**, not on the transport. The distinction
+  matters: the stateless transport also accepts `2025-06-18` and `2025-11-25`,
+  so gating on the transport would have stamped a 2026 envelope onto responses
+  to peers on an earlier revision. Omitting it for them is safe — the spec
+  instructs clients to read a missing `resultType` as `"complete"`.
+
+- **`extensions` option** on `McpAppOptions`, surfaced under
+  `capabilities.extensions` on `server/discover` and `initialize`. Keyed by
+  reverse-DNS identifier (e.g. `{ "io.modelcontextprotocol/tasks": {} }`) and
+  emitted **only when non-empty**: an empty `extensions: {}` would assert "this
+  server supports no extensions", a stronger claim than the framework can make
+  on a consumer's behalf. Prerequisite for declaring the Tasks extension.
+
+- **Per-request log level.** `ToolHandlerContext.logLevel` exposes
+  `params._meta["io.modelcontextprotocol/logLevel"]`, replacing the removed
+  `logging/setLevel` RPC. `undefined` means the client opted out of logging, and
+  the spec is explicit that a server **MUST NOT** emit `notifications/message`
+  in that case. Unrecognized severities are dropped rather than rejected —
+  failing a whole tool call over a bad hint would be the worse outcome.
+
+- `packages/server/src/result-envelope_test.ts`: walks the method table instead
+  of asserting a single endpoint, so a new handler that forgets the envelope
+  fails here rather than in a consumer.
+
 ## [0.22.0] - 2026-07-21
 
 ### Added

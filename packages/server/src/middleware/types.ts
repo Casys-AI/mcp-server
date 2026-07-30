@@ -13,6 +13,23 @@ import type {
 } from "@modelcontextprotocol/sdk/types.js";
 
 /**
+ * MCP logging severities (RFC 5424 syslog levels), ordered least to most severe.
+ *
+ * Declared locally rather than imported: the SDK's `LoggingLevel` is tied to the
+ * `logging/setLevel` RPC that spec 2026-07-28 removed, and this type now serves a
+ * per-request field instead.
+ */
+export type McpLogLevel =
+  | "debug"
+  | "info"
+  | "notice"
+  | "warning"
+  | "error"
+  | "critical"
+  | "alert"
+  | "emergency";
+
+/**
  * Context passed through the middleware pipeline.
  * Each middleware can read and enrich the context.
  */
@@ -34,6 +51,16 @@ export interface MiddlewareContext {
 
   /** Client capabilities metadata (stateless HTTP transport, when provided) */
   clientCapabilities?: ClientCapabilities;
+
+  /**
+   * Log level the client requested **for this request** (spec 2026-07-28).
+   *
+   * Replaces the removed `logging/setLevel` RPC: there is no server-wide level
+   * to mutate any more, so the level travels with the call that wants it. Absent
+   * means the client asked for no logging — and the spec is explicit that a
+   * server **MUST NOT** emit `notifications/message` in that case.
+   */
+  logLevel?: McpLogLevel;
 
   /** Extensible by middlewares (e.g., authInfo added by auth middleware) */
   [key: string]: unknown;

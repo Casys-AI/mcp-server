@@ -74,6 +74,43 @@ Not covered: MRTR on `resources/read` (needs a breaking `ResourceHandler` return
 type) and `prompts/get` (needs a prompts API), and single-use `requestState` —
 the spec states plainly that its measures do not guarantee at-most-once.
 
+### Changed — errors carry structured recovery data
+
+Every `-32020` (HeaderMismatch) now ships a JSON-RPC `data` payload instead of
+leaving the caller to parse an English sentence:
+
+```json
+{
+  "code": -32020,
+  "message": "Mcp-Name header \"wrong_tool\" does not match body value \"echo\"",
+  "data": {
+    "problem": "header_body_mismatch",
+    "header": "Mcp-Name",
+    "expected": "echo",
+    "received": "wrong_tool",
+    "bodyField": "params.name",
+    "recovery": "Set the header to mirror the body: 'Mcp-Name: echo'."
+  }
+}
+```
+
+`problem` is an enum — `missing_header`, `header_body_mismatch`,
+`malformed_encoding`, `unmirrorable_body` — meant to be switched on. `recovery`
+is one concrete action. A client that gets a header wrong can correct itself
+without natural-language processing, which matters because these are the errors
+an automated caller hits most often. Applies to all fourteen rejection paths in
+the validator plus the two the transport builds directly.
+
+### Changed — fail at the boundary, and one verb per job
+
+- `mrtr.signingKey` is validated in the constructor. A typo in a 64-hex secret
+  used to surface on the first request that needed it — a production runtime
+  failure rather than a boot failure.
+- `sendToSession` and `broadcastNotification` are `@deprecated`. Three public
+  verbs meant "notify", and two of them silently reach nobody on the stateless
+  transport. `sendNotification` is the one that works everywhere; the others die
+  with the stateful path.
+
 ### Fixed
 
 - `createTask` and the MRTR / subscription types were absent from the package

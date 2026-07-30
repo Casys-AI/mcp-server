@@ -507,6 +507,19 @@ export class McpApp {
       ? new TaskStore({ onNotification: (task) => this.onTaskChanged(task) })
       : null;
 
+    // Validate the shape of the MRTR key here rather than on first use. The
+    // import itself is async so it stays lazy, but a typo in a 64-hex-character
+    // secret should surface at boot, not on the first request that needs it —
+    // by which point it is a runtime failure in production traffic.
+    const mrtrKey = options.mrtr?.signingKey;
+    if (mrtrKey !== undefined && !/^[0-9a-f]{64}$/.test(mrtrKey)) {
+      throw new Error(
+        "[McpApp] mrtr.signingKey must be 64 lowercase hex characters (32 bytes). " +
+          "Generate one with: crypto.getRandomValues(new Uint8Array(32)) rendered as hex, " +
+          "or the exported generateStateKey() + exportStateKey() helpers.",
+      );
+    }
+
     // Create SDK MCP server
     this.mcpServer = new McpServer(
       {
@@ -1976,6 +1989,11 @@ export class McpApp {
                   error: {
                     code: MCP_HEADER_MISMATCH,
                     message: validation.message,
+                    // AX: the caller has to fix the request, so what to fix
+                    // travels as data. `problem` is an enum to switch on,
+                    // `recovery` is one concrete action — neither requires
+                    // parsing the English message.
+                    data: validation.detail,
                   },
                 },
                 400,
@@ -2004,6 +2022,15 @@ export class McpApp {
                     code: MCP_HEADER_MISMATCH,
                     message:
                       "Missing required header 'MCP-Protocol-Version' (required since protocol version 2025-06-18)",
+                    data: {
+                      problem: "missing_header",
+                      header: "MCP-Protocol-Version",
+                      expected: clientVersion,
+                      bodyField:
+                        "params._meta['io.modelcontextprotocol/protocolVersion']",
+                      recovery:
+                        `Send the header 'MCP-Protocol-Version: ${clientVersion}' on every POST.`,
+                    },
                   },
                 },
                 400,
@@ -2022,6 +2049,16 @@ export class McpApp {
                     code: MCP_HEADER_MISMATCH,
                     message:
                       `MCP-Protocol-Version header "${headerVersion}" does not match _meta protocolVersion "${clientVersion}"`,
+                    data: {
+                      problem: "header_body_mismatch",
+                      header: "MCP-Protocol-Version",
+                      expected: clientVersion,
+                      received: headerVersion,
+                      bodyField:
+                        "params._meta['io.modelcontextprotocol/protocolVersion']",
+                      recovery:
+                        `Set the header to "${clientVersion}", or change the body's _meta to "${headerVersion}". They must agree.`,
+                    },
                   },
                 },
                 400,
@@ -2957,10 +2994,15 @@ export class McpApp {
    * @param sessionId - Session ID (or "anonymous" for clients without session)
    * @param message - JSON-RPC message to send
    */
-  // Legacy, stateful-only: sessions do not exist in spec 2026-07-28, and the GET
-  // SSE stream these write to returns 405 there. Retained for the stateful
-  // transport; `sendNotification` routes around them in stateless mode. They die
-  // with the stateful path.
+  /**
+   * Push a message to one session's SSE stream.
+   *
+   * @deprecated Legacy, stateful-only. Sessions do not exist in spec 2026-07-28,
+   * and the GET SSE stream this writes to returns 405 there — so on the stateless
+   * transport this silently reaches nobody. Use {@link sendNotification}, which
+   * routes to whichever channel the active transport actually has. Dies with the
+   * stateful path.
+   */
   sendToSession(sessionId: string, message: Record<string, unknown>): void {
     const clients = this.sseClients.get(sessionId);
     if (!clients || clients.length === 0) {
@@ -2992,7 +3034,13 @@ export class McpApp {
   }
 
   /**
-   * Send a notification to all connected SSE clients
+   * Send a notification to all session-keyed SSE clients.
+   *
+   * @deprecated Legacy, stateful-only, for the same reason as
+   * {@link sendToSession}: on the stateless transport the session map is
+   * necessarily empty, so this reaches nobody and reports no error. Use
+   * {@link sendNotification} — it is the one verb that works on every transport,
+   * fanning out through `subscriptions/listen` where that is the live channel.
    *
    * @param method - Notification method name
    * @param params - Notification parameters

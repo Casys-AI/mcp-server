@@ -49,10 +49,38 @@ const HTTP_TOKEN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
  */
 const HEADER_SAFE_VALUE = /^[\x21-\x7E]([\x20-\x7E\t]*[\x21-\x7E])?$/;
 
+/**
+ * What went wrong, as data rather than prose.
+ *
+ * The `message` is for a human reading a log. `detail` is for the caller that has
+ * to fix the request: an agent should never have to parse an English sentence to
+ * learn which header was wrong and what to send instead.
+ */
+export interface HeaderValidationDetail {
+  /** Which rule failed. Switch on this, not on the message text. */
+  readonly problem:
+    | "missing_header"
+    | "header_body_mismatch"
+    | "malformed_encoding"
+    | "unmirrorable_body";
+  /** The header at fault, in canonical casing. */
+  readonly header: string;
+  /** Value the body implies the header should carry, when one exists. */
+  readonly expected?: string;
+  /** Value that actually arrived, decoded, when one did. */
+  readonly received?: string;
+  /** The body field this header mirrors, e.g. `params.name`. */
+  readonly bodyField?: string;
+  /** One concrete corrective action. */
+  readonly recovery: string;
+}
+
 export interface HeaderValidationFailure {
   readonly ok: false;
   /** Human-readable reason; travels in the JSON-RPC error message. */
   readonly message: string;
+  /** Machine-readable equivalent; travels in the JSON-RPC error `data`. */
+  readonly detail: HeaderValidationDetail;
 }
 
 export type HeaderValidationResult =
@@ -267,6 +295,14 @@ export function validateRequestHeaders(
       ok: false,
       message:
         "Missing required header 'MCP-Protocol-Version'. Every POST to the MCP endpoint must carry it, matching _meta['io.modelcontextprotocol/protocolVersion'].",
+      detail: {
+        problem: "missing_header",
+        header: "MCP-Protocol-Version",
+        expected: bodyProtocolVersion,
+        bodyField: "params._meta['io.modelcontextprotocol/protocolVersion']",
+        recovery:
+          `Send the header 'MCP-Protocol-Version: ${bodyProtocolVersion}' on every POST.`,
+      },
     };
   }
   if (versionHeader !== bodyProtocolVersion) {
@@ -274,6 +310,15 @@ export function validateRequestHeaders(
       ok: false,
       message:
         `MCP-Protocol-Version header "${versionHeader}" does not match _meta protocolVersion "${bodyProtocolVersion}"`,
+      detail: {
+        problem: "header_body_mismatch",
+        header: "MCP-Protocol-Version",
+        expected: bodyProtocolVersion,
+        received: versionHeader,
+        bodyField: "params._meta['io.modelcontextprotocol/protocolVersion']",
+        recovery:
+          `Set the header to "${bodyProtocolVersion}", or change the body's _meta to "${versionHeader}". They must agree.`,
+      },
     };
   }
 
@@ -283,6 +328,13 @@ export function validateRequestHeaders(
       ok: false,
       message:
         "Missing required header 'Mcp-Method'. It must mirror the JSON-RPC 'method' field.",
+      detail: {
+        problem: "missing_header",
+        header: "Mcp-Method",
+        expected: method,
+        bodyField: "method",
+        recovery: `Send the header 'Mcp-Method: ${method}'.`,
+      },
     };
   }
   if (methodHeader !== method) {
@@ -290,17 +342,37 @@ export function validateRequestHeaders(
       ok: false,
       message:
         `Mcp-Method header "${methodHeader}" does not match body method "${method}"`,
+      detail: {
+        problem: "header_body_mismatch",
+        header: "Mcp-Method",
+        expected: method,
+        received: methodHeader,
+        bodyField: "method",
+        recovery: `Set the header to "${method}" to match the body.`,
+      },
     };
   }
 
   const nameRule = mcpNameRequirement(method, params);
   if (nameRule.required) {
+    const bodyField = `params.${nameRule.sourceField}`;
     const raw = getHeader("Mcp-Name");
     if (raw === undefined) {
       return {
         ok: false,
         message:
-          `Missing required header 'Mcp-Name' for ${method}. It must mirror params.${nameRule.sourceField}.`,
+          `Missing required header 'Mcp-Name' for ${method}. It must mirror ${bodyField}.`,
+        detail: {
+          problem: "missing_header",
+          header: "Mcp-Name",
+          ...(nameRule.expected !== undefined
+            ? { expected: nameRule.expected }
+            : {}),
+          bodyField,
+          recovery: nameRule.expected !== undefined
+            ? `Send 'Mcp-Name: ${encodeHeaderValue(nameRule.expected)}'.`
+            : `Send 'Mcp-Name' mirroring ${bodyField}.`,
+        },
       };
     }
     const decoded = decodeHeaderValue(raw);
@@ -309,6 +381,14 @@ export function validateRequestHeaders(
         ok: false,
         message:
           "Mcp-Name header uses the =?base64?…?= sentinel but its payload is not valid base64-encoded UTF-8",
+        detail: {
+          problem: "malformed_encoding",
+          header: "Mcp-Name",
+          received: raw,
+          bodyField,
+          recovery:
+            "Re-encode as =?base64?<base64url of the UTF-8 bytes>?=, or send the plain value when it is header-safe ASCII.",
+        },
       };
     }
     // A value outside the header-safe set MUST arrive sentinel-encoded. When the
@@ -319,14 +399,27 @@ export function validateRequestHeaders(
         ok: false,
         message:
           "Mcp-Name contains characters that are not valid in an HTTP field value and was not sentinel-encoded",
+        detail: {
+          problem: "malformed_encoding",
+          header: "Mcp-Name",
+          received: raw,
+          bodyField,
+          recovery: `Wrap the value: 'Mcp-Name: ${encodeHeaderValue(raw)}'.`,
+        },
       };
     }
     if (nameRule.expected === undefined) {
       return {
         ok: false,
-        message: `${method} requires ${
-          nameRule.sourceField === "uri" ? "params.uri" : "params.name"
-        } to be a string for Mcp-Name to mirror`,
+        message:
+          `${method} requires ${bodyField} to be a string for Mcp-Name to mirror`,
+        detail: {
+          problem: "unmirrorable_body",
+          header: "Mcp-Name",
+          received: decoded,
+          bodyField,
+          recovery: `Set ${bodyField} to a string; ${method} requires it.`,
+        },
       };
     }
     if (decoded !== nameRule.expected) {
@@ -334,6 +427,16 @@ export function validateRequestHeaders(
         ok: false,
         message:
           `Mcp-Name header "${decoded}" does not match body value "${nameRule.expected}"`,
+        detail: {
+          problem: "header_body_mismatch",
+          header: "Mcp-Name",
+          expected: nameRule.expected,
+          received: decoded,
+          bodyField,
+          recovery: `Set the header to mirror the body: 'Mcp-Name: ${
+            encodeHeaderValue(nameRule.expected)
+          }'.`,
+        },
       };
     }
   }
@@ -342,7 +445,9 @@ export function validateRequestHeaders(
   if (mirrored.length > 0) {
     const args = isRecord(params?.["arguments"]) ? params["arguments"] : {};
     for (const { headerName, path } of mirrored) {
-      const raw = getHeader(`Mcp-Param-${headerName}`);
+      const header = `Mcp-Param-${headerName}`;
+      const bodyField = `params.arguments.${path.join(".")}`;
+      const raw = getHeader(header);
       const bodyValue = readAtPath(args, path);
       const bodyAbsent = bodyValue === undefined || bodyValue === null;
 
@@ -351,21 +456,34 @@ export function validateRequestHeaders(
         if (raw !== undefined) {
           return {
             ok: false,
-            message: `Mcp-Param-${headerName} header is present but "${
-              path.join(".")
-            }" is absent from the arguments`,
+            message:
+              `${header} header is present but "${bodyField}" is absent from the arguments`,
+            detail: {
+              problem: "header_body_mismatch",
+              header,
+              received: raw,
+              bodyField,
+              recovery:
+                `Omit ${header}, or supply ${bodyField} in the arguments.`,
+            },
           };
         }
         continue;
       }
 
+      const expected = String(bodyValue);
       if (raw === undefined) {
         return {
           ok: false,
           message:
-            `Missing required header 'Mcp-Param-${headerName}' mirroring argument "${
-              path.join(".")
-            }"`,
+            `Missing required header '${header}' mirroring argument "${bodyField}"`,
+          detail: {
+            problem: "missing_header",
+            header,
+            expected,
+            bodyField,
+            recovery: `Send '${header}: ${encodeHeaderValue(expected)}'.`,
+          },
         };
       }
       const decoded = decodeHeaderValue(raw);
@@ -373,23 +491,50 @@ export function validateRequestHeaders(
         return {
           ok: false,
           message:
-            `Mcp-Param-${headerName} uses the =?base64?…?= sentinel but its payload is not valid base64-encoded UTF-8`,
+            `${header} uses the =?base64?…?= sentinel but its payload is not valid base64-encoded UTF-8`,
+          detail: {
+            problem: "malformed_encoding",
+            header,
+            expected,
+            received: raw,
+            bodyField,
+            recovery:
+              "Re-encode as =?base64?<base64url of the UTF-8 bytes>?=, or send the plain value when it is header-safe ASCII.",
+          },
         };
       }
       if (!HEADER_SAFE_VALUE.test(raw) && raw === decoded) {
         return {
           ok: false,
           message:
-            `Mcp-Param-${headerName} contains characters that are not valid in an HTTP field value and was not sentinel-encoded`,
+            `${header} contains characters that are not valid in an HTTP field value and was not sentinel-encoded`,
+          detail: {
+            problem: "malformed_encoding",
+            header,
+            expected,
+            received: raw,
+            bodyField,
+            recovery: `Wrap the value: '${header}: ${
+              encodeHeaderValue(expected)
+            }'.`,
+          },
         };
       }
       if (!valueMatches(decoded, bodyValue)) {
         return {
           ok: false,
           message:
-            `Mcp-Param-${headerName} header "${decoded}" does not match argument "${
-              path.join(".")
-            }"`,
+            `${header} header "${decoded}" does not match argument "${bodyField}"`,
+          detail: {
+            problem: "header_body_mismatch",
+            header,
+            expected,
+            received: decoded,
+            bodyField,
+            recovery: `Set the header to mirror the argument: '${header}: ${
+              encodeHeaderValue(expected)
+            }'.`,
+          },
         };
       }
     }

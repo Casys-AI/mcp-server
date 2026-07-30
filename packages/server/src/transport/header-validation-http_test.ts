@@ -631,3 +631,155 @@ Deno.test("regression - an MRTR-retry result is not marked cacheable", () => {
     }
   })();
 });
+
+// ── AX: errors must be actionable as data, not as prose ─────────────────────
+
+Deno.test("AX - every header rejection carries a machine-readable recovery path", () => {
+  // Principle: an agent fixes the request from `data`, never by parsing the
+  // English message. Each case asserts the enum, the offending header, and that a
+  // concrete recovery instruction is present.
+  return (async () => {
+    const { http, url } = await start(buildServer());
+    const V_BODY = { _meta: { [PROTO_KEY]: V, [CAPS_KEY]: {} } };
+
+    const cases: Array<{
+      name: string;
+      headers: Record<string, string>;
+      body: Record<string, unknown>;
+      problem: string;
+      header: string;
+    }> = [
+      {
+        name: "missing Mcp-Method",
+        headers: { "MCP-Protocol-Version": V },
+        body: { jsonrpc: "2.0", id: 1, method: "tools/list", params: V_BODY },
+        problem: "missing_header",
+        header: "Mcp-Method",
+      },
+      {
+        name: "missing MCP-Protocol-Version",
+        headers: { "Mcp-Method": "tools/list" },
+        body: { jsonrpc: "2.0", id: 1, method: "tools/list", params: V_BODY },
+        problem: "missing_header",
+        header: "MCP-Protocol-Version",
+      },
+      {
+        name: "Mcp-Method disagrees with the body",
+        headers: { "MCP-Protocol-Version": V, "Mcp-Method": "resources/list" },
+        body: { jsonrpc: "2.0", id: 1, method: "tools/list", params: V_BODY },
+        problem: "header_body_mismatch",
+        header: "Mcp-Method",
+      },
+      {
+        name: "missing Mcp-Name on tools/call",
+        headers: { "MCP-Protocol-Version": V, "Mcp-Method": "tools/call" },
+        body: {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: { name: "echo", arguments: {}, ...V_BODY },
+        },
+        problem: "missing_header",
+        header: "Mcp-Name",
+      },
+      {
+        name: "missing Mcp-Param for an annotated argument",
+        headers: {
+          "MCP-Protocol-Version": V,
+          "Mcp-Method": "tools/call",
+          "Mcp-Name": "execute_sql",
+        },
+        body: {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: {
+            name: "execute_sql",
+            arguments: { region: "us-west1", query: "SELECT 1" },
+            ...V_BODY,
+          },
+        },
+        problem: "missing_header",
+        header: "Mcp-Param-Region",
+      },
+    ];
+
+    try {
+      for (const c of cases) {
+        const res = await post(url, c.headers, c.body);
+        const data = await res.json();
+
+        assertEquals(res.status, 400, c.name);
+        assertEquals(data.error.code, -32020, c.name);
+        assertEquals(data.error.data.problem, c.problem, c.name);
+        assertEquals(data.error.data.header, c.header, c.name);
+        // A recovery string that is present but empty would be worse than none:
+        // it looks actionable and is not.
+        assertEquals(
+          typeof data.error.data.recovery === "string" &&
+            data.error.data.recovery.length > 10,
+          true,
+          `${c.name}: recovery must be a concrete instruction`,
+        );
+      }
+    } finally {
+      await http.shutdown();
+    }
+  })();
+});
+
+Deno.test("AX - a mismatch reports both what was expected and what arrived", () => {
+  // Without both sides an agent cannot tell which end to change.
+  return (async () => {
+    const { http, url } = await start(buildServer());
+    try {
+      const res = await post(url, {
+        "MCP-Protocol-Version": V,
+        "Mcp-Method": "tools/call",
+        "Mcp-Name": "wrong_tool",
+      }, {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: {
+          name: "echo",
+          arguments: {},
+          _meta: { [PROTO_KEY]: V, [CAPS_KEY]: {} },
+        },
+      });
+      const { error } = await res.json();
+      assertEquals(error.data.problem, "header_body_mismatch");
+      assertEquals(error.data.expected, "echo");
+      assertEquals(error.data.received, "wrong_tool");
+      assertEquals(error.data.bodyField, "params.name");
+    } finally {
+      await http.shutdown();
+    }
+  })();
+});
+
+Deno.test("AX - a malformed mrtr.signingKey fails at construction, not on first use", () => {
+  // Principle: validate at the boundary. A typo in a 64-hex secret must not wait
+  // for the first request that needs it, which would make it a production runtime
+  // failure instead of a boot failure.
+  for (const bad of ["tooshort", "A".repeat(64), "z".repeat(64), ""]) {
+    let threw = false;
+    try {
+      new McpApp({
+        name: "bad-key",
+        version: "1.0.0",
+        logger: () => {},
+        transport: "stateless",
+        mrtr: { signingKey: bad },
+      });
+    } catch (error) {
+      threw = true;
+      assertStringIncludes(String(error), "64 lowercase hex");
+    }
+    assertEquals(
+      threw,
+      true,
+      `signingKey ${JSON.stringify(bad)} must be refused`,
+    );
+  }
+});

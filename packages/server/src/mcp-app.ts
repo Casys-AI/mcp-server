@@ -2721,27 +2721,35 @@ export class McpApp {
                   // return value produces an identical result either way.
                   (raw) => this.buildToolCallResult(toolName, raw),
                 );
-              } catch {
-                return jsonRpcResponse(
-                  {
-                    jsonrpc: "2.0",
-                    id,
-                    error: {
-                      code: ErrorCode.InternalError,
-                      message:
-                        "Server is shutting down; no new tasks are accepted.",
-                      data: {
-                        problem: "server_stopping",
-                        recovery: "Retry against a running instance.",
+              } catch (spawnError) {
+                // Narrowed to the actual shutdown condition. A blanket catch
+                // reported a legitimate throw from the handler's own task setup as
+                // "server is shutting down" — a diagnosis that sends the reader to
+                // look at the wrong thing entirely, on a perfectly healthy server.
+                if (this.stopping || this.taskStore.isDisposed) {
+                  return jsonRpcResponse(
+                    {
+                      jsonrpc: "2.0",
+                      id,
+                      error: {
+                        code: ErrorCode.InternalError,
+                        message:
+                          "Server is shutting down; no new tasks are accepted.",
+                        data: {
+                          problem: "server_stopping",
+                          recovery: "Retry against a running instance.",
+                        },
                       },
                     },
-                  },
-                  503,
-                  {
-                    "MCP-Protocol-Version": statelessVersion ??
-                      STATELESS_FALLBACK_VERSION,
-                  },
-                );
+                    503,
+                    {
+                      "MCP-Protocol-Version": statelessVersion ??
+                        STATELESS_FALLBACK_VERSION,
+                    },
+                  );
+                }
+                // A real failure: let the tool error path report it as such.
+                throw spawnError;
               }
               return c.json({
                 jsonrpc: "2.0",

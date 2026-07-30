@@ -913,3 +913,61 @@ Deno.test("round4 - a restarted server accepts tasks again", async () => {
     await second.http.shutdown();
   }
 });
+
+Deno.test("round5 - a handler failing during task setup reports its own error", async () => {
+  // The catch around spawn() was a blanket one, so a legitimate throw from the
+  // handler's task setup was reported as "server is shutting down" on a perfectly
+  // healthy server — a diagnosis that sends the reader to the wrong place.
+  const server = new McpApp({
+    name: "tasks-setup-throw",
+    version: "1.0.0",
+    logger: () => {},
+    transport: "stateless",
+    extensions: { [TASKS_ID]: {} },
+  });
+  server.registerTool(
+    {
+      name: "boom",
+      description: "Throws in setup",
+      inputSchema: { type: "object" },
+    },
+    () =>
+      ({
+        _type: "async-task",
+        get options(): never {
+          throw new Error("setup exploded");
+        },
+        run: () => Promise.resolve(1),
+        // deno-lint-ignore no-explicit-any
+      }) as any,
+  );
+
+  const { http, url } = await start(server);
+  try {
+    const res = await post(url, "tools/call", { name: "boom", arguments: {} });
+    const data = await res.json();
+    // The real cause, not a fictional shutdown.
+    assertEquals(data.error.code, -32603);
+    assertStringIncludes(data.error.message, "setup exploded");
+    assertEquals(data.error.data?.problem, undefined);
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("round5 - one unserialisable inputRequest rejects the whole map", async () => {
+  // Wholesale rejection is the right call: a partially serialisable map cannot be
+  // emitted, so accepting the good half would return a response missing a request
+  // the handler asked for.
+  const { checkInputRequestCapabilities } = await import(
+    "../mrtr/capability-check.ts"
+  );
+  const circular: Record<string, unknown> = {};
+  circular.self = circular;
+  const result = checkInputRequestCapabilities({
+    good: { method: "elicitation/create", params: { mode: "form" } },
+    // deno-lint-ignore no-explicit-any
+    bad: { method: "elicitation/create", params: circular as any },
+  }, { elicitation: {} });
+  assertEquals(result.ok, false);
+});

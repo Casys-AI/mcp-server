@@ -104,7 +104,7 @@ function buildTaskServer() {
           // The fuzz deliberately crosses the public TypeScript boundary.
           // deno-lint-ignore no-explicit-any
           await ctrl.requireInput(shape as any, {
-            method: "client/request",
+            method: "elicitation/create",
             params: { question: "Continue?" },
           });
         });
@@ -119,7 +119,7 @@ function buildTaskServer() {
             toJSON: () => {
               serialisations++;
               return serialisations === 1
-                ? { method: "client/request", params: { stable: true } }
+                ? { method: "elicitation/create", params: { stable: true } }
                 : null;
             },
           };
@@ -237,7 +237,7 @@ Deno.test("shape fuzz - task snapshots emit the canonical request that was valid
     assertEquals(task.status, "input_required");
     const requests = task.inputRequests as Record<string, unknown>;
     assertEquals(requests.canonical, {
-      method: "client/request",
+      method: "elicitation/create",
       params: { stable: true },
     });
     const cancelled = await post(url, "tasks/cancel", { taskId: task.taskId });

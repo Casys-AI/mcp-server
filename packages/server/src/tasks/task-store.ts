@@ -12,6 +12,7 @@
  *
  * @module lib/server/tasks/task-store
  */
+import { METHOD_TO_CAPABILITY } from "../mrtr/capability-check.ts";
 
 // ── Entropy ──────────────────────────────────────────────────────────────────
 
@@ -359,6 +360,21 @@ function canonicaliseTaskInputRequest(
       ok: false,
       message:
         "Invalid task input request: expected an object with a string method and object params.",
+    };
+  }
+
+  // The method must be one a client can actually service. Accepting any string let
+  // a task ask for something like `client/request`, for which no client has a
+  // handler — so the task STRANDS in `input_required` forever instead of failing.
+  // A stranded task is worse than a failed one: it consumes a poll loop and never
+  // resolves. Same grammar as MRTR, from the same table, so the two boundaries
+  // cannot drift apart.
+  if (!Object.hasOwn(METHOD_TO_CAPABILITY, canonical["method"])) {
+    return {
+      ok: false,
+      message: `Invalid task input request: unsupported method "${
+        canonical["method"]
+      }". Permitted: ${Object.keys(METHOD_TO_CAPABILITY).join(", ")}.`,
     };
   }
 

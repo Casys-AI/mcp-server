@@ -76,7 +76,15 @@ export type CapabilityCheckResult = CapabilityCheckOk | CapabilityCheckFail;
 // unknown method is a server-authoring error, and the spec forbids emitting it
 // on the wire. Rejecting it here prevents that wire violation.
 
-const METHOD_TO_CAPABILITY: Readonly<Record<string, string>> = {
+/**
+ * The only methods an input request may carry, mapped to the capability each needs.
+ *
+ * Exported so the Tasks boundary enforces the same grammar. A task that requests
+ * input uses MRTR request shapes, and a second, looser list there is how a task
+ * ends up asking for a method no client implements — which strands it rather than
+ * failing it.
+ */
+export const METHOD_TO_CAPABILITY: Readonly<Record<string, string>> = {
   "elicitation/create": "elicitation",
   "sampling/createMessage": "sampling",
   "roots/list": "roots",

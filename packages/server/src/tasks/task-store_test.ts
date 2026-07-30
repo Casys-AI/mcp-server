@@ -332,12 +332,18 @@ Deno.test("requireInput — rejects on use of a currently-outstanding key", asyn
   store.spawn(
     createTask({}, async (ctrl) => {
       // Detach: we intentionally do not await this promise.
-      void ctrl.requireInput("dup", { method: "m", params: {} }).catch(
+      void ctrl.requireInput("dup", {
+        method: "elicitation/create",
+        params: {},
+      }).catch(
         () => {},
       );
       // Second call: "dup" already outstanding — must reject.
       try {
-        await ctrl.requireInput("dup", { method: "m", params: {} });
+        await ctrl.requireInput("dup", {
+          method: "elicitation/create",
+          params: {},
+        });
       } catch (e) {
         doubleError = e instanceof Error ? e : new Error(String(e));
       }
@@ -357,7 +363,10 @@ Deno.test("update — ignores responses for unknown keys (spec SHOULD)", async (
   const store = makeStore();
   const { taskId } = store.spawn(
     createTask({}, async (ctrl) => {
-      await ctrl.requireInput("real-key", { method: "m", params: {} });
+      await ctrl.requireInput("real-key", {
+        method: "elicitation/create",
+        params: {},
+      });
       return {};
     }),
     OWNER,
@@ -647,7 +656,10 @@ Deno.test("notification callback — fires on input_required transition", async 
 
   const { taskId } = store.spawn(
     createTask({}, async (ctrl) => {
-      await ctrl.requireInput("q", { method: "m", params: {} });
+      await ctrl.requireInput("q", {
+        method: "elicitation/create",
+        params: {},
+      });
       return {};
     }),
     OWNER,
@@ -693,8 +705,14 @@ Deno.test("multiple concurrent requireInput — all visible in inputRequests", a
     createTask({}, async (ctrl) => {
       // Fire two in parallel
       const [a, b] = await Promise.all([
-        ctrl.requireInput("alpha", { method: "m1", params: { p: 1 } }),
-        ctrl.requireInput("beta", { method: "m2", params: { p: 2 } }),
+        ctrl.requireInput("alpha", {
+          method: "elicitation/create",
+          params: { p: 1 },
+        }),
+        ctrl.requireInput("beta", {
+          method: "sampling/createMessage",
+          params: { p: 2 },
+        }),
       ]);
       return { a: a["v"], b: b["v"] };
     }),
@@ -728,7 +746,10 @@ Deno.test("cancel during requireInput — promise rejects with AbortError", asyn
   const { taskId } = store.spawn(
     createTask({}, async (ctrl) => {
       try {
-        await ctrl.requireInput("blocked", { method: "m", params: {} });
+        await ctrl.requireInput("blocked", {
+          method: "elicitation/create",
+          params: {},
+        });
       } catch (e) {
         caughtError = e;
       }
@@ -765,5 +786,100 @@ Deno.test("spec: tool-level isError does NOT produce failed status", async () =>
   assertEquals(task?.status, "completed");
   if (task?.status === "completed") {
     assertEquals(task.result["isError"], true);
+  }
+});
+
+// ── Input-request grammar (round 11) ─────────────────────────────────────────
+
+Deno.test("requireInput — only MRTR methods are accepted", async () => {
+  // Accepting any string let a task ask for a method no client implements, so it
+  // STRANDED in input_required forever instead of failing. A stranded task is
+  // worse than a failed one: it consumes a poll loop and never resolves.
+  const store = new TaskStore({ cleanupIntervalMs: 0 });
+  try {
+    for (
+      const method of [
+        "client/request",
+        "tools/call",
+        "elicitation/createFoo",
+        "",
+        "toString",
+        "__proto__",
+      ]
+    ) {
+      const { taskId } = store.spawn(
+        createTask({}, (ctrl) =>
+          ctrl.requireInput("k", {
+            method,
+            params: { message: "hi" },
+          })),
+        OWNER,
+      );
+      await flushMicrotasks();
+      const task = store.get(taskId, OWNER);
+      assertEquals(
+        task?.status,
+        "failed",
+        `${JSON.stringify(method)} must fail the task, not strand it`,
+      );
+    }
+  } finally {
+    store.dispose();
+  }
+});
+
+Deno.test("requireInput — the three permitted methods are accepted", () => {
+  // The counterweight: a grammar that rejects everything would pass the test above
+  // while making the feature unusable.
+  const store = new TaskStore({ cleanupIntervalMs: 0 });
+  try {
+    for (
+      const method of [
+        "elicitation/create",
+        "sampling/createMessage",
+        "roots/list",
+      ]
+    ) {
+      const { taskId } = store.spawn(
+        createTask(
+          {},
+          (ctrl) => ctrl.requireInput("k", { method, params: {} }),
+        ),
+        OWNER,
+      );
+      const task = store.get(taskId, OWNER);
+      assertEquals(
+        task?.status === "failed",
+        false,
+        `${method} must be accepted`,
+      );
+    }
+  } finally {
+    store.dispose();
+  }
+});
+
+Deno.test("requireInput — malformed params fail the task", async () => {
+  const store = new TaskStore({ cleanupIntervalMs: 0 });
+  try {
+    for (const params of [null, "x", 42, [], undefined]) {
+      const { taskId } = store.spawn(
+        createTask({}, (ctrl) =>
+          ctrl.requireInput("k", {
+            method: "elicitation/create",
+            // deno-lint-ignore no-explicit-any
+            params: params as any,
+          })),
+        OWNER,
+      );
+      await flushMicrotasks();
+      assertEquals(
+        store.get(taskId, OWNER)?.status,
+        "failed",
+        `params ${JSON.stringify(params)} must fail the task`,
+      );
+    }
+  } finally {
+    store.dispose();
   }
 });

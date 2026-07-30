@@ -10,7 +10,7 @@
  * @module lib/server/tasks/tasks-integration_test
  */
 
-import { assertEquals, assertExists } from "@std/assert";
+import { assertEquals, assertExists, assertStringIncludes } from "@std/assert";
 import { McpApp } from "../mcp-app.ts";
 import type { ToolHandler } from "../types.ts";
 import { createTask } from "./mod.ts";
@@ -501,6 +501,70 @@ Deno.test("tasks - an unknown taskId is an error, not a successful no-op", async
       const data = await (await post(url, method, params)).json();
       assertEquals(data.error?.code, -32602, `${method} must report an error`);
     }
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("tasks - an auth provider with no usable subject yields a diagnosable error", async () => {
+  // Regression guard for a fix that introduced its own bug: the principal helper
+  // used to throw. The tasks handlers call it outside any try/catch, so the throw
+  // surfaced through the POST-level catch as -32700 "Parse error" — a diagnosis
+  // pointing nowhere near a misconfigured auth provider.
+  const { createStaticTokenAuthProvider } = await import(
+    "../auth/static-token-provider.ts"
+  );
+  const base = createStaticTokenAuthProvider(["tok"], {
+    resource: "https://example.test/mcp",
+  });
+  // Same provider, but reporting the "unknown" subject a token with no `sub`
+  // claim produces.
+  const provider = Object.create(
+    Object.getPrototypeOf(base),
+    Object.getOwnPropertyDescriptors(base),
+  );
+  provider.verifyToken = () =>
+    Promise.resolve({ subject: "unknown", scopes: [] });
+
+  const server = new McpApp({
+    name: "tasks-no-subject",
+    version: "1.0.0",
+    logger: () => {},
+    transport: "stateless",
+    extensions: { [TASKS_ID]: {} },
+    auth: { provider },
+  });
+  server.registerTool(
+    { name: "scan", description: "Scan", inputSchema: { type: "object" } },
+    () => createTask({}, () => Promise.resolve(1)),
+  );
+
+  const { http, url } = await start(server);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer tok",
+        "MCP-Protocol-Version": V,
+        "Mcp-Method": "tasks/get",
+        "Mcp-Name": "whatever",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tasks/get",
+        params: {
+          taskId: "whatever",
+          _meta: { [PROTO_KEY]: V, [CAPS_KEY]: WITH_TASKS },
+        },
+      }),
+    });
+    const data = await res.json();
+    // Names the actual problem, and says what to change.
+    assertEquals(data.error.code, -32603);
+    assertEquals(data.error.data.problem, "no_caller_principal");
+    assertStringIncludes(data.error.data.recovery, "subject claim");
   } finally {
     await http.shutdown();
   }

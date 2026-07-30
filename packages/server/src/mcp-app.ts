@@ -329,19 +329,38 @@ const MRTR_NO_AUTH_PRINCIPAL = "\u0000unauthenticated";
  *    be spent by another, while the code reads as though the binding were
  *    enforced. That is worse than no auth, because it is invisible. Throws.
  */
-function mrtrPrincipal(authInfo: AuthInfo | undefined): string {
+function callerPrincipal(authInfo: AuthInfo | undefined): string | null {
   if (authInfo === undefined) return MRTR_NO_AUTH_PRINCIPAL;
   const subject = authInfo.subject;
   if (subject === undefined || subject === "" || subject === "unknown") {
-    throw new Error(
-      "[McpApp] MRTR cannot bind requestState to a caller: the auth provider " +
-        "returned no usable subject for an authenticated request. Every such " +
-        "caller would share one identity, so a token minted for one could be " +
-        "spent by another. Configure the provider to supply a subject claim, or " +
-        "disable auth if callers genuinely share one authority.",
-    );
+    // `null`, not a throw: the task handlers call this outside any try/catch, so
+    // a throw would surface through the POST-level catch as -32700 "Parse error"
+    // — a diagnosis pointing nowhere near a misconfigured auth provider. The
+    // caller turns this into an explicit error instead.
+    return null;
   }
   return subject;
+}
+
+/** The error to return when no caller boundary can be established. */
+function noPrincipalError(id: unknown): Response {
+  return jsonRpcResponse(
+    {
+      jsonrpc: "2.0",
+      id,
+      error: {
+        code: ErrorCode.InternalError,
+        message:
+          "Server cannot establish a caller identity: the auth provider returned no usable subject for an authenticated request.",
+        data: {
+          problem: "no_caller_principal",
+          recovery:
+            "Configure the auth provider to supply a subject claim, or disable auth if all callers genuinely share one authority.",
+        },
+      },
+    },
+    500,
+  );
 }
 
 /** Lowercase hex encoding, for the requestState nonce. */
@@ -2332,7 +2351,8 @@ export class McpApp {
               // nothing — correctly so: without auth there is no user boundary to
               // cross, and any caller could invoke the tool directly anyway. The
               // method and argument bindings still apply in both cases.
-              const principal = mrtrPrincipal(httpAuthInfo);
+              const principal = callerPrincipal(httpAuthInfo);
+              if (principal === null) return noPrincipalError(id);
               const verdict = await verifyRequestState(echoedState, key, {
                 principal,
                 method: "tools/call",
@@ -2382,11 +2402,13 @@ export class McpApp {
               mrtrEnabled && isRecord(result) &&
               result["resultType"] === "input_required"
             ) {
+              const sealPrincipal = callerPrincipal(httpAuthInfo);
+              if (sealPrincipal === null) return noPrincipalError(id);
               const built = await this.buildInputRequiredResult(
                 result as unknown as InputRequiredSignal,
                 {
                   clientCapabilities: statelessClientMeta?.clientCapabilities,
-                  principal: mrtrPrincipal(httpAuthInfo),
+                  principal: sealPrincipal,
                   method: "tools/call",
                   paramsDigest: ingressDigest,
                 },
@@ -2440,9 +2462,11 @@ export class McpApp {
               // Owner binding: the spec requires an authorization check on every
               // task-related request, and a task id alone is only one line of
               // defence.
+              const owner = callerPrincipal(httpAuthInfo);
+              if (owner === null) return noPrincipalError(id);
               const task = this.taskStore!.spawn(
                 result,
-                mrtrPrincipal(httpAuthInfo),
+                owner,
                 // Same conversion the synchronous path uses, so a handler's
                 // return value produces an identical result either way.
                 (raw) => this.buildToolCallResult(toolName, raw),
@@ -2788,7 +2812,8 @@ export class McpApp {
             );
           }
 
-          const caller = mrtrPrincipal(httpAuthInfo);
+          const caller = callerPrincipal(httpAuthInfo);
+          if (caller === null) return noPrincipalError(id);
 
           if (method === "tasks/get") {
             const task = store.get(taskId, caller);

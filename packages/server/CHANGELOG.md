@@ -48,6 +48,36 @@ earlier revision over the stateless transport also sees the 0.22.0 shape.
   including `subscriptions/listen` until Track G lands. Special-casing the two
   removed methods would have left every other unknown method answering 200.
 
+### Fixed — four rounds of adversarial review
+
+Four review rounds found 11, then 8, then 5, then 2 blocking defects. The trend
+matters: after round 1, most findings were regressions in the _repair paths_,
+not in the original work — so each round was pointed at the previous round's
+fixes first.
+
+The ones worth knowing about as a consumer:
+
+- **A serialisation-boundary bypass.** The MRTR sub-capability gate inspected
+  live JS values while the response serialised the original object later — two
+  different checks over one payload. `mode: new String("url")` is not
+  `=== "url"` but serialises to `"url"`; a `toJSON()` can introduce `tools` only
+  at serialisation time. The gate now canonicalises through JSON first, so it
+  inspects exactly what ships.
+- **`requiredCapabilities` was flat** (`{"elicitation.url": {}}`), which a typed
+  client deserialises as `{}` — reading as "nothing missing", the opposite of
+  the message. Now nested per `ClientCapabilities`.
+- **A rejected HMAC key import was cached forever**, so every later MRTR retry
+  surfaced as `-32700 Parse error` and no second import was attempted.
+- **Task authorization.** Tasks are bound to an owner key;
+  `McpAppOptions.taskOwnerKey` is the hook for deployments authorizing on more
+  than identity. It must derive everything from its arguments — `tasks/*` does
+  not run the middleware pipeline, so pipeline-injected state such as a tenant
+  id is not visible there. An empty or non-string key is refused rather than
+  collapsing every caller onto one owner.
+- **Shutdown behaviour.** No task is accepted once `stop()` begins, and a
+  restarted server accepts them again — including on stdio, which previously
+  refused every task for the rest of its life after a stop.
+
 ### Fixed — conformance and security, from adversarial review
 
 A final review round found eleven blocking defects in the newly wired tracks.

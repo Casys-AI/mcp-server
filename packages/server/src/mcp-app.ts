@@ -4004,6 +4004,18 @@ export class McpApp {
         context.clientCapabilities as Record<string, unknown> | undefined,
       );
       if (!check.ok) {
+        // A structurally invalid input request is the SERVER's bug. Reporting it
+        // as -32021 told the client to declare a capability it already had, and
+        // hid the real fault behind a client-facing error.
+        if (check.kind === "malformed") {
+          return {
+            ok: false,
+            code: ErrorCode.InternalError,
+            message: `Malformed inputRequest: ${
+              check.missingCapabilities.join(", ")
+            }`,
+          };
+        }
         // Spec rule 7 is a MUST NOT on the server: never ask for input the
         // client cannot provide. Emitting it anyway would strand the request.
         return {

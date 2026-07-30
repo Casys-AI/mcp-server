@@ -36,6 +36,19 @@ export interface CapabilityCheckOk {
 /** Failed capability check — one or more capabilities are missing. */
 export interface CapabilityCheckFail {
   /**
+   * Which fault this is.
+   *
+   * `missing_capability` — the client did not declare something the request needs.
+   * That is the client's to fix, and `-32021` says exactly that.
+   *
+   * `malformed` — the SERVER produced an input request that is structurally
+   * invalid: an unknown method, a missing or non-object `params`, a map that will
+   * not serialise. Reporting those as a missing capability tells the client to
+   * declare something it already has, and hides a server bug behind a client-facing
+   * error.
+   */
+  readonly kind: "missing_capability" | "malformed";
+  /**
    * `ClientCapabilities`-shaped payload for the error's `data`, when the missing
    * capability is nested. Absent for top-level ones, where the caller derives it
    * from `missingCapabilities`.
@@ -127,6 +140,7 @@ export function checkInputRequestCapabilities(
   if (!isRecord(canonicalRequests)) {
     return {
       ok: false,
+      kind: "malformed",
       missingCapabilities: ["<inputRequests could not be serialised>"],
     };
   }
@@ -157,6 +171,7 @@ export function checkInputRequestCapabilities(
     if (entry.params === undefined && entry.method !== "roots/list") {
       return {
         ok: false,
+        kind: "malformed",
         missingCapabilities: [
           `<${entry.method} requires params>`,
         ],
@@ -165,6 +180,7 @@ export function checkInputRequestCapabilities(
     if (entry.params !== undefined && !isRecord(entry.params)) {
       return {
         ok: false,
+        kind: "malformed",
         missingCapabilities: [
           `<malformed inputRequest params for ${entry.method}>`,
         ],
@@ -178,6 +194,7 @@ export function checkInputRequestCapabilities(
       if (elicitation?.["url"] === undefined) {
         return {
           ok: false,
+          kind: "missing_capability",
           missingCapabilities: ["elicitation.url"],
           // Nested, matching ClientCapabilities. A flat "elicitation.url" key
           // deserialises to `{}` on a typed client — it reads as "nothing
@@ -196,6 +213,7 @@ export function checkInputRequestCapabilities(
       if (sampling?.["tools"] === undefined) {
         return {
           ok: false,
+          kind: "missing_capability",
           missingCapabilities: ["sampling.tools"],
           requiredCapabilities: { sampling: { tools: {} } },
         };
@@ -210,6 +228,7 @@ export function checkInputRequestCapabilities(
       // same name, which is not a capability at all.
       return {
         ok: false,
+        kind: "malformed",
         missingCapabilities: [
           `<unsupported inputRequest method: ${entry.method}>`,
         ],
@@ -234,7 +253,11 @@ export function checkInputRequestCapabilities(
   }
 
   if (missing.length > 0) {
-    return { ok: false, missingCapabilities: missing };
+    return {
+      ok: false,
+      kind: "missing_capability",
+      missingCapabilities: missing,
+    };
   }
   return { ok: true, canonicalRequests };
 }

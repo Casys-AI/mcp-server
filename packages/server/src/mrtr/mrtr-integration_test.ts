@@ -582,3 +582,52 @@ Deno.test("round5 - post-negotiation task errors carry the protocol version", as
     await http.shutdown();
   }
 });
+
+Deno.test("round7 - a malformed inputRequest is a server fault, not a missing capability", async () => {
+  // -32021 means "the client did not declare a capability". Telling a client that
+  // when the SERVER emitted a structurally invalid request is useless advice — it
+  // sends them to declare something they already have, and hides the real bug.
+  const server = new McpApp({
+    name: "mrtr-malformed-kind",
+    version: "1.0.0",
+    logger: () => {},
+    transport: "stateless",
+  });
+  server.registerTools(
+    [{ name: "ask", description: "Asks", inputSchema: { type: "object" } }],
+    new Map<string, ToolHandler>([
+      // elicitation/create requires params; omitting it is malformed server output.
+      ["ask", () => ({
+        resultType: "input_required",
+        // deno-lint-ignore no-explicit-any
+        inputRequests: { k: { method: "elicitation/create" } as any },
+      })],
+    ]),
+  );
+
+  const { http, url } = await start(server);
+  try {
+    // The client DOES declare elicitation, so a capability error would be a lie.
+    const res = await call(url, "ask", {}, WITH_ELICITATION);
+    const data = await res.json();
+    assertEquals(res.status, 500, "a server fault, not a client one");
+    assertEquals(data.error.code, -32603);
+    assertStringIncludes(data.error.message, "Malformed inputRequest");
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("round7 - a genuine missing capability is still the client's to fix", async () => {
+  const { server } = buildServer({ signingKey: KEY });
+  const { http, url } = await start(server);
+  try {
+    const res = await call(url, "needs_sampling", {}, WITH_ELICITATION);
+    const data = await res.json();
+    assertEquals(res.status, 400, "the client's fault");
+    assertEquals(data.error.code, -32021);
+    assertEquals(data.error.data.requiredCapabilities, { sampling: {} });
+  } finally {
+    await http.shutdown();
+  }
+});

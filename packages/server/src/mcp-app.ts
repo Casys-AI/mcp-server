@@ -2453,9 +2453,33 @@ export class McpApp {
         }
 
         // Tools call (delegates to middleware pipeline, which handles auth internally)
-        if (method === "tools/call" && params?.name) {
-          const toolName = params.name as string;
-          const args = (params.arguments as Record<string, unknown>) || {};
+        if (method === "tools/call") {
+          // Dispatch by method rather than the truthiness of `name`. An empty
+          // string can be represented faithfully by Mcp-Name, but it is not a
+          // usable tool name and must be InvalidParams rather than an apparent
+          // method that this server does not implement.
+          const toolParams = isRecord(params) ? params : undefined;
+          if (
+            toolParams === undefined ||
+            typeof toolParams["name"] !== "string" ||
+            toolParams["name"].length === 0
+          ) {
+            return jsonRpcResponse(
+              {
+                jsonrpc: "2.0",
+                id,
+                error: {
+                  code: JSONRPC_INVALID_PARAMS,
+                  message:
+                    "tools/call requires a non-empty string 'name' parameter",
+                },
+              },
+              400,
+            );
+          }
+          const toolName = toolParams["name"];
+          const args = (toolParams["arguments"] as Record<string, unknown>) ||
+            {};
           const statelessClientMeta:
             | StatelessClientMeta
             | undefined = this.options.transport === "stateless" &&
@@ -2928,8 +2952,29 @@ export class McpApp {
         }
 
         // Resources read
-        if (method === "resources/read" && params?.uri) {
-          const uri = params.uri as string;
+        if (method === "resources/read") {
+          // Dispatch by method, not the truthiness of its routing parameter.
+          // `uri: ""` has a valid empty Mcp-Name header representation, but it
+          // is not a usable resource URI. Letting it skip this branch turned a
+          // malformed resources/read into a misleading -32601 method-not-found.
+          const uri = isRecord(params) && typeof params["uri"] === "string" &&
+              params["uri"].length > 0
+            ? params["uri"]
+            : undefined;
+          if (uri === undefined) {
+            return jsonRpcResponse(
+              {
+                jsonrpc: "2.0",
+                id,
+                error: {
+                  code: JSONRPC_INVALID_PARAMS,
+                  message:
+                    "resources/read requires a non-empty string 'uri' parameter",
+                },
+              },
+              400,
+            );
+          }
           const resourceInfo = this.resources.get(uri);
 
           if (!resourceInfo) {

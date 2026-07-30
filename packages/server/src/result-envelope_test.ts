@@ -159,6 +159,50 @@ Deno.test("envelope - a failing tool call is still a completed result", async ()
   }
 });
 
+Deno.test("resources/read - an empty URI is invalid params, not method not found", async () => {
+  // An empty `Mcp-Name` is a conforming representation of an empty string, so
+  // header validation accepts this request. The resource dispatcher must still
+  // run and reject the unusable URI rather than falling through to the generic
+  // -32601 method-not-found branch.
+  const server = new McpApp({
+    name: "empty-resource-uri-test",
+    version: "1.0.0",
+    logger: () => {},
+    transport: "stateless",
+  });
+  const { http, url } = await startOnFreePort(server);
+
+  try {
+    const res = await rpc(url, "resources/read", { uri: "" });
+    const data = await res.json();
+    assertEquals(res.status, 400);
+    assertEquals(data.error.code, -32602);
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("tools/call - an empty name is invalid params, not method not found", async () => {
+  // As with an empty resource URI, a blank Mcp-Name can faithfully mirror the
+  // JSON value. It must not make an implemented method look unimplemented.
+  const server = new McpApp({
+    name: "empty-tool-name-test",
+    version: "1.0.0",
+    logger: () => {},
+    transport: "stateless",
+  });
+  const { http, url } = await startOnFreePort(server);
+
+  try {
+    const res = await rpc(url, "tools/call", { name: "", arguments: {} });
+    const data = await res.json();
+    assertEquals(res.status, 400);
+    assertEquals(data.error.code, -32602);
+  } finally {
+    await http.shutdown();
+  }
+});
+
 Deno.test("envelope - a tool's own _meta survives stamping", async () => {
   // Regression guard: MCP Apps viewers ship UI hints in the tool's `_meta`.
   // Replacing `_meta` instead of merging it would silently break every viewer,

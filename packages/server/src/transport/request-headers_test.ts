@@ -316,6 +316,26 @@ Deno.test("Mcp-Param - absent argument requires an absent header", () => {
   assertEquals(spurious.ok, false);
 });
 
+Deno.test("Mcp-Param - an empty string is mirrored as an empty header value", () => {
+  // Empty is valid JSON and a valid plain HTTP field value. Encoding it turns a
+  // conforming `Mcp-Param-Name:` into a different wire representation, and
+  // rejecting it prevents a tool from mirroring an optional empty string.
+  const mirrored = [{ headerName: "Name", path: ["name"] }];
+  assertEquals(encodeHeaderValue(""), "");
+  const result = ok(
+    {
+      "MCP-Protocol-Version": VERSION,
+      "Mcp-Method": "tools/call",
+      "Mcp-Name": "rename",
+      "Mcp-Param-Name": "",
+    },
+    "tools/call",
+    { name: "rename", arguments: { name: "" } },
+    mirrored,
+  );
+  assertEquals(result.ok, true);
+});
+
 Deno.test("Mcp-Param - integers compare numerically, not as strings", () => {
   // The spec calls this out: 42.0 and 42 are the same value. A string compare
   // would reject a conforming client over formatting.

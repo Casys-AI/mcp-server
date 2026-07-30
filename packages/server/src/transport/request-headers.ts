@@ -45,9 +45,10 @@ const HTTP_TOKEN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 
 /**
  * Field values are limited to visible ASCII, space and horizontal tab, and may
- * not carry leading or trailing whitespace.
+ * not carry leading or trailing whitespace. The empty value is valid too: it is
+ * how a present string parameter with value `""` is mirrored on the wire.
  */
-const HEADER_SAFE_VALUE = /^[\x21-\x7E]([\x20-\x7E\t]*[\x21-\x7E])?$/;
+const HEADER_SAFE_VALUE = /^(?:[\x21-\x7E](?:[\x20-\x7E\t]*[\x21-\x7E])?)?$/;
 
 /**
  * What went wrong, as data rather than prose.

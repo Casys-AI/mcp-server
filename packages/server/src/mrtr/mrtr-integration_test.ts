@@ -631,3 +631,37 @@ Deno.test("round7 - a genuine missing capability is still the client's to fix", 
     await http.shutdown();
   }
 });
+
+Deno.test("round8 - a null inputRequests value yields 500, not a 200 tool error", async () => {
+  // It canonicalised cleanly and then threw on dereference, so it fell through to
+  // the generic tool-error path: -32603 at HTTP 200. A malformed server output must
+  // be a server fault on the wire, not something the client reads as a completed
+  // call that happened to fail.
+  const server = new McpApp({
+    name: "mrtr-null-entry",
+    version: "1.0.0",
+    logger: () => {},
+    transport: "stateless",
+  });
+  server.registerTools(
+    [{ name: "ask", description: "Asks", inputSchema: { type: "object" } }],
+    new Map<string, ToolHandler>([
+      ["ask", () => ({
+        resultType: "input_required",
+        // deno-lint-ignore no-explicit-any
+        inputRequests: { k: null as any },
+      })],
+    ]),
+  );
+
+  const { http, url } = await start(server);
+  try {
+    const res = await call(url, "ask", {}, WITH_ELICITATION);
+    const data = await res.json();
+    assertEquals(res.status, 500);
+    assertEquals(data.error.code, -32603);
+    assertStringIncludes(data.error.message, "Malformed inputRequest");
+  } finally {
+    await http.shutdown();
+  }
+});

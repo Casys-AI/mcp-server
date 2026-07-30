@@ -365,3 +365,24 @@ Deno.test("checkInputRequestCapabilities — absent params is method-specific", 
   }, { roots: {} });
   assertEquals(roots.ok, true);
 });
+
+Deno.test("checkInputRequestCapabilities — a non-object map value is malformed, not a crash", () => {
+  // `{ k: null }` serialises fine, so it survived canonicalisation and then threw
+  // on `entry.params` — landing in the generic tool-error path as a 200 instead of
+  // the 500 a malformed server output requires. The map values are
+  // server-initiated requests; null is not one.
+  for (const bad of [null, "elicitation/create", 42, ["x"]]) {
+    const result = checkInputRequestCapabilities({
+      // deno-lint-ignore no-explicit-any
+      k: bad as any,
+    }, { elicitation: {}, sampling: {}, roots: {} });
+    assertEquals(result.ok, false, `${JSON.stringify(bad)} must be refused`);
+    if (!result.ok) {
+      assertEquals(
+        result.kind,
+        "malformed",
+        "a bad map value is the server's fault, not a missing capability",
+      );
+    }
+  }
+});

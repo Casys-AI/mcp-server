@@ -151,6 +151,20 @@ export function checkInputRequestCapabilities(
     // declaring `sampling` does not grant tool-using sampling. Checking only the
     // top-level key let a server ask for a mode the client cannot service, which
     // strands the request exactly as an undeclared capability would.
+    // The map VALUE must itself be an object. `{ k: null }` serialises fine, so it
+    // survived canonicalisation and then threw on `entry.params` — landing in the
+    // generic tool-error path as a 200, not the 500 a malformed server output
+    // requires. Checked before anything dereferences it.
+    if (!isRecord(entry)) {
+      return {
+        ok: false,
+        kind: "malformed",
+        missingCapabilities: [
+          "<inputRequests values must be request objects>",
+        ],
+      };
+    }
+
     // Already canonical: `entry` came out of the clone above. A `params` that is
     // present but not an object is malformed — reading it as `{}` would skip the
     // sub-capability checks entirely, a server-authoring bug resolving to "no

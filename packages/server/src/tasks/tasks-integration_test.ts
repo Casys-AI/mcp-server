@@ -469,35 +469,6 @@ Deno.test("tasks - a completed task carries a CallToolResult, not the raw return
   }
 });
 
-Deno.test("tasks - a 2025 peer cannot reach the extension at all", async () => {
-  // Spec MUST NOT: a 2026-only extension must not be usable by a peer that
-  // negotiated an earlier revision, even one declaring the capability.
-  const { http, url } = await start(buildServer({ declareExtension: true }));
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "MCP-Protocol-Version": "2025-11-25",
-      },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "tasks/get",
-        params: {
-          taskId: "anything",
-          _meta: { [PROTO_KEY]: "2025-11-25", [CAPS_KEY]: WITH_TASKS },
-        },
-      }),
-    });
-    const data = await res.json();
-    assertEquals(res.status, 404);
-    assertEquals(data.error.code, -32601);
-  } finally {
-    await http.shutdown();
-  }
-});
-
 Deno.test("tasks - an unknown taskId is an error, not a successful no-op", async () => {
   const { http, url } = await start(buildServer({ declareExtension: true }));
   try {

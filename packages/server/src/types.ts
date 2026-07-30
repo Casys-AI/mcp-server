@@ -144,27 +144,14 @@ export interface McpAppOptions {
   expectResources?: boolean;
 
   /**
-   * HTTP transport mode (Track A — spec 2026-07-28).
+   * HTTP transport mode. Only `"stateless"` is supported as of spec 2026-07-28.
    *
-   * - `"stateful"` (DEFAULT): legacy session-based transport, retro-compatible
-   *   with spec 2025-06-18. Requires an `initialize` handshake before any
-   *   other method; emits and validates `Mcp-Session-Id` headers.
-   * - `"stateless"`: per-request transport, spec 2026-07-28. No handshake, no
-   *   `Mcp-Session-Id`. `protocolVersion` is read from
-   *   `params._meta["io.modelcontextprotocol/protocolVersion"]` on every
-   *   request. `GET /mcp` returns 405 (Track G replaces the SSE channel with
-   *   `subscriptions/listen`).
-   *
-   * The mode does **not** gate the spec-2026-07-28 result envelope — the
-   * negotiated version does. `"stateless"` also accepts `2025-06-18` and
-   * `2025-11-25`, and a peer on one of those gets the legacy shape over this same
-   * transport. `"stateful"` advertises `2025-06-18` and negotiates nothing
-   * per-request, so it never carries the envelope.
-   *
-   * Default: `"stateful"`.
+   * Per-request transport: no handshake, no `Mcp-Session-Id`.
+   * `protocolVersion` is read from
+   * `params._meta["io.modelcontextprotocol/protocolVersion"]` on every
+   * request. `GET /mcp` returns 405; use `subscriptions/listen` instead.
    */
-  // Track A — transport mode, défaut "stateful"
-  transport?: "stateful" | "stateless";
+  transport?: "stateless";
 
   /**
    * Cache hints emitted on list and read results (spec 2026-07-28,

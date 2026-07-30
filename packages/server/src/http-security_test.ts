@@ -1,4 +1,4 @@
-// deno-lint-ignore-file require-await no-explicit-any
+// deno-lint-ignore-file no-explicit-any
 /**
  * Security hardening tests for HTTP server
  *
@@ -16,7 +16,6 @@ import {
   assertStringIncludes,
 } from "@std/assert";
 import { McpApp } from "./mcp-app.ts";
-import type { Middleware, MiddlewareContext } from "./middleware/types.ts";
 
 // ─── Helpers ─────────────────────────────────────────────
 
@@ -28,23 +27,33 @@ function getFreePort(): number {
   return port;
 }
 
-/** Send a JSON-RPC request to the server */
+/** Send a JSON-RPC request to the server (stateless 2026-07-28 format) */
 async function jsonRpc(
   port: number,
   method: string,
   params?: Record<string, unknown>,
   headers?: Record<string, string>,
 ): Promise<{ res: Response; data: Record<string, unknown> }> {
+  const namePart = params?.name ?? params?.uri;
   const body: Record<string, unknown> = {
     jsonrpc: "2.0",
     id: 1,
     method,
+    params: {
+      ...(params ?? {}),
+      _meta: { [PROTO_KEY]: "2026-07-28", [CAPS_KEY]: {} },
+    },
   };
-  if (params) body.params = params;
 
   const res = await fetch(`http://localhost:${port}/mcp`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...headers },
+    headers: {
+      "Content-Type": "application/json",
+      "MCP-Protocol-Version": "2026-07-28",
+      "Mcp-Method": method,
+      ...(typeof namePart === "string" ? { "Mcp-Name": namePart } : {}),
+      ...headers,
+    },
     body: JSON.stringify(body),
   });
 
@@ -52,23 +61,8 @@ async function jsonRpc(
   return { res, data };
 }
 
-/** Initialize a session and return the sessionId */
-async function initSession(port: number): Promise<string> {
-  const res = await fetch(`http://localhost:${port}/mcp`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "initialize",
-      params: {},
-    }),
-  });
-  const sessionId = res.headers.get("mcp-session-id");
-  await res.json(); // consume body
-  if (!sessionId) throw new Error("No session ID returned");
-  return sessionId;
-}
+const PROTO_KEY = "io.modelcontextprotocol/protocolVersion";
+const CAPS_KEY = "io.modelcontextprotocol/clientCapabilities";
 
 // ═══════════════════════════════════════════════════════════
 // requireAuth
@@ -445,203 +439,9 @@ Deno.test("security - ipRateLimit onLimitExceeded='wait' delays instead of rejec
   }
 });
 
-Deno.test("security - ipRateLimit applies to GET (SSE) endpoints too", async () => {
-  const server = new McpApp({
-    name: "rate-sse",
-    version: "1.0.0",
-    logger: () => {},
-  });
-
-  const port = getFreePort();
-  const http = await server.startHttp({
-    port,
-    onListen: () => {},
-    ipRateLimit: { maxRequests: 1, windowMs: 10_000 },
-    maxBodyBytes: null,
-  });
-
-  try {
-    // First request uses the slot (POST initialize)
-    await jsonRpc(port, "initialize");
-
-    // Second request: GET /mcp with SSE accept → should hit 429
-    const res = await fetch(`http://localhost:${port}/mcp`, {
-      headers: { "Accept": "text/event-stream" },
-    });
-    assertEquals(res.status, 429);
-    await res.text(); // consume
-  } finally {
-    await http.shutdown();
-  }
-});
-
 // ═══════════════════════════════════════════════════════════
-// sessionId propagation into middleware context
+// E2E: full stateless flow
 // ═══════════════════════════════════════════════════════════
-
-Deno.test("security - sessionId propagated to middleware context on tools/call", async () => {
-  let capturedSessionId: string | undefined;
-
-  // Custom middleware that captures ctx.sessionId
-  const spyMiddleware: Middleware = async (ctx: MiddlewareContext, next) => {
-    capturedSessionId = ctx.sessionId;
-    return next();
-  };
-
-  const server = new McpApp({
-    name: "session-propagation",
-    version: "1.0.0",
-    logger: () => {},
-  });
-
-  server.use(spyMiddleware);
-  server.registerTool(
-    { name: "echo", description: "Echo args", inputSchema: { type: "object" } },
-    (args) => args,
-  );
-
-  const port = getFreePort();
-  const http = await server.startHttp({
-    port,
-    onListen: () => {},
-    maxBodyBytes: null,
-  });
-
-  try {
-    // Step 1: Initialize to get a session
-    const sessionId = await initSession(port);
-    assertExists(sessionId);
-
-    // Step 2: Call tool with session header
-    const { res } = await jsonRpc(
-      port,
-      "tools/call",
-      { name: "echo", arguments: { hello: "world" } },
-      { "mcp-session-id": sessionId },
-    );
-
-    assertEquals(res.status, 200);
-    // Verify the middleware received the correct sessionId
-    assertEquals(capturedSessionId, sessionId);
-  } finally {
-    await http.shutdown();
-  }
-});
-
-// ═══════════════════════════════════════════════════════════
-// E2E: full secure flow
-// ═══════════════════════════════════════════════════════════
-
-Deno.test("e2e - secure flow: initialize → session → tools/call → result", async () => {
-  const server = new McpApp({
-    name: "e2e-secure",
-    version: "1.0.0",
-    logger: () => {},
-  });
-
-  server.registerTool(
-    {
-      name: "multiply",
-      description: "Multiply two numbers",
-      inputSchema: {
-        type: "object",
-        properties: {
-          a: { type: "number" },
-          b: { type: "number" },
-        },
-        required: ["a", "b"],
-      },
-    },
-    (args) => ({ product: (args.a as number) * (args.b as number) }),
-  );
-
-  const port = getFreePort();
-  const http = await server.startHttp({
-    port,
-    onListen: () => {},
-    maxBodyBytes: 10_000,
-    corsOrigins: ["https://app.example.com"],
-    ipRateLimit: { maxRequests: 20, windowMs: 10_000 },
-  });
-
-  try {
-    // 1. Initialize
-    const initRes = await fetch(`http://localhost:${port}/mcp`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "initialize",
-        params: {},
-      }),
-    });
-    assertEquals(initRes.status, 200);
-    const initData = await initRes.json();
-    assertEquals(initData.result.serverInfo.name, "e2e-secure");
-
-    const sessionId = initRes.headers.get("mcp-session-id");
-    assertExists(sessionId, "Session ID should be returned on initialize");
-
-    // 2. tools/list with session
-    const { data: listData } = await jsonRpc(port, "tools/list", undefined, {
-      "mcp-session-id": sessionId!,
-    });
-    assertEquals((listData as any).result.tools.length, 1);
-    assertEquals((listData as any).result.tools[0].name, "multiply");
-
-    // 3. tools/call with session
-    const { res: callRes, data: callData } = await jsonRpc(
-      port,
-      "tools/call",
-      { name: "multiply", arguments: { a: 7, b: 6 } },
-      { "mcp-session-id": sessionId! },
-    );
-    assertEquals(callRes.status, 200);
-    const result = JSON.parse((callData as any).result.content[0].text);
-    assertEquals(result.product, 42);
-
-    // 4. Health check still works
-    const healthRes = await fetch(`http://localhost:${port}/health`);
-    assertEquals(healthRes.status, 200);
-    await healthRes.json(); // consume
-  } finally {
-    await http.shutdown();
-  }
-});
-
-Deno.test("e2e - invalid session returns 404", async () => {
-  const server = new McpApp({
-    name: "e2e-bad-session",
-    version: "1.0.0",
-    logger: () => {},
-  });
-
-  server.registerTool(
-    { name: "noop", description: "noop", inputSchema: { type: "object" } },
-    () => "ok",
-  );
-
-  const port = getFreePort();
-  const http = await server.startHttp({
-    port,
-    onListen: () => {},
-    maxBodyBytes: null,
-  });
-
-  try {
-    const { res, data } = await jsonRpc(
-      port,
-      "tools/call",
-      { name: "noop", arguments: {} },
-      { "mcp-session-id": "nonexistent-session-id-000" },
-    );
-    assertEquals(res.status, 404);
-    assertEquals((data as any).error.code, -31404);
-  } finally {
-    await http.shutdown();
-  }
-});
 
 Deno.test("e2e - default maxBodyBytes (1 MB) allows reasonable payloads", async () => {
   const server = new McpApp({

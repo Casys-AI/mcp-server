@@ -152,7 +152,7 @@ Deno.test(
 
       const data = await res.json();
       assertEquals(res.status, 400);
-      assertEquals(res.headers.get("mcp-protocol-version"), "2025-06-18");
+      assertEquals(res.headers.get("mcp-protocol-version"), "2026-07-28");
       // Spec 2026-07-28 renumbered HeaderMismatch from the RC's -32001 to -32020,
       // and it supersedes InvalidParams here: the body is well-formed, it is the
       // header that disagrees with it.
@@ -168,7 +168,7 @@ Deno.test(
 );
 
 Deno.test(
-  "transport stateless - absent MCP-Protocol-Version header is rejected (required since 2025-06-18)",
+  "transport stateless - absent MCP-Protocol-Version header is rejected (required by spec)",
   async () => {
     const server = new McpApp({
       name: "stateless-header-absent-test",
@@ -184,6 +184,7 @@ Deno.test(
     const http = await server.startHttp({ port, onListen: () => {} });
 
     try {
+      // Valid 2026-07-28 body with capabilities but NO MCP-Protocol-Version header.
       const res = await fetch(`http://localhost:${port}/mcp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -191,14 +192,16 @@ Deno.test(
           jsonrpc: "2.0",
           id: 3,
           method: "tools/list",
-          params: { _meta: { [PROTO_KEY]: "2025-11-25" } },
+          params: {
+            _meta: {
+              [PROTO_KEY]: "2026-07-28",
+              [CLIENT_CAPABILITIES_KEY]: {},
+            },
+          },
         }),
       });
 
-      // This test previously asserted the header was OPTIONAL, which was a
-      // non-conformance we had codified: `MCP-Protocol-Version` was introduced in
-      // 2025-06-18, and the spec grants the omit-it grace only to clients OLDER
-      // than that — which this server does not support at all.
+      // The header is required for every request: its absence is -32020.
       assertEquals(res.status, 400);
       const data = await res.json();
       assertEquals(data.error.code, -32020);
@@ -333,43 +336,6 @@ Deno.test(
       assertEquals(res.status, 200);
       assertExists(data.result);
       assertEquals(data.result.instructions, "Prefer concise responses.");
-    } finally {
-      await http.shutdown();
-    }
-  },
-);
-
-Deno.test(
-  "transport stateful (default) - server/discover remains unhandled",
-  async () => {
-    const server = new McpApp({
-      name: "stateful-discover-regression-test",
-      version: "1.0.0",
-      logger: () => {},
-    });
-
-    const listener = Deno.listen({ port: 0 });
-    const port = (listener.addr as Deno.NetAddr).port;
-    listener.close();
-
-    const http = await server.startHttp({ port, onListen: () => {} });
-
-    try {
-      const res = await fetch(`http://localhost:${port}/mcp`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: 7,
-          method: "server/discover",
-          params: {},
-        }),
-      });
-
-      const data = await res.json();
-      assertEquals(res.status, 200);
-      assertEquals(data.result, undefined);
-      assertEquals(data.error.code, -32601);
     } finally {
       await http.shutdown();
     }
@@ -773,47 +739,6 @@ Deno.test(
       assertEquals(res.headers.get("mcp-session-id"), null);
       const data = await res.json();
       assertExists(data.result.tools);
-    } finally {
-      await http.shutdown();
-    }
-  },
-);
-
-Deno.test(
-  "transport stateful (default) - stateful mode unchanged (initialize emits Mcp-Session-Id)",
-  async () => {
-    const server = new McpApp({
-      name: "stateful-regression-test",
-      version: "1.0.0",
-      logger: () => {},
-      // transport not set — default "stateful"
-    });
-
-    const listener = Deno.listen({ port: 0 });
-    const port = (listener.addr as Deno.NetAddr).port;
-    listener.close();
-
-    const http = await server.startHttp({ port, onListen: () => {} });
-
-    try {
-      const res = await fetch(`http://localhost:${port}/mcp`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: 1,
-          method: "initialize",
-          params: {},
-        }),
-      });
-
-      assertEquals(res.status, 200);
-      // Stateful mode: Mcp-Session-Id IS emitted
-      assertExists(res.headers.get("mcp-session-id"));
-      // Stateful mode: MCP-Protocol-Version header NOT emitted
-      assertEquals(res.headers.get("mcp-protocol-version"), null);
-      const data = await res.json();
-      assertEquals(data.result.protocolVersion, "2025-06-18");
     } finally {
       await http.shutdown();
     }
@@ -1285,38 +1210,6 @@ Deno.test(
 );
 
 Deno.test(
-  "transport stateful - ping and logging/setLevel still answered (2025-11-25 peers)",
-  async () => {
-    const server = new McpApp({
-      name: "stateful-legacy-methods-test",
-      version: "1.0.0",
-      logger: () => {},
-      // no transport option → "stateful", the default
-    });
-    const listener = Deno.listen({ port: 0 });
-    const port = (listener.addr as Deno.NetAddr).port;
-    listener.close();
-    const http = await server.startHttp({ port, onListen: () => {} });
-    try {
-      for (const method of ["ping", "logging/setLevel"]) {
-        const res = await fetch(`http://localhost:${port}/mcp`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params: {} }),
-        });
-        const data = await res.json();
-        assertEquals(res.status, 200, `${method} should still succeed`);
-        assertEquals(data.result, {}, `${method} should return {}`);
-        // The 2026-07-28 envelope must NOT leak onto the legacy path.
-        assertEquals(data.result.resultType, undefined);
-      }
-    } finally {
-      await http.shutdown();
-    }
-  },
-);
-
-Deno.test(
   "transport stateless - ping without version key returns -32602 (no bypass)",
   async () => {
     const server = new McpApp({
@@ -1356,6 +1249,7 @@ Deno.test("startHttp - starts server and handles initialize", async () => {
     name: "test-server",
     version: "1.0.0",
     logger: () => {}, // Silence logs
+    transport: "stateless",
   });
 
   // Find a free port
@@ -1368,12 +1262,21 @@ Deno.test("startHttp - starts server and handles initialize", async () => {
   try {
     const res = await fetch(`http://localhost:${port}/mcp`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "initialize",
+      },
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: 1,
         method: "initialize",
-        params: {},
+        params: {
+          _meta: {
+            [PROTO_KEY]: "2026-07-28",
+            [CLIENT_CAPABILITIES_KEY]: {},
+          },
+        },
       }),
     });
 
@@ -1449,6 +1352,7 @@ Deno.test("startHttp - handles tools/list", async () => {
     name: "test-server",
     version: "1.0.0",
     logger: () => {},
+    transport: "stateless",
   });
 
   server.registerTool(
@@ -1469,8 +1373,19 @@ Deno.test("startHttp - handles tools/list", async () => {
   try {
     const res = await fetch(`http://localhost:${port}/mcp`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+      headers: {
+        "Content-Type": "application/json",
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "tools/list",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/list",
+        params: {
+          _meta: { [PROTO_KEY]: "2026-07-28", [CLIENT_CAPABILITIES_KEY]: {} },
+        },
+      }),
     });
 
     const data = await res.json();
@@ -1486,6 +1401,7 @@ Deno.test("startHttp - handles tools/call", async () => {
     name: "test-server",
     version: "1.0.0",
     logger: () => {},
+    transport: "stateless",
   });
 
   server.registerTool(
@@ -1506,12 +1422,21 @@ Deno.test("startHttp - handles tools/call", async () => {
   try {
     const res = await fetch(`http://localhost:${port}/mcp`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "tools/call",
+        "Mcp-Name": "add",
+      },
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: 1,
         method: "tools/call",
-        params: { name: "add", arguments: { a: 2, b: 3 } },
+        params: {
+          _meta: { [PROTO_KEY]: "2026-07-28", [CLIENT_CAPABILITIES_KEY]: {} },
+          name: "add",
+          arguments: { a: 2, b: 3 },
+        },
       }),
     });
 
@@ -1530,6 +1455,7 @@ Deno.test("startHttp - passes execution context to tool handlers", async () => {
     name: "test-server",
     version: "1.0.0",
     logger: () => {},
+    transport: "stateless",
   });
 
   server.registerTool(
@@ -1556,12 +1482,21 @@ Deno.test("startHttp - passes execution context to tool handlers", async () => {
   try {
     const res = await fetch(`http://localhost:${port}/mcp`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "tools/call",
+        "Mcp-Name": "context_echo",
+      },
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: 1,
         method: "tools/call",
-        params: { name: "context_echo", arguments: {} },
+        params: {
+          _meta: { [PROTO_KEY]: "2026-07-28", [CLIENT_CAPABILITIES_KEY]: {} },
+          name: "context_echo",
+          arguments: {},
+        },
       }),
     });
 
@@ -1577,6 +1512,7 @@ Deno.test("startHttp - handles resources/list", async () => {
     name: "test-server",
     version: "1.0.0",
     logger: () => {},
+    transport: "stateless",
   });
 
   server.registerResource(
@@ -1601,8 +1537,19 @@ Deno.test("startHttp - handles resources/list", async () => {
   try {
     const res = await fetch(`http://localhost:${port}/mcp`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "resources/list" }),
+      headers: {
+        "Content-Type": "application/json",
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "resources/list",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "resources/list",
+        params: {
+          _meta: { [PROTO_KEY]: "2026-07-28", [CLIENT_CAPABILITIES_KEY]: {} },
+        },
+      }),
     });
 
     const data = await res.json();
@@ -1619,6 +1566,7 @@ Deno.test("startHttp - handles resources/read", async () => {
     name: "test-server",
     version: "1.0.0",
     logger: () => {},
+    transport: "stateless",
   });
 
   const htmlContent = "<html><body>Hello World</body></html>";
@@ -1640,12 +1588,20 @@ Deno.test("startHttp - handles resources/read", async () => {
   try {
     const res = await fetch(`http://localhost:${port}/mcp`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "resources/read",
+        "Mcp-Name": "ui://test/page",
+      },
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: 1,
         method: "resources/read",
-        params: { uri: "ui://test/page" },
+        params: {
+          _meta: { [PROTO_KEY]: "2026-07-28", [CLIENT_CAPABILITIES_KEY]: {} },
+          uri: "ui://test/page",
+        },
       }),
     });
 
@@ -1663,6 +1619,7 @@ Deno.test("startHttp - returns error for unknown resource", async () => {
     name: "test-server",
     version: "1.0.0",
     logger: () => {},
+    transport: "stateless",
   });
 
   const listener = Deno.listen({ port: 0 });
@@ -1674,12 +1631,20 @@ Deno.test("startHttp - returns error for unknown resource", async () => {
   try {
     const res = await fetch(`http://localhost:${port}/mcp`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "resources/read",
+        "Mcp-Name": "ui://unknown/resource",
+      },
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: 1,
         method: "resources/read",
-        params: { uri: "ui://unknown/resource" },
+        params: {
+          _meta: { [PROTO_KEY]: "2026-07-28", [CLIENT_CAPABILITIES_KEY]: {} },
+          uri: "ui://unknown/resource",
+        },
       }),
     });
 
@@ -1747,6 +1712,7 @@ Deno.test("startHttp - resources/read injects CSP meta tag when resourceCsp is s
     name: "csp-test",
     version: "1.0.0",
     logger: () => {},
+    transport: "stateless",
     resourceCsp: { allowInline: true },
   });
 
@@ -1770,12 +1736,20 @@ Deno.test("startHttp - resources/read injects CSP meta tag when resourceCsp is s
   try {
     const res = await fetch(`http://localhost:${port}/mcp`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "resources/read",
+        "Mcp-Name": "ui://test/csp-app",
+      },
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: 1,
         method: "resources/read",
-        params: { uri: "ui://test/csp-app" },
+        params: {
+          _meta: { [PROTO_KEY]: "2026-07-28", [CLIENT_CAPABILITIES_KEY]: {} },
+          uri: "ui://test/csp-app",
+        },
       }),
     });
 
@@ -1802,6 +1776,7 @@ Deno.test("startHttp - resources/read does NOT inject CSP when resourceCsp is no
     name: "no-csp-test",
     version: "1.0.0",
     logger: () => {},
+    transport: "stateless",
     // No resourceCsp option
   });
 
@@ -1825,12 +1800,20 @@ Deno.test("startHttp - resources/read does NOT inject CSP when resourceCsp is no
   try {
     const res = await fetch(`http://localhost:${port}/mcp`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "resources/read",
+        "Mcp-Name": "ui://test/plain",
+      },
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: 1,
         method: "resources/read",
-        params: { uri: "ui://test/plain" },
+        params: {
+          _meta: { [PROTO_KEY]: "2026-07-28", [CLIENT_CAPABILITIES_KEY]: {} },
+          uri: "ui://test/plain",
+        },
       }),
     });
 
@@ -1847,6 +1830,7 @@ Deno.test("startHttp - resources/read skips CSP injection for non-HTML resources
     name: "json-csp-test",
     version: "1.0.0",
     logger: () => {},
+    transport: "stateless",
     resourceCsp: { allowInline: true }, // CSP enabled
   });
 
@@ -1873,12 +1857,20 @@ Deno.test("startHttp - resources/read skips CSP injection for non-HTML resources
   try {
     const res = await fetch(`http://localhost:${port}/mcp`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "resources/read",
+        "Mcp-Name": "ui://test/json",
+      },
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: 1,
         method: "resources/read",
-        params: { uri: "ui://test/json" },
+        params: {
+          _meta: { [PROTO_KEY]: "2026-07-28", [CLIENT_CAPABILITIES_KEY]: {} },
+          uri: "ui://test/json",
+        },
       }),
     });
 

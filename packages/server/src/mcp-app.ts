@@ -26,7 +26,6 @@ import {
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { RequestQueue } from "./concurrency/request-queue.ts";
-import { SamplingBridge } from "./sampling/sampling-bridge.ts";
 import { RateLimiter } from "./concurrency/rate-limiter.ts";
 import { SchemaValidator } from "./validation/schema-validator.ts";
 import { createMiddlewareRunner } from "./middleware/runner.ts";
@@ -118,16 +117,6 @@ interface RegisteredResourceInfo {
   handler: ResourceHandler;
 }
 
-/**
- * SSE client connection for Streamable HTTP
- */
-interface SSEClient {
-  sessionId: string;
-  controller: ReadableStreamDefaultController<Uint8Array>;
-  createdAt: number;
-  lastEventId: number;
-}
-
 const DEFAULT_MAX_BODY_BYTES = 1_000_000;
 
 class BodyTooLargeError extends Error {
@@ -135,15 +124,6 @@ class BodyTooLargeError extends Error {
     super(`Payload too large. Max ${maxBytes} bytes.`);
     this.name = "BodyTooLargeError";
   }
-}
-
-/**
- * Generate a cryptographically secure session ID
- */
-function generateSessionId(): string {
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 function getClientIpFromHeaders(headers: Headers): string {
@@ -211,8 +191,6 @@ const STATELESS_CLIENT_CAPABILITIES_KEY =
 /** Protocol versions accepted by this server in stateless mode */
 const STATELESS_SUPPORTED_VERSIONS: readonly string[] = [
   "2026-07-28",
-  "2025-06-18",
-  "2025-11-25",
 ];
 
 /** Namespaced serverInfo key in a result's _meta (spec 2026-07-28, SHOULD) */
@@ -238,8 +216,8 @@ const SPEC_2026_07_28 = "2026-07-28";
  */
 const TASKS_EXTENSION_ID = "io.modelcontextprotocol/tasks";
 
-/** Version echoed in MCP-Protocol-Version header on error responses (server's stable baseline) */
-const STATELESS_FALLBACK_VERSION = "2025-06-18";
+/** Version echoed in MCP-Protocol-Version header on error responses (server's only accepted version) */
+const STATELESS_FALLBACK_VERSION = "2026-07-28";
 
 const JSONRPC_INVALID_PARAMS = ErrorCode.InvalidParams;
 
@@ -600,7 +578,6 @@ export class McpApp {
   private requestQueue: RequestQueue;
   private rateLimiter: RateLimiter | null = null;
   private schemaValidator: SchemaValidator | null = null;
-  private samplingBridge: SamplingBridge | null = null;
   private tools = new Map<string, ToolWithHandler>();
 
   /**
@@ -633,11 +610,10 @@ export class McpApp {
   private stopping = false;
 
   /**
-   * Live `subscriptions/listen` streams, or `null` outside stateless mode.
+   * Live `subscriptions/listen` streams.
    *
-   * Core protocol rather than an extension, so it is unconditional on the
-   * stateless path. The stateful transport keeps its own session-keyed SSE
-   * machinery, which this replaces once that path is retired.
+   * Initialized unconditionally in startHttp(); null before the server starts
+   * or in stdio mode.
    */
   private subscriptions: SubscriptionRegistry | null = null;
 
@@ -685,24 +661,6 @@ export class McpApp {
 
   // Observability
   private serverMetrics = new ServerMetrics();
-
-  // Streamable HTTP session management
-  private sessions = new Map<
-    string,
-    { createdAt: number; lastActivity: number }
-  >();
-  private sseClients = new Map<string, SSEClient[]>(); // sessionId -> clients
-  private sessionCleanupTimer: ReturnType<typeof setInterval> | null = null;
-  private static readonly SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
-  private static readonly SESSION_CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-  private static readonly SESSION_GRACE_PERIOD_MS = 60 * 1000; // 60s grace for in-flight requests
-  private static readonly MAX_SESSIONS = 10_000;
-
-  // Per-IP rate limiter for initialize requests (anti-session-exhaustion)
-  private initRateLimiter = new RateLimiter({
-    maxRequests: 10,
-    windowMs: 60_000,
-  });
 
   constructor(options: McpAppOptions) {
     this.options = options;
@@ -771,27 +729,6 @@ export class McpApp {
     // Optional schema validation
     if (options.validateSchema) {
       this.schemaValidator = new SchemaValidator();
-    }
-
-    // Optional sampling support
-    if (options.enableSampling && options.samplingClient) {
-      this.log(
-        "[DEPRECATED] Sampling is deprecated (MCP 2026-07-28) and will be removed after 2027-07-28.",
-      );
-      if (options.transport === "stateless") {
-        // Stronger than deprecation: the bridge sends a server-initiated
-        // request, which 2026-07-28 removed outright. There is no channel for it
-        // on this transport, so it cannot work — MRTR is the only legal path.
-        // Said plainly here because the failure would otherwise appear as a
-        // request that simply never gets answered.
-        this.log(
-          "[WARN] enableSampling has no effect on the stateless transport: " +
-            "spec 2026-07-28 removed server-initiated requests. Return an " +
-            "InputRequiredResult with a sampling/createMessage inputRequest " +
-            "(MRTR) instead.",
-        );
-      }
-      this.samplingBridge = new SamplingBridge(options.samplingClient);
     }
 
     // Setup MCP protocol handlers
@@ -1240,8 +1177,6 @@ export class McpApp {
     this.serverMetrics.setGauges({
       activeRequests: queueMetrics.inFlight,
       queuedRequests: queueMetrics.queued,
-      activeSessions: this.sessions.size,
-      sseClients: this.getSSEClientCount(),
       rateLimiterKeys: this.rateLimiter?.getMetrics().keys ?? 0,
     });
 
@@ -1548,42 +1483,6 @@ export class McpApp {
   }
 
   /**
-   * Clean up expired sessions to prevent memory leaks.
-   * Removes sessions that haven't had activity within SESSION_TTL_MS.
-   */
-  private cleanupSessions(): void {
-    const now = Date.now();
-    const ttlWithGrace = McpApp.SESSION_TTL_MS +
-      McpApp.SESSION_GRACE_PERIOD_MS;
-    let cleaned = 0;
-    for (const [sessionId, session] of this.sessions) {
-      if (now - session.lastActivity > ttlWithGrace) {
-        this.sessions.delete(sessionId);
-        // Also clean up SSE clients for this session
-        const clients = this.sseClients.get(sessionId);
-        if (clients) {
-          for (const client of clients) {
-            try {
-              client.controller.close();
-            } catch { /* already closed */ }
-          }
-          this.sseClients.delete(sessionId);
-        }
-        cleaned++;
-      }
-    }
-    if (cleaned > 0) {
-      this.serverMetrics.recordSessionExpired(cleaned);
-      this.log(
-        `Session cleanup: removed ${cleaned} expired sessions (${this.sessions.size} remaining)`,
-      );
-    }
-  }
-
-  /**
-   * Stop the server gracefully
-   */
-  /**
    * Restore the invariants a running server relies on.
    *
    * Called by both transports' start paths. `stop()` disposes the task store and
@@ -1630,29 +1529,6 @@ export class McpApp {
 
     if (!this.started) {
       return;
-    }
-
-    // Stop session cleanup timer
-    if (this.sessionCleanupTimer) {
-      clearInterval(this.sessionCleanupTimer);
-      this.sessionCleanupTimer = null;
-    }
-
-    // Cancel pending sampling requests
-    if (this.samplingBridge) {
-      this.samplingBridge.cancelAll();
-    }
-
-    // Close all SSE clients BEFORE shutting down HTTP server.
-    // Deno.serve().shutdown() waits for all connections to drain,
-    // so long-lived SSE connections must be closed first to avoid blocking.
-    for (const [sessionId, clients] of this.sseClients) {
-      for (const client of clients) {
-        try {
-          client.controller.close();
-        } catch { /* already closed */ }
-      }
-      this.sseClients.delete(sessionId);
     }
 
     // Stop HTTP server if running
@@ -1739,14 +1615,10 @@ export class McpApp {
     const hostname = options.hostname ?? "0.0.0.0";
     this.prepareForStart();
 
-    if (this.options.transport === "stateless" && this.subscriptions === null) {
+    if (this.subscriptions === null) {
       this.subscriptions = new SubscriptionRegistry({
         serverInfo: { name: this.options.name, version: this.options.version },
       });
-      // Unref'd: a keep-alive ticker must not by itself hold the process open.
-      // The cast matches the existing session-timer call sites — `UnrefTimerFn`
-      // is typed for Deno's numeric handle, while Node's `setInterval` returns a
-      // Timeout object.
       this.subscriptions.startKeepAlive(
         setInterval,
         (id) => unrefTimer(id as unknown as number),
@@ -1789,9 +1661,7 @@ export class McpApp {
             "Content-Type",
             "Accept",
             "Authorization",
-            "mcp-session-id",
             "mcp-protocol-version",
-            "last-event-id",
             // Spec 2026-07-28 request-metadata headers. Omitting them broke
             // browser clients outright: the preflight rejects the actual request
             // before the server ever sees it, so a conforming client could not
@@ -1811,7 +1681,6 @@ export class McpApp {
           ],
           exposeHeaders: [
             "Content-Length",
-            "mcp-session-id",
             "mcp-protocol-version",
           ],
           maxAge: 600,
@@ -1837,8 +1706,6 @@ export class McpApp {
       this.serverMetrics.setGauges({
         activeRequests: qm.inFlight,
         queuedRequests: qm.queued,
-        activeSessions: this.sessions.size,
-        sseClients: this.getSSEClientCount(),
         rateLimiterKeys: this.rateLimiter?.getMetrics().keys ?? 0,
       });
       return new Response(this.serverMetrics.toPrometheusFormat(), {
@@ -1951,105 +1818,11 @@ export class McpApp {
       }
     }
 
-    // MCP endpoint - GET opens SSE stream for server→client messages (Streamable HTTP spec)
+    // MCP endpoint - GET is not applicable in stateless mode; use subscriptions/listen instead
     // deno-lint-ignore no-explicit-any
-    const handleMcpGet = async (c: any) => {
-      // Track A: stateless V2 — SSE channel not applicable (Track B replaces it)
-      if (this.options.transport === "stateless") {
-        return c.text("Method Not Allowed", 405);
-      }
-
-      const accept = c.req.header("accept") ?? "";
-      const sessionId = c.req.header("mcp-session-id");
-      const lastEventId = c.req.header("last-event-id");
-
-      const rateLimit = await checkHttpRateLimit(c.req.raw, sessionId);
-      if (!rateLimit.allowed) {
-        const retryAfter = Math.max(
-          1,
-          Math.ceil(rateLimit.retryAfterMs / 1000),
-        );
-        return new Response(
-          `Rate limit exceeded. Retry after ${retryAfter}s`,
-          {
-            status: 429,
-            headers: { "Retry-After": retryAfter.toString() },
-          },
-        );
-      }
-
-      // Check if client accepts SSE
-      if (!accept.includes("text/event-stream")) {
-        return c.text("Method Not Allowed", 405);
-      }
-
-      // Auth gate: SSE connections require valid token when auth is configured
-      const sseAuthResult = await verifyHttpAuth(c.req.raw);
-      if ("denied" in sseAuthResult) return sseAuthResult.denied;
-
-      // Validate session if provided
-      if (sessionId && !this.sessions.has(sessionId)) {
-        return c.text("Session not found", 404);
-      }
-
-      // Create SSE stream
-      const encoder = new TextEncoder();
-      let sseClient: SSEClient | null = null;
-
-      const stream = new ReadableStream<Uint8Array>({
-        start: (controller) => {
-          const clientSessionId = sessionId ?? "anonymous";
-          const parsedEventId = lastEventId ? parseInt(lastEventId, 10) : 0;
-          sseClient = {
-            sessionId: clientSessionId,
-            controller,
-            createdAt: Date.now(),
-            lastEventId: Number.isNaN(parsedEventId) ? 0 : parsedEventId,
-          };
-
-          // Register client
-          if (!this.sseClients.has(clientSessionId)) {
-            this.sseClients.set(clientSessionId, []);
-          }
-          this.sseClients.get(clientSessionId)!.push(sseClient);
-
-          this.log(`SSE client connected (session: ${clientSessionId})`);
-
-          // Send initial comment to establish connection
-          controller.enqueue(encoder.encode(": connected\n\n"));
-        },
-        cancel: () => {
-          // Remove client on disconnect
-          if (sseClient) {
-            const clients = this.sseClients.get(sseClient.sessionId);
-            if (clients) {
-              const idx = clients.indexOf(sseClient);
-              if (idx !== -1) clients.splice(idx, 1);
-              if (clients.length === 0) {
-                this.sseClients.delete(sseClient.sessionId);
-              }
-            }
-            this.log(
-              `SSE client disconnected (session: ${sseClient.sessionId})`,
-            );
-          }
-        },
-      });
-
-      return new Response(stream, {
-        headers: {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-          "Connection": "keep-alive",
-          ...(sessionId ? { "Mcp-Session-Id": sessionId } : {}),
-        },
-      });
-    };
-
+    app.get("/mcp", (c: any) => c.text("Method Not Allowed", 405));
     // deno-lint-ignore no-explicit-any
-    app.get("/mcp", handleMcpGet as any);
-    // deno-lint-ignore no-explicit-any
-    app.get("/", handleMcpGet as any);
+    app.get("/", (c: any) => c.text("Method Not Allowed", 405));
 
     // MCP endpoint - POST handles JSON-RPC
     const handleMcpPost = async (
@@ -2066,23 +1839,16 @@ export class McpApp {
     ) => {
       let requestId: string | number | null = null;
       try {
-        // Track A: in stateless mode, ignore Mcp-Session-Id so it cannot be used
-        // as a rate-limit key (session bypass attack surface removed).
-        const reqSessionId = this.options.transport === "stateless"
-          ? undefined
-          : c.req.header("mcp-session-id");
-        // Track A: strip mcp-session-id from headers passed to rate-limit context
-        // so a keyExtractor cannot use rotating session IDs to bypass IP-level limits.
-        const rlHeaders = this.options.transport === "stateless"
-          ? (() => {
-            const h = new Headers(c.req.raw.headers);
-            h.delete("mcp-session-id");
-            return h;
-          })()
-          : undefined;
+        // Strip mcp-session-id from headers passed to rate-limit context
+        // so a keyExtractor cannot use session IDs to bypass IP-level limits.
+        const rlHeaders = (() => {
+          const h = new Headers(c.req.raw.headers);
+          h.delete("mcp-session-id");
+          return h;
+        })();
         const rateLimit = await checkHttpRateLimit(
           c.req.raw,
-          reqSessionId,
+          undefined,
           rlHeaders,
         );
         if (!rateLimit.allowed) {
@@ -2147,207 +1913,130 @@ export class McpApp {
           httpAuthInfo = authResult.authInfo;
         }
 
-        // Track A: per-request protocolVersion validation in stateless mode.
+        // Per-request protocolVersion validation (spec 2026-07-28).
         // Must run BEFORE any method dispatch so every call (not just initialize)
         // is validated. Sets MCP-Protocol-Version header on all subsequent responses
         // via Hono's c.header() accumulation.
         // Key location: params._meta[STATELESS_PROTO_KEY] (SEP-2575 Final).
-        // Tolerant mode: MCP-Protocol-Version may be absent for backward compatibility;
-        // when present it must match the _meta version.
-        let statelessVersion: string | undefined;
-        if (this.options.transport === "stateless") {
-          const clientVersion = isRecord(params) && isRecord(params["_meta"])
-            ? params["_meta"][STATELESS_PROTO_KEY]
-            : undefined;
+        const clientVersion = isRecord(params) && isRecord(params["_meta"])
+          ? params["_meta"][STATELESS_PROTO_KEY]
+          : undefined;
 
-          // `clientCapabilities` is a REQUIRED per-request `_meta` field in the
-          // final spec (`clientInfo` is not — it is only SHOULD). A request
-          // missing a required field is malformed: -32602 + HTTP 400.
-          //
-          // Checked after the version so a client on an older revision, which
-          // never had this field, still gets the clearer version error first.
-          // Must be an OBJECT, not merely present. `!== undefined` accepted
-          // `null`, a scalar or an array, which then reached the handler as a
-          // supposed ClientCapabilities and failed later as -32603 — an internal
-          // error for what is plainly a malformed request.
-          const capabilitiesValid = isRecord(params) &&
-            isRecord(params["_meta"]) &&
-            isRecord(params["_meta"][STATELESS_CLIENT_CAPABILITIES_KEY]);
+        // `clientCapabilities` is a REQUIRED per-request `_meta` field in the
+        // final spec (`clientInfo` is not — it is only SHOULD). A request
+        // missing a required field is malformed: -32602 + HTTP 400.
+        //
+        // Checked after the version so a client on an unsupported revision
+        // gets the clearer version error first.
+        // Must be an OBJECT, not merely present. `!== undefined` accepted
+        // `null`, a scalar or an array, which then reached the handler as a
+        // supposed ClientCapabilities and failed later as -32603 — an internal
+        // error for what is plainly a malformed request.
+        const capabilitiesValid = isRecord(params) &&
+          isRecord(params["_meta"]) &&
+          isRecord(params["_meta"][STATELESS_CLIENT_CAPABILITIES_KEY]);
 
-          if (typeof clientVersion !== "string") {
-            // Header uses fallback version — no negotiated version available yet
-            return jsonRpcResponse(
-              {
-                jsonrpc: "2.0",
-                id,
-                error: {
-                  code: JSONRPC_INVALID_PARAMS,
-                  message: `Missing required field '${STATELESS_PROTO_KEY}'`,
-                },
+        if (typeof clientVersion !== "string") {
+          // Header uses fallback version — no negotiated version available yet
+          return jsonRpcResponse(
+            {
+              jsonrpc: "2.0",
+              id,
+              error: {
+                code: JSONRPC_INVALID_PARAMS,
+                message: `Missing required field '${STATELESS_PROTO_KEY}'`,
               },
-              400,
-              { "MCP-Protocol-Version": STATELESS_FALLBACK_VERSION },
-            );
-          }
-
-          if (!STATELESS_SUPPORTED_VERSIONS.includes(clientVersion)) {
-            // AX: data carries machine-readable supported/requested for agent recovery
-            return jsonRpcResponse(
-              {
-                jsonrpc: "2.0",
-                id,
-                error: {
-                  code: MCP_UNSUPPORTED_PROTOCOL_VERSION,
-                  message: `Unsupported protocolVersion: "${clientVersion}"`,
-                  data: {
-                    supported: [...STATELESS_SUPPORTED_VERSIONS],
-                    requested: clientVersion,
-                  },
-                },
-              },
-              400,
-              { "MCP-Protocol-Version": STATELESS_FALLBACK_VERSION },
-            );
-          }
-
-          if (clientVersion === SPEC_2026_07_28 && !capabilitiesValid) {
-            return jsonRpcResponse(
-              {
-                jsonrpc: "2.0",
-                id,
-                error: {
-                  code: JSONRPC_INVALID_PARAMS,
-                  message:
-                    `Missing or malformed field '${STATELESS_CLIENT_CAPABILITIES_KEY}' in params._meta: expected an object`,
-                  data: {
-                    problem: "missing_field",
-                    bodyField:
-                      `params._meta['${STATELESS_CLIENT_CAPABILITIES_KEY}']`,
-                    recovery:
-                      "Send a ClientCapabilities object; `{}` is valid and means no capabilities declared.",
-                  },
-                },
-              },
-              400,
-              { "MCP-Protocol-Version": STATELESS_FALLBACK_VERSION },
-            );
-          }
-
-          // Track C: request-metadata headers (SEP-2243).
-          //
-          // Enforced only for peers that negotiated 2026-07-28 — `Mcp-Method`
-          // and `Mcp-Name` do not exist in earlier revisions, so demanding them
-          // from a 2025-11-25 client would reject a conforming request.
-          //
-          // Notifications are exempt: the revision explicitly leaves header
-          // requirements for notification POSTs undefined, so a missing
-          // `Mcp-Method` there is not a violation to invent.
-          if (clientVersion === SPEC_2026_07_28 && id !== undefined) {
-            const validation = validateRequestHeaders({
-              getHeader: (name) => c.req.header(name),
-              method: typeof method === "string" ? method : "",
-              params: isRecord(params) ? params : undefined,
-              bodyProtocolVersion: clientVersion,
-              mirroredParams: typeof params?.name === "string"
-                ? this.mirroredParams.get(params.name)
-                : undefined,
-            });
-            if (!validation.ok) {
-              return jsonRpcResponse(
-                {
-                  jsonrpc: "2.0",
-                  id,
-                  error: {
-                    code: MCP_HEADER_MISMATCH,
-                    message: validation.message,
-                    // AX: the caller has to fix the request, so what to fix
-                    // travels as data. `problem` is an enum to switch on,
-                    // `recovery` is one concrete action — neither requires
-                    // parsing the English message.
-                    data: validation.detail,
-                  },
-                },
-                400,
-                { "MCP-Protocol-Version": STATELESS_FALLBACK_VERSION },
-              );
-            }
-          } else if (id !== undefined) {
-            // Pre-2026 peer: `Mcp-Method` / `Mcp-Name` did not exist yet, so they
-            // are not demanded. `MCP-Protocol-Version` DID — it was introduced in
-            // 2025-06-18, and the spec grants the omit-the-header grace only to
-            // clients older than that, which this server does not support
-            // (STATELESS_SUPPORTED_VERSIONS starts at 2025-06-18). So it stays
-            // required here, and must agree with the body when present.
-            //
-            // Notifications fall through untouched: the revision states outright
-            // that header requirements for notification POSTs are undefined, so
-            // there is no rule here to enforce and none to invent. Their `_meta`
-            // protocolVersion was already validated above.
-            const headerVersion = c.req.header("MCP-Protocol-Version");
-            if (headerVersion === undefined) {
-              return jsonRpcResponse(
-                {
-                  jsonrpc: "2.0",
-                  id,
-                  error: {
-                    code: MCP_HEADER_MISMATCH,
-                    message:
-                      "Missing required header 'MCP-Protocol-Version' (required since protocol version 2025-06-18)",
-                    data: {
-                      problem: "missing_header",
-                      header: "MCP-Protocol-Version",
-                      expected: clientVersion,
-                      bodyField:
-                        "params._meta['io.modelcontextprotocol/protocolVersion']",
-                      recovery:
-                        `Send the header 'MCP-Protocol-Version: ${clientVersion}' on every POST.`,
-                    },
-                  },
-                },
-                400,
-                { "MCP-Protocol-Version": STATELESS_FALLBACK_VERSION },
-              );
-            }
-            if (headerVersion !== clientVersion) {
-              return jsonRpcResponse(
-                {
-                  jsonrpc: "2.0",
-                  id,
-                  error: {
-                    // A header disagreeing with the body is HeaderMismatch, not
-                    // InvalidParams: intermediaries routing on the header need
-                    // to know the divergence was detected.
-                    code: MCP_HEADER_MISMATCH,
-                    message:
-                      `MCP-Protocol-Version header "${headerVersion}" does not match _meta protocolVersion "${clientVersion}"`,
-                    data: {
-                      problem: "header_body_mismatch",
-                      header: "MCP-Protocol-Version",
-                      expected: clientVersion,
-                      received: headerVersion,
-                      bodyField:
-                        "params._meta['io.modelcontextprotocol/protocolVersion']",
-                      recovery:
-                        `Set the header to "${clientVersion}", or change the body's _meta to "${headerVersion}". They must agree.`,
-                    },
-                  },
-                },
-                400,
-                { "MCP-Protocol-Version": STATELESS_FALLBACK_VERSION },
-              );
-            }
-          }
-
-          statelessVersion = clientVersion;
-          // Spec 2026-07-28: echo negotiated version in every response header.
-          // c.header() accumulates headers — all subsequent c.json() calls inherit it.
-          c.header("MCP-Protocol-Version", statelessVersion);
+            },
+            400,
+            { "MCP-Protocol-Version": STATELESS_FALLBACK_VERSION },
+          );
         }
 
-        if (
-          method === "server/discover" &&
-          this.options.transport === "stateless"
-        ) {
+        if (!STATELESS_SUPPORTED_VERSIONS.includes(clientVersion)) {
+          // AX: data carries machine-readable supported/requested for agent recovery
+          return jsonRpcResponse(
+            {
+              jsonrpc: "2.0",
+              id,
+              error: {
+                code: MCP_UNSUPPORTED_PROTOCOL_VERSION,
+                message: `Unsupported protocolVersion: "${clientVersion}"`,
+                data: {
+                  supported: [...STATELESS_SUPPORTED_VERSIONS],
+                  requested: clientVersion,
+                },
+              },
+            },
+            400,
+            { "MCP-Protocol-Version": STATELESS_FALLBACK_VERSION },
+          );
+        }
+
+        if (!capabilitiesValid) {
+          return jsonRpcResponse(
+            {
+              jsonrpc: "2.0",
+              id,
+              error: {
+                code: JSONRPC_INVALID_PARAMS,
+                message:
+                  `Missing or malformed field '${STATELESS_CLIENT_CAPABILITIES_KEY}' in params._meta: expected an object`,
+                data: {
+                  problem: "missing_field",
+                  bodyField:
+                    `params._meta['${STATELESS_CLIENT_CAPABILITIES_KEY}']`,
+                  recovery:
+                    "Send a ClientCapabilities object; `{}` is valid and means no capabilities declared.",
+                },
+              },
+            },
+            400,
+            { "MCP-Protocol-Version": STATELESS_FALLBACK_VERSION },
+          );
+        }
+
+        // Track C: request-metadata headers (SEP-2243).
+        //
+        // Notifications are exempt: the revision explicitly leaves header
+        // requirements for notification POSTs undefined, so a missing
+        // `Mcp-Method` there is not a violation to invent.
+        if (id !== undefined) {
+          const validation = validateRequestHeaders({
+            getHeader: (name) => c.req.header(name),
+            method: typeof method === "string" ? method : "",
+            params: isRecord(params) ? params : undefined,
+            bodyProtocolVersion: clientVersion,
+            mirroredParams: typeof params?.name === "string"
+              ? this.mirroredParams.get(params.name)
+              : undefined,
+          });
+          if (!validation.ok) {
+            return jsonRpcResponse(
+              {
+                jsonrpc: "2.0",
+                id,
+                error: {
+                  code: MCP_HEADER_MISMATCH,
+                  message: validation.message,
+                  // AX: the caller has to fix the request, so what to fix
+                  // travels as data. `problem` is an enum to switch on,
+                  // `recovery` is one concrete action — neither requires
+                  // parsing the English message.
+                  data: validation.detail,
+                },
+              },
+              400,
+              { "MCP-Protocol-Version": STATELESS_FALLBACK_VERSION },
+            );
+          }
+        }
+
+        const statelessVersion: string = clientVersion;
+        // Spec 2026-07-28: echo negotiated version in every response header.
+        // c.header() accumulates headers — all subsequent c.json() calls inherit it.
+        c.header("MCP-Protocol-Version", statelessVersion);
+
+        if (method === "server/discover") {
           return c.json({
             jsonrpc: "2.0",
             id,
@@ -2368,108 +2057,26 @@ export class McpApp {
           });
         }
 
-        // Initialize - create session and return session ID (now auth-verified)
+        // Initialize — respond without creating a session or emitting Mcp-Session-Id.
+        // statelessVersion is guaranteed defined here (version check above returned early otherwise).
         if (method === "initialize") {
-          // Track A: stateless V2 — respond without creating a session or emitting Mcp-Session-Id.
-          // statelessVersion is guaranteed defined here (per-request block above returned early otherwise).
-          if (this.options.transport === "stateless") {
-            return c.json({
-              jsonrpc: "2.0",
-              id,
-              result: this.stampResult({
-                protocolVersion: statelessVersion as string,
-                capabilities: this.buildServerCapabilities(),
-                serverInfo: {
-                  name: this.options.name,
-                  version: this.options.version,
-                },
-                ...(this.options.instructions
-                  ? { instructions: this.options.instructions }
-                  : {}),
-              }, statelessVersion),
-            });
-            // Note: c.json() inherits MCP-Protocol-Version header set above.
-            // No Mcp-Session-Id header emitted — stateless by design.
-          }
-
-          // Per-IP rate limit on initialize to prevent session exhaustion attacks
-          const clientIp = getClientIpFromHeaders(c.req.raw.headers);
-          if (!this.initRateLimiter.checkLimit(clientIp)) {
-            return c.json({
-              jsonrpc: "2.0",
-              id,
-              error: {
-                code: -32000,
-                message: "Too many initialize requests. Try again later.",
+          return c.json({
+            jsonrpc: "2.0",
+            id,
+            result: this.stampResult({
+              protocolVersion: statelessVersion,
+              capabilities: this.buildServerCapabilities(),
+              serverInfo: {
+                name: this.options.name,
+                version: this.options.version,
               },
-            }, 429);
-          }
-
-          // Guard against session exhaustion
-          if (this.sessions.size >= McpApp.MAX_SESSIONS) {
-            this.cleanupSessions();
-            if (this.sessions.size >= McpApp.MAX_SESSIONS) {
-              return c.json({
-                jsonrpc: "2.0",
-                id,
-                error: { code: -32000, message: "Too many active sessions" },
-              }, 503);
-            }
-          }
-          const sessionId = generateSessionId();
-          const now = Date.now();
-          this.sessions.set(sessionId, { createdAt: now, lastActivity: now });
-          this.serverMetrics.recordSessionCreated();
-
-          this.log(`New session created: ${sessionId}`);
-
-          return new Response(
-            JSON.stringify({
-              jsonrpc: "2.0",
-              id,
-              result: {
-                protocolVersion: "2025-06-18",
-                capabilities: {
-                  tools: {},
-                  resources: this.resources.size > 0 ? {} : undefined,
-                },
-                serverInfo: {
-                  name: this.options.name,
-                  version: this.options.version,
-                },
-                ...(this.options.instructions
-                  ? { instructions: this.options.instructions }
-                  : {}),
-              },
-            }),
-            {
-              headers: {
-                "Content-Type": "application/json",
-                "Mcp-Session-Id": sessionId,
-              },
-            },
-          );
-        }
-
-        // Session validation: all methods after initialize must provide a valid session.
-        // Skipped in stateless V2 mode (Track A) — no session concept.
-        if (this.options.transport !== "stateless" && reqSessionId) {
-          const session = this.sessions.get(reqSessionId);
-          if (!session) {
-            return c.json({
-              jsonrpc: "2.0",
-              id,
-              error: {
-                // Stateful path only (sessions do not exist in 2026-07-28), but
-                // -32001 is in the sub-range new implementations SHOULD NOT use,
-                // so it moves out alongside the auth codes.
-                code: -31404,
-                message: "Session not found or expired",
-              },
-            }, 404);
-          }
-          // Update last activity to prevent premature cleanup
-          session.lastActivity = Date.now();
+              ...(this.options.instructions
+                ? { instructions: this.options.instructions }
+                : {}),
+            }, statelessVersion),
+          });
+          // Note: c.json() inherits MCP-Protocol-Version header set above.
+          // No Mcp-Session-Id header emitted — stateless by design.
         }
 
         // Tools call (delegates to middleware pipeline, which handles auth internally)
@@ -2502,9 +2109,7 @@ export class McpApp {
             {};
           const statelessClientMeta:
             | StatelessClientMeta
-            | undefined = this.options.transport === "stateless" &&
-                isRecord(params) &&
-                isRecord(params["_meta"])
+            | undefined = isRecord(params) && isRecord(params["_meta"])
               ? {
                 clientInfo: params["_meta"][STATELESS_CLIENT_INFO_KEY] as
                   | Implementation
@@ -2520,11 +2125,8 @@ export class McpApp {
           // not members of it, unlike every other per-request field. Reading them
           // from `_meta` yields a silent undefined even when the client sent them.
           //
-          // Confined to a negotiated 2026-07-28: MRTR replaces the
-          // server-initiated request pattern that earlier revisions still use, so
-          // it has no meaning on the legacy path — and the client capabilities it
-          // needs only arrive per-request there.
-          const mrtrEnabled = statelessVersion === SPEC_2026_07_28;
+          // MRTR is always enabled on 2026-07-28 (the only supported version).
+          const mrtrEnabled = true;
 
           // Digest of the arguments AS RECEIVED, taken before the middleware
           // pipeline runs. Re-deriving it at seal time would hash whatever the
@@ -2559,8 +2161,7 @@ export class McpApp {
               },
               400,
               {
-                "MCP-Protocol-Version": statelessVersion ??
-                  STATELESS_FALLBACK_VERSION,
+                "MCP-Protocol-Version": statelessVersion,
               },
             );
           }
@@ -2587,7 +2188,7 @@ export class McpApp {
           const guardKey = needsKey
             ? await this.getMrtrKeySafe(
               id,
-              statelessVersion ?? STATELESS_FALLBACK_VERSION,
+              statelessVersion,
             )
             : { key: null as CryptoKey | null };
           if ("error" in guardKey) return guardKey.error;
@@ -2612,8 +2213,7 @@ export class McpApp {
               },
               400,
               {
-                "MCP-Protocol-Version": statelessVersion ??
-                  STATELESS_FALLBACK_VERSION,
+                "MCP-Protocol-Version": statelessVersion,
               },
             );
           }
@@ -2635,7 +2235,7 @@ export class McpApp {
               if (principal === null) {
                 return noPrincipalError(
                   id,
-                  statelessVersion ?? STATELESS_FALLBACK_VERSION,
+                  statelessVersion,
                 );
               }
               const verdict = await verifyRequestState(echoedState, key, {
@@ -2670,7 +2270,7 @@ export class McpApp {
               toolName,
               args,
               c.req.raw,
-              reqSessionId,
+              undefined,
               httpAuthInfo,
               statelessClientMeta,
               {
@@ -2691,7 +2291,7 @@ export class McpApp {
               if (sealPrincipal === null) {
                 return noPrincipalError(
                   id,
-                  statelessVersion ?? STATELESS_FALLBACK_VERSION,
+                  statelessVersion,
                 );
               }
               const built = await this.buildInputRequiredResult(
@@ -2721,8 +2321,7 @@ export class McpApp {
                   // path already answered 500 for exactly that.
                   built.code === ErrorCode.InternalError ? 500 : 400,
                   {
-                    "MCP-Protocol-Version": statelessVersion ??
-                      STATELESS_FALLBACK_VERSION,
+                    "MCP-Protocol-Version": statelessVersion,
                   },
                 );
               }
@@ -2732,26 +2331,6 @@ export class McpApp {
             // Tasks extension: the handler asked for a task handle instead of
             // a synchronous result.
             if (isAsyncTaskDescriptor(result)) {
-              if (statelessVersion !== SPEC_2026_07_28) {
-                // The handler asked for a task, but this peer cannot be handed
-                // one. Surfacing the server-side misconfiguration is better than
-                // silently degrading to a synchronous call whose duration is the
-                // reason the handler wanted a task in the first place.
-                return jsonRpcResponse(
-                  {
-                    jsonrpc: "2.0",
-                    id,
-                    error: {
-                      code: ErrorCode.InternalError,
-                      message:
-                        `Tool "${toolName}" returned a task, but the client negotiated ${
-                          statelessVersion ?? "a pre-2026 revision"
-                        }; the Tasks extension requires 2026-07-28.`,
-                    },
-                  },
-                  400,
-                );
-              }
               const guard = this.requireTasksCapability(
                 statelessClientMeta?.clientCapabilities,
                 id,
@@ -2778,8 +2357,7 @@ export class McpApp {
                   },
                   503,
                   {
-                    "MCP-Protocol-Version": statelessVersion ??
-                      STATELESS_FALLBACK_VERSION,
+                    "MCP-Protocol-Version": statelessVersion,
                   },
                 );
               }
@@ -2787,7 +2365,7 @@ export class McpApp {
               if (ownerPrincipal === null) {
                 return noPrincipalError(
                   id,
-                  statelessVersion ?? STATELESS_FALLBACK_VERSION,
+                  statelessVersion,
                 );
               }
               const owner = await taskOwnerKeyFor(
@@ -2799,7 +2377,7 @@ export class McpApp {
               if (owner === null) {
                 return noOwnerKeyError(
                   id,
-                  statelessVersion ?? STATELESS_FALLBACK_VERSION,
+                  statelessVersion,
                 );
               }
               // Re-checked, and wrapped: the guard above sits before two awaits
@@ -2838,8 +2416,7 @@ export class McpApp {
                     },
                     503,
                     {
-                      "MCP-Protocol-Version": statelessVersion ??
-                        STATELESS_FALLBACK_VERSION,
+                      "MCP-Protocol-Version": statelessVersion,
                     },
                   );
                 }
@@ -3050,10 +2627,7 @@ export class McpApp {
         // Replaces the removed HTTP GET stream and resources/subscribe. The
         // response IS the stream: a long-lived SSE body carrying only the
         // notification types the client opted into.
-        if (
-          method === "subscriptions/listen" && this.subscriptions !== null &&
-          statelessVersion === SPEC_2026_07_28
-        ) {
+        if (method === "subscriptions/listen" && this.subscriptions !== null) {
           const registry = this.subscriptions;
 
           // A notification-shaped listen makes no sense: the response IS the
@@ -3199,8 +2773,7 @@ export class McpApp {
               // Tells nginx and friends not to buffer, without which events sit
               // in a proxy until the buffer fills.
               "X-Accel-Buffering": "no",
-              "MCP-Protocol-Version": statelessVersion ??
-                STATELESS_FALLBACK_VERSION,
+              "MCP-Protocol-Version": statelessVersion,
             },
           });
         }
@@ -3218,7 +2791,6 @@ export class McpApp {
         // what an unimplemented method looks like from that peer's perspective.
         if (
           this.taskStore !== null &&
-          statelessVersion === SPEC_2026_07_28 &&
           (method === "tasks/get" || method === "tasks/update" ||
             method === "tasks/cancel")
         ) {
@@ -3278,7 +2850,7 @@ export class McpApp {
           if (callerBase === null) {
             return noPrincipalError(
               id,
-              statelessVersion ?? STATELESS_FALLBACK_VERSION,
+              statelessVersion,
             );
           }
           const caller = await taskOwnerKeyFor(
@@ -3290,7 +2862,7 @@ export class McpApp {
           if (caller === null) {
             return noOwnerKeyError(
               id,
-              statelessVersion ?? STATELESS_FALLBACK_VERSION,
+              statelessVersion,
             );
           }
 
@@ -3377,29 +2949,9 @@ export class McpApp {
           });
         }
 
-        // `ping` and `logging/setLevel` were REMOVED by spec 2026-07-28 — not
-        // deprecated. 0.21.0 kept answering `ping` on the stateless path for
-        // backward compatibility; that reasoning does not survive the final
-        // spec, which requires 404 + -32601 for a method the server does not
-        // implement. That response is also how a client distinguishes a modern
-        // server from a legacy HTTP+SSE one, so answering `{}` actively misled
-        // the probe.
-        //
-        // Rather than special-casing these two, the stateless path simply does
-        // not handle them: they fall through to the generic method-not-found
-        // branch at the end, which returns 404 for *any* unimplemented RPC.
-        //
-        // The stateful path keeps both — its peers negotiated `2025-06-18`,
-        // where `logging/setLevel`'s stub is what capability negotiation
-        // expects. Deliberately unstamped: no 2026 envelope on that path.
-        if (this.options.transport !== "stateless") {
-          if (method === "ping") {
-            return c.json({ jsonrpc: "2.0", id, result: {} });
-          }
-          if (method === "logging/setLevel") {
-            return c.json({ jsonrpc: "2.0", id, result: {} });
-          }
-        }
+        // `ping` and `logging/setLevel` were REMOVED by spec 2026-07-28.
+        // They fall through to method-not-found below (404 + -32601), which is
+        // how a client distinguishes a modern server from a legacy HTTP+SSE one.
         if (method === "prompts/list") {
           return c.json({
             jsonrpc: "2.0",
@@ -3448,28 +3000,17 @@ export class McpApp {
         // does not implement the requested RPC method, it MUST respond with
         // 404 Not Found and a JSON-RPC error with code -32601". The status is
         // load-bearing — a client probing an unknown URL uses exactly this
-        // response to tell a modern MCP endpoint from a legacy HTTP+SSE server,
-        // so answering 200 defeats the backward-compatibility probe.
+        // response to tell a modern MCP endpoint from a legacy HTTP+SSE server.
         //
-        // This is the general rule that also covers the methods the spec
-        // removed (`ping`, `logging/setLevel`) and the ones not yet implemented
-        // (`subscriptions/listen`, Track G). The legacy stateful path keeps
-        // answering 200 — its peers negotiated a revision with no such rule.
-        if (this.options.transport === "stateless") {
-          return jsonRpcResponse(
-            {
-              jsonrpc: "2.0",
-              id,
-              error: { code: -32601, message: `Method not found: ${method}` },
-            },
-            404,
-          );
-        }
-        return c.json({
-          jsonrpc: "2.0",
-          id,
-          error: { code: -32601, message: `Method not found: ${method}` },
-        });
+        // This also covers the removed methods (`ping`, `logging/setLevel`).
+        return jsonRpcResponse(
+          {
+            jsonrpc: "2.0",
+            id,
+            error: { code: -32601, message: `Method not found: ${method}` },
+          },
+          404,
+        );
       } catch (error) {
         this.log(
           `HTTP request error: ${
@@ -3491,8 +3032,7 @@ export class McpApp {
 
     // Embedded mode: skip serve(), surface the Hono fetch handler to the
     // caller and let them mount it inside their own framework (Fresh, Hono,
-    // Express, etc.). The session cleanup timer + post-init still runs so
-    // SSE clients and sessions are managed identically to the serve() path.
+    // Express, etc.).
     if (options.embedded) {
       if (!options.embeddedHandlerCallback) {
         throw new Error(
@@ -3502,14 +3042,6 @@ export class McpApp {
       // deno-lint-ignore no-explicit-any
       options.embeddedHandlerCallback(app.fetch as any);
       this.started = true;
-      // Track A: no sessions in stateless mode — skip cleanup timer
-      if (this.options.transport !== "stateless") {
-        this.sessionCleanupTimer = setInterval(
-          () => this.cleanupSessions(),
-          McpApp.SESSION_CLEANUP_INTERVAL_MS,
-        );
-        unrefTimer(this.sessionCleanupTimer as unknown as number);
-      }
       this.log(
         `HTTP handler ready (embedded mode — no port bound, max concurrent: ${
           this.options.maxConcurrent ?? 10
@@ -3539,17 +3071,6 @@ export class McpApp {
     );
 
     this.started = true;
-
-    // Start session cleanup timer (prevents unbounded memory growth).
-    // Track A: no sessions in stateless mode — skip timer to keep contract clean.
-    if (this.options.transport !== "stateless") {
-      this.sessionCleanupTimer = setInterval(
-        () => this.cleanupSessions(),
-        McpApp.SESSION_CLEANUP_INTERVAL_MS,
-      );
-      // Don't block Deno from exiting because of cleanup timer
-      unrefTimer(this.sessionCleanupTimer as unknown as number);
-    }
 
     const rateLimitInfo = this.options.rateLimit
       ? `, rate limit: ${this.options.rateLimit.maxRequests}/${this.options.rateLimit.windowMs}ms`
@@ -3648,99 +3169,6 @@ export class McpApp {
   }
 
   /**
-   * Send a JSON-RPC message to all SSE clients in a session
-   * Used for server-initiated notifications and requests
-   *
-   * @param sessionId - Session ID (or "anonymous" for clients without session)
-   * @param message - JSON-RPC message to send
-   */
-  /**
-   * Push a message to one session's SSE stream.
-   *
-   * @deprecated Legacy, stateful-only. Sessions do not exist in spec 2026-07-28,
-   * and the GET SSE stream this writes to returns 405 there — so on the stateless
-   * transport this silently reaches nobody. Use {@link sendNotification}, which
-   * routes to whichever channel the active transport actually has. Dies with the
-   * stateful path.
-   */
-  sendToSession(sessionId: string, message: Record<string, unknown>): void {
-    const clients = this.sseClients.get(sessionId);
-    if (!clients || clients.length === 0) {
-      this.log(`No SSE clients for session: ${sessionId}`);
-      return;
-    }
-
-    const encoder = new TextEncoder();
-    const eventId = Date.now();
-    const data = `id: ${eventId}\ndata: ${JSON.stringify(message)}\n\n`;
-
-    // Iterate in reverse so splice doesn't shift indices
-    for (let i = clients.length - 1; i >= 0; i--) {
-      const client = clients[i];
-      try {
-        client.controller.enqueue(encoder.encode(data));
-        client.lastEventId = eventId;
-      } catch {
-        // Stream is closed/broken — remove zombie client to prevent memory leak
-        clients.splice(i, 1);
-        this.log(`Removed dead SSE client from session: ${sessionId}`);
-      }
-    }
-
-    // Clean up empty session entry
-    if (clients.length === 0) {
-      this.sseClients.delete(sessionId);
-    }
-  }
-
-  /**
-   * Send a notification to all session-keyed SSE clients.
-   *
-   * @deprecated Legacy, stateful-only, for the same reason as
-   * {@link sendToSession}: on the stateless transport the session map is
-   * necessarily empty, so this reaches nobody and reports no error. Use
-   * {@link sendNotification} — it is the one verb that works on every transport,
-   * fanning out through `subscriptions/listen` where that is the live channel.
-   *
-   * @param method - Notification method name
-   * @param params - Notification parameters
-   */
-  broadcastNotification(
-    method: string,
-    params?: Record<string, unknown>,
-  ): void {
-    const message = {
-      jsonrpc: "2.0",
-      method,
-      params,
-    };
-
-    for (const sessionId of this.sseClients.keys()) {
-      this.sendToSession(sessionId, message);
-    }
-  }
-
-  /**
-   * Get number of active SSE connections
-   */
-  getSSEClientCount(): number {
-    let count = 0;
-    for (const clients of this.sseClients.values()) {
-      count += clients.length;
-    }
-    return count;
-  }
-
-  /**
-   * Get sampling bridge (if enabled)
-   *
-   * @deprecated Deprecated (MCP 2026-07-28). Removal after 2027-07-28. Prefer the explicit handle-based pattern.
-   */
-  getSamplingBridge(): SamplingBridge | null {
-    return this.samplingBridge;
-  }
-
-  /**
    * Read the MCP Apps capability advertised by the connected client.
    *
    * Returns the capability object (possibly empty `{}`) when the client
@@ -3792,8 +3220,6 @@ export class McpApp {
     this.serverMetrics.setGauges({
       activeRequests: qm.inFlight,
       queuedRequests: qm.queued,
-      activeSessions: this.sessions.size,
-      sseClients: this.getSSEClientCount(),
       rateLimiterKeys: this.rateLimiter?.getMetrics().keys ?? 0,
     });
     return this.serverMetrics.getSnapshot();
@@ -3895,9 +3321,8 @@ export class McpApp {
    * Send a JSON-RPC notification to the connected transport.
    *
    * Routing depends on the transport:
-   * - **stateless HTTP**: fanned out to `subscriptions/listen` streams, and only
-   *   to the subscribers that opted into that notification type.
-   * - **stateful HTTP**: broadcast to session-keyed SSE clients (legacy).
+   * - **HTTP**: fanned out to `subscriptions/listen` streams, only to
+   *   subscribers that opted into that notification type.
    * - **stdio**: written to stdout via the SDK transport.
    *
    * @param method - Notification method (e.g. "notifications/tools/list_changed")
@@ -3909,12 +3334,7 @@ export class McpApp {
   ): void {
     if (!this.started) return;
 
-    // Stateless: route through the subscription registry.
-    //
-    // Without this branch the call reached broadcastNotification, which walks the
-    // session-keyed SSE map — always empty in stateless mode, since GET /mcp
-    // returns 405 and no session SSE stream can exist. The notification vanished
-    // with no error: a caller had every reason to believe it had been delivered.
+    // Route through the subscription registry (subscriptions/listen streams).
     if (this.subscriptions !== null) {
       switch (method) {
         case "notifications/tools/list_changed":
@@ -3951,12 +3371,6 @@ export class McpApp {
           );
           return;
       }
-    }
-
-    // For legacy stateful HTTP mode, broadcast via session-keyed SSE
-    if (this.httpServer) {
-      this.broadcastNotification(method, params);
-      return;
     }
 
     // For stdio mode, send via SDK transport
@@ -4002,13 +3416,8 @@ export class McpApp {
    * Apply the spec-2026-07-28 result envelope when — and only when — the peer
    * negotiated that revision.
    *
-   * Gated on the **negotiated version**, not on the transport. An earlier draft
-   * used `transport === "stateless"` as a proxy for "modern peer", which is
-   * wrong: the stateless transport also accepts `2025-06-18` and `2025-11-25`
-   * (see `STATELESS_SUPPORTED_VERSIONS`), so that gate stamped a 2026 envelope
-   * onto responses to peers that had negotiated a revision predating it. The
-   * stateful path negotiates nothing per-request and advertises `2025-06-18`, so
-   * it passes `undefined` here and stays on the legacy shape.
+   * Always applies on the stateless transport, which only accepts 2026-07-28.
+   * Stdio mode passes `undefined` and stays on the legacy shape.
    *
    * Omitting the envelope for a genuinely legacy peer is safe in the other
    * direction too: the spec instructs clients to read a missing `resultType` as

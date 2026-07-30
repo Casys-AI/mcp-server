@@ -165,34 +165,6 @@ Deno.test("subscriptions - an empty filter yields an acknowledgement with nothin
   }
 });
 
-Deno.test("subscriptions - the stateful transport does not offer the method", async () => {
-  // The registry only exists on the stateless path; on the legacy one this is
-  // genuinely an unimplemented method.
-  const server = new McpApp({
-    name: "subs-stateful",
-    version: "1.0.0",
-    logger: () => {},
-    // default: stateful
-  });
-  const { http, url } = await start(server);
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "subscriptions/listen",
-        params: {},
-      }),
-    });
-    const data = await res.json();
-    assertEquals(data.error.code, -32601);
-  } finally {
-    await http.shutdown();
-  }
-});
-
 Deno.test("subscriptions - closing the client stream does not break the server", async () => {
   // The client closing the stream IS the cancellation signal. The cancel()
   // callback races the registry's own writes, so this must not throw.

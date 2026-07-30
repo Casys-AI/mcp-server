@@ -26,6 +26,12 @@ export interface CapabilityCheckOk {
 
 /** Failed capability check — one or more capabilities are missing. */
 export interface CapabilityCheckFail {
+  /**
+   * `ClientCapabilities`-shaped payload for the error's `data`, when the missing
+   * capability is nested. Absent for top-level ones, where the caller derives it
+   * from `missingCapabilities`.
+   */
+  readonly requiredCapabilities?: Record<string, unknown>;
   readonly ok: false;
   /**
    * Top-level `ClientCapabilities` keys the client did not declare but the
@@ -78,6 +84,27 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
+/**
+ * Reduce a value to what it will actually be on the wire.
+ *
+ * The gate must inspect the JSON representation, not the live object: the two can
+ * differ. `new String("url")` is not `=== "url"` but serialises to `"url"`, and a
+ * `toJSON()` can introduce fields — `tools`, say — that exist only after
+ * serialisation. Checking the live object then shipping the serialised one means
+ * the check and the payload disagree, which is precisely the gap a caller would
+ * use to obtain an input request the client cannot service.
+ *
+ * Returns `undefined` when the value cannot be serialised at all, which callers
+ * treat as malformed.
+ */
+function canonicalise(value: unknown): unknown {
+  try {
+    return JSON.parse(JSON.stringify(value ?? null));
+  } catch {
+    return undefined;
+  }
+}
+
 export function checkInputRequestCapabilities(
   inputRequests: Record<string, InputRequestEntry>,
   clientCapabilities: Record<string, unknown> | undefined,
@@ -90,10 +117,17 @@ export function checkInputRequestCapabilities(
     // declaring `sampling` does not grant tool-using sampling. Checking only the
     // top-level key let a server ask for a mode the client cannot service, which
     // strands the request exactly as an undeclared capability would.
-    // A non-object `params` is malformed, and silently reading it as `{}` meant
-    // the sub-capability checks below did not run at all. Refuse instead: a
-    // server-authoring bug should not resolve to "no extra capability needed".
-    if (entry.params !== undefined && !isRecord(entry.params)) {
+    // Canonicalised first, so the check sees exactly what will be sent.
+    const canonicalParams = canonicalise(entry.params);
+    if (
+      entry.params !== undefined &&
+      (canonicalParams === undefined ||
+        (canonicalParams !== null && !isRecord(canonicalParams)))
+    ) {
+      // Unserialisable, or serialising to something other than an object. Either
+      // is malformed, and reading it as `{}` would skip the sub-capability checks
+      // entirely — a server-authoring bug resolving to "no extra capability
+      // needed".
       return {
         ok: false,
         missingCapabilities: [
@@ -101,13 +135,20 @@ export function checkInputRequestCapabilities(
         ],
       };
     }
-    const params = isRecord(entry.params) ? entry.params : {};
+    const params = isRecord(canonicalParams) ? canonicalParams : {};
     if (entry.method === "elicitation/create" && params["mode"] === "url") {
       const elicitation = isRecord(clientCapabilities?.["elicitation"])
         ? clientCapabilities["elicitation"] as Record<string, unknown>
         : undefined;
       if (elicitation?.["url"] === undefined) {
-        return { ok: false, missingCapabilities: ["elicitation.url"] };
+        return {
+          ok: false,
+          missingCapabilities: ["elicitation.url"],
+          // Nested, matching ClientCapabilities. A flat "elicitation.url" key
+          // deserialises to `{}` on a typed client — it reads as "nothing
+          // missing", the opposite of the message.
+          requiredCapabilities: { elicitation: { url: {} } },
+        };
       }
     }
     if (
@@ -118,7 +159,11 @@ export function checkInputRequestCapabilities(
         ? clientCapabilities["sampling"] as Record<string, unknown>
         : undefined;
       if (sampling?.["tools"] === undefined) {
-        return { ok: false, missingCapabilities: ["sampling.tools"] };
+        return {
+          ok: false,
+          missingCapabilities: ["sampling.tools"],
+          requiredCapabilities: { sampling: { tools: {} } },
+        };
       }
     }
 

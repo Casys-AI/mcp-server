@@ -351,16 +351,23 @@ function callerPrincipal(authInfo: AuthInfo | undefined): string | null {
  * the subject alone leaves a task created under one tenant reachable from another
  * by the same user.
  */
-function taskOwnerKeyFor(
+async function taskOwnerKeyFor(
   options: McpAppOptions,
   authInfo: AuthInfo | undefined,
   request: Request | undefined,
   principal: string,
-): string | null {
+): Promise<string | null> {
   if (options.taskOwnerKey === undefined || request === undefined) {
     return principal;
   }
-  const key = options.taskOwnerKey(authInfo, request);
+  let key: unknown;
+  try {
+    key = await options.taskOwnerKey(authInfo, request);
+  } catch {
+    // A throwing hook is a consumer bug, but it must fail closed and legibly —
+    // not escape to the POST-level catch and be reported as -32700 Parse error.
+    return null;
+  }
   // An empty or non-string key would put every caller under one owner, undoing
   // the isolation the hook exists to provide — and `""` is exactly what the
   // obvious implementation yields when a header is missing. Refuse it rather
@@ -529,6 +536,16 @@ export class McpApp {
    * method it is (404 + -32601) rather than hitting an empty store.
    */
   private taskStore: TaskStore | null;
+
+  /**
+   * Set synchronously at the top of `stop()`.
+   *
+   * Checked before spawning a task, because the pipeline is async: a handler that
+   * settles during shutdown would otherwise start work in a store already drained,
+   * producing a task that outlives its server. A synchronous flag is what makes
+   * the check reliable — anything awaited leaves the same window open.
+   */
+  private stopping = false;
 
   /**
    * Live `subscriptions/listen` streams, or `null` outside stateless mode.
@@ -1473,26 +1490,23 @@ export class McpApp {
    * Stop the server gracefully
    */
   async stop(): Promise<void> {
+    // Synchronous, before any await: a handler settling during shutdown must see
+    // this immediately or it can still spawn a task.
+    this.stopping = true;
+
     // Release the subsystems whose timers exist from construction, BEFORE the
     // `started` guard: they are created in the constructor, so a server that
     // failed during startup still has them armed, and returning early left them
     // running with no way to reach them again.
     //
-    // `taskStore` is REPLACED rather than left disposed. Disposing in place made a
-    // stop-before-start permanently silent: a later startHttp() would run with TTL
-    // sweeping and notifications switched off, with nothing to indicate it. A
-    // fresh store restores the invariant that a started server always has a live
-    // one.
+    // Disposed and left disposed — NOT replaced. Replacing here opened a window
+    // where an in-flight call could spawn into a fresh store while the server was
+    // stopping, producing a task that outlived its server. `startHttp()` builds a
+    // new store instead, which keeps "a started server has a live store" true
+    // without inventing one mid-teardown.
     if (this.taskStore) {
       this.taskStore.drain();
       this.taskStore.dispose();
-      this.taskStore =
-        this.options.extensions?.[TASKS_EXTENSION_ID] !== undefined
-          ? new TaskStore({
-            onNotification: (task) => this.onTaskChanged(task),
-            unrefTimer: (timerId) => unrefTimer(timerId as unknown as number),
-          })
-          : null;
     }
     if (this.subscriptions) {
       this.subscriptions.shutdown();
@@ -1608,6 +1622,20 @@ export class McpApp {
     this.buildPipeline();
 
     const hostname = options.hostname ?? "0.0.0.0";
+    // A restart gets a live store: stop() disposes rather than replaces, so this is
+    // where the "a started server has a live store" invariant is restored — not
+    // mid-teardown, which is what opened the spawn-during-shutdown window.
+    this.stopping = false;
+    if (
+      this.options.extensions?.[TASKS_EXTENSION_ID] !== undefined &&
+      (this.taskStore === null || this.taskStore.isDisposed)
+    ) {
+      this.taskStore = new TaskStore({
+        onNotification: (task) => this.onTaskChanged(task),
+        unrefTimer: (timerId) => unrefTimer(timerId as unknown as number),
+      });
+    }
+
     if (this.options.transport === "stateless" && this.subscriptions === null) {
       this.subscriptions = new SubscriptionRegistry({
         serverInfo: { name: this.options.name, version: this.options.version },
@@ -2384,9 +2412,13 @@ export class McpApp {
           // is either a confused client or an attempt to inject answers past the
           // verification gate — refuse it rather than forwarding unverified
           // responses to the handler.
+          const guardKey = mrtrEnabled
+            ? await this.getMrtrKeySafe(id)
+            : { key: null };
+          if ("error" in guardKey) return guardKey.error;
           if (
             echoedResponses !== undefined && echoedState === undefined &&
-            await this.getMrtrKey() !== null
+            guardKey.key !== null
           ) {
             return jsonRpcResponse(
               {
@@ -2408,7 +2440,7 @@ export class McpApp {
           }
 
           if (echoedState !== undefined) {
-            const key = await this.getMrtrKey();
+            const key = guardKey.key;
             if (key === null) {
               // Unprotected mode: nothing to verify, and the handler is told so
               // rather than being handed a false assurance.
@@ -2531,9 +2563,27 @@ export class McpApp {
               // Owner binding: the spec requires an authorization check on every
               // task-related request, and a task id alone is only one line of
               // defence.
+              if (this.stopping || this.taskStore === null) {
+                return jsonRpcResponse(
+                  {
+                    jsonrpc: "2.0",
+                    id,
+                    error: {
+                      code: ErrorCode.InternalError,
+                      message:
+                        "Server is shutting down; no new tasks are accepted.",
+                      data: {
+                        problem: "server_stopping",
+                        recovery: "Retry against a running instance.",
+                      },
+                    },
+                  },
+                  503,
+                );
+              }
               const ownerPrincipal = callerPrincipal(httpAuthInfo);
               if (ownerPrincipal === null) return noPrincipalError(id);
-              const owner = taskOwnerKeyFor(
+              const owner = await taskOwnerKeyFor(
                 this.options,
                 httpAuthInfo,
                 c.req.raw,
@@ -2931,7 +2981,7 @@ export class McpApp {
 
           const callerBase = callerPrincipal(httpAuthInfo);
           if (callerBase === null) return noPrincipalError(id);
-          const caller = taskOwnerKeyFor(
+          const caller = await taskOwnerKeyFor(
             this.options,
             httpAuthInfo,
             c.req.raw,
@@ -3684,9 +3734,50 @@ export class McpApp {
    * when tampering can cause nothing worse than the request failing. It is a
    * loud warning because that condition is easy to believe and hard to verify.
    */
+  /**
+   * Key lookup that reports failure instead of throwing.
+   *
+   * The `tools/call` call sites sit outside the tool try/catch, so a throw would
+   * reach the POST-level catch and surface as -32700 "Parse error" — the same trap
+   * the earlier throwing principal guard fell into. Returns a ready response
+   * instead.
+   */
+  private async getMrtrKeySafe(
+    id: unknown,
+  ): Promise<{ key: CryptoKey | null } | { error: Response }> {
+    try {
+      return { key: await this.getMrtrKey() };
+    } catch (error) {
+      return {
+        error: jsonRpcResponse(
+          {
+            jsonrpc: "2.0",
+            id,
+            error: {
+              code: ErrorCode.InternalError,
+              message: "MRTR signing key is unavailable",
+              data: {
+                problem: "mrtr_key_unavailable",
+                detail: error instanceof Error ? error.message : String(error),
+                recovery:
+                  "Check mrtr.signingKey. The import is retried on the next request, so a transient failure clears itself.",
+              },
+            },
+          },
+          500,
+        ),
+      };
+    }
+  }
+
   private getMrtrKey(): Promise<CryptoKey | null> {
     // Assigned synchronously, so two concurrent callers share one import rather
     // than one of them observing a half-initialised state.
+    //
+    // A REJECTED import is un-memoised in the catch below: caching the rejection
+    // poisoned the instance permanently, and every later retry surfaced it through
+    // the POST-level catch as -32700 "Parse error" — wrong code, and no second
+    // attempt ever made. A transient WebCrypto failure should not be terminal.
     this.mrtrKeyPromise ??= (async () => {
       const hex = this.options.mrtr?.signingKey;
       if (hex === undefined) {
@@ -3700,8 +3791,10 @@ export class McpApp {
       try {
         return await importStateKey(hex);
       } catch (error) {
+        // Drop the memoised rejection so a later request retries the import.
+        this.mrtrKeyPromise = null;
         throw new Error(
-          `[McpApp] mrtr.signingKey is not a valid 64-character hex key: ${
+          `[McpApp] mrtr.signingKey could not be imported: ${
             error instanceof Error ? error.message : String(error)
           }`,
         );
@@ -3768,9 +3861,12 @@ export class McpApp {
           // ClientCapabilities-shaped so a typed client can read it directly and
           // learn which capability to declare.
           data: {
-            requiredCapabilities: Object.fromEntries(
-              check.missingCapabilities.map((cap) => [cap, {}]),
-            ),
+            // The check supplies a nested shape for sub-capabilities; otherwise
+            // the names are top-level keys.
+            requiredCapabilities: check.requiredCapabilities ??
+              Object.fromEntries(
+                check.missingCapabilities.map((cap) => [cap, {}]),
+              ),
           },
         };
       }

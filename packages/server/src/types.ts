@@ -203,6 +203,22 @@ export interface McpAppOptions {
    * middleware — so it is a hook rather than a guess. Return a stable string; it is
    * compared verbatim.
    *
+   * **It must derive everything from its two arguments.** `tasks/*` requests do
+   * not run the middleware pipeline, so anything a middleware injects into the
+   * pipeline context — the built-in tenant middleware's `tenantId`, for instance —
+   * is NOT visible here. Read the header, or resolve it yourself; the hook may be
+   * async precisely so a lookup is possible. A hook that expects pipeline state
+   * silently sees `undefined` on every call, which collapses every caller onto one
+   * key.
+   *
+   * Returning an empty or non-string value is refused rather than accepted, since
+   * that is what the obvious implementation yields when the value it reads is
+   * absent, and accepting it would share tasks between callers.
+   *
+   * Called on task creation and on every `tasks/get` / `tasks/update` /
+   * `tasks/cancel`. It must return the same key for the same caller across those
+   * calls, or the creator stops being able to reach its own task (fail-closed).
+   *
    * @example
    * ```typescript
    * taskOwnerKey: (authInfo, request) =>
@@ -212,7 +228,7 @@ export interface McpAppOptions {
   taskOwnerKey?: (
     authInfo: import("./auth/types.ts").AuthInfo | undefined,
     request: Request,
-  ) => string;
+  ) => string | Promise<string>;
 
   /**
    * Multi Round-Trip Requests (spec 2026-07-28, SEP-2322).

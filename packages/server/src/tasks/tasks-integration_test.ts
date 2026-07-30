@@ -790,3 +790,85 @@ Deno.test("probe - an empty taskOwnerKey is refused rather than shared", async (
     await http.shutdown();
   }
 });
+
+Deno.test("round3 - no task is spawned once shutdown has begun", async () => {
+  // The pipeline is async, so a handler can settle after stop() started. Spawning
+  // then would start un-abortable work in a drained store, and the task would
+  // outlive the server. A synchronous stopping flag is what makes the check
+  // reliable — anything awaited leaves the same window open.
+  let release: (() => void) | undefined;
+  let entered: (() => void) | undefined;
+  const held = new Promise<void>((r) => {
+    release = r;
+  });
+  const inHandler = new Promise<void>((r) => {
+    entered = r;
+  });
+
+  const server = new McpApp({
+    name: "tasks-shutdown-race",
+    version: "1.0.0",
+    logger: () => {},
+    transport: "stateless",
+    extensions: { [TASKS_ID]: {} },
+  });
+  server.registerTool(
+    { name: "slow", description: "Waits", inputSchema: { type: "object" } },
+    async () => {
+      entered?.();
+      await held; // still running when shutdown begins
+      return createTask({}, () => new Promise(() => {}));
+    },
+  );
+
+  const { http, url } = await start(server);
+  const pending = post(url, "tools/call", { name: "slow", arguments: {} });
+
+  // Wait until the handler is genuinely parked inside the pipeline, so the request
+  // is accepted and in flight rather than merely dispatched.
+  await inHandler;
+
+  // Mark the server as stopping WITHOUT closing the listener yet: stop() sets the
+  // flag synchronously, which is the behaviour under test. Closing the socket first
+  // would only prove that a refused connection fails.
+  const stopping = server.stop();
+  release?.();
+
+  const res = await pending;
+  const data = await res.json();
+  await stopping;
+  await http.shutdown();
+
+  // Refused, and legibly: not a 200 carrying a task nothing will ever drain.
+  assertEquals(res.status, 503);
+  assertEquals(data.error.data.problem, "server_stopping");
+});
+
+Deno.test("round3 - a throwing taskOwnerKey fails closed on task routes too", async () => {
+  // It previously became -32700 Parse error on tasks/*, while task creation gave
+  // -32603 — the same inconsistency the principal guard had.
+  const server = new McpApp({
+    name: "tasks-throwing-key",
+    version: "1.0.0",
+    logger: () => {},
+    transport: "stateless",
+    extensions: { [TASKS_ID]: {} },
+    taskOwnerKey: () => {
+      throw new Error("consumer bug");
+    },
+  });
+  server.registerTool(
+    { name: "scan", description: "Scan", inputSchema: { type: "object" } },
+    () => createTask({}, () => new Promise(() => {})),
+  );
+
+  const { http, url } = await start(server);
+  try {
+    const res = await post(url, "tasks/get", { taskId: "whatever" });
+    const data = await res.json();
+    assertEquals(res.status, 500);
+    assertEquals(data.error.data.problem, "invalid_task_owner_key");
+  } finally {
+    await http.shutdown();
+  }
+});

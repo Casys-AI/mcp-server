@@ -485,6 +485,15 @@ export class TaskStore {
     owner: string,
     formatResult?: (raw: unknown) => Record<string, unknown>,
   ): CreateTaskResultFields {
+    // A tool handler can settle after shutdown began — the pipeline is async and
+    // abort is cooperative. Spawning then would start un-abortable work in a store
+    // nobody will ever drain again, and the task would outlive the server that
+    // created it.
+    if (this._disposed) {
+      throw new Error(
+        "[TaskStore] Cannot spawn: the store has been disposed (server is stopping or stopped).",
+      );
+    }
     const taskId = generateTaskId();
     const now = new Date().toISOString();
 
@@ -790,6 +799,11 @@ export class TaskStore {
    */
   /** True once dispose() ran; suppresses any late notification. */
   private _disposed = false;
+
+  /** Whether this store has been torn down and must not accept new work. */
+  get isDisposed(): boolean {
+    return this._disposed;
+  }
 
   /**
    * Emit a status change, unless the store was disposed.

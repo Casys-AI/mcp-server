@@ -235,3 +235,61 @@ Deno.test("checkInputRequestCapabilities — tool-using sampling needs sampling.
   }, { sampling: {} });
   assertEquals(plain.ok, true);
 });
+
+// ── Round-3: the check must inspect what will actually be sent ────────────────
+
+Deno.test("checkInputRequestCapabilities — a boxed String cannot smuggle url mode", () => {
+  // `new String("url")` is not `=== "url"` but serialises to `"url"`. Checking the
+  // live object while shipping the serialised one meant the check and the payload
+  // could disagree — the gap a caller would use to obtain an input request the
+  // client cannot service.
+  const result = checkInputRequestCapabilities({
+    login: {
+      method: "elicitation/create",
+      // deno-lint-ignore no-explicit-any
+      params: { mode: new String("url") as any, message: "Sign in" },
+    },
+  }, { elicitation: {} });
+  assertEquals(result.ok, false);
+});
+
+Deno.test("checkInputRequestCapabilities — a toJSON that adds tools cannot bypass sampling.tools", () => {
+  // The field exists only after serialisation, so a live-value check never saw it.
+  const params = {
+    messages: [],
+    maxTokens: 10,
+    toJSON() {
+      return { messages: [], maxTokens: 10, tools: [{ name: "search" }] };
+    },
+  };
+  const result = checkInputRequestCapabilities({
+    // deno-lint-ignore no-explicit-any
+    s: { method: "sampling/createMessage", params: params as any },
+  }, { sampling: {} });
+  assertEquals(result.ok, false);
+});
+
+Deno.test("checkInputRequestCapabilities — unserialisable params are refused", () => {
+  const circular: Record<string, unknown> = { mode: "form" };
+  circular.self = circular;
+  const result = checkInputRequestCapabilities({
+    // deno-lint-ignore no-explicit-any
+    k: { method: "elicitation/create", params: circular as any },
+  }, { elicitation: {} });
+  assertEquals(result.ok, false);
+});
+
+Deno.test("checkInputRequestCapabilities — a nested capability is reported nested", () => {
+  // A flat "elicitation.url" key deserialises to {} on a typed client — it reads
+  // as "nothing missing", the opposite of the message.
+  const result = checkInputRequestCapabilities({
+    login: {
+      method: "elicitation/create",
+      params: { mode: "url", message: "Sign in" },
+    },
+  }, { elicitation: {} });
+  assertEquals(result.ok, false);
+  if (!result.ok) {
+    assertEquals(result.requiredCapabilities, { elicitation: { url: {} } });
+  }
+});

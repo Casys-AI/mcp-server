@@ -262,9 +262,11 @@ Deno.test("envelope - any unimplemented stateless RPC returns 404 / -32601", asy
   const { http, url } = await startOnFreePort(server);
 
   try {
-    for (
-      const method of ["subscriptions/listen", "tasks/get", "nonsense/rpc"]
-    ) {
+    // Methods with no Mcp-Name requirement, so header validation cannot preempt
+    // the dispatch. `tasks/get` is deliberately absent: it mirrors params.taskId
+    // into Mcp-Name, so omitting that header is a -32020 fired before method
+    // lookup — correct behaviour, but a different assertion.
+    for (const method of ["subscriptions/listen", "nonsense/rpc"]) {
       const res = await rpc(url, method);
       const data = await res.json();
       assertEquals(res.status, 404, `${method} should be 404`);

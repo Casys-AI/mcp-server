@@ -28,10 +28,16 @@ const SENTINEL_PREFIX = "=?base64?";
 const SENTINEL_SUFFIX = "?=";
 
 /** Methods whose `Mcp-Name` is required, and which body field it mirrors. */
-const NAME_SOURCE: Readonly<Record<string, "name" | "uri">> = {
+const NAME_SOURCE: Readonly<Record<string, "name" | "uri" | "taskId">> = {
   "tools/call": "name",
   "prompts/get": "name",
   "resources/read": "uri",
+  // Tasks extension: the routing header carries the task id, so a gateway can
+  // route or meter per task without reading the body — the same rationale as
+  // for a tool name.
+  "tasks/get": "taskId",
+  "tasks/update": "taskId",
+  "tasks/cancel": "taskId",
 };
 
 /** RFC 9110 §5.1 token: the only shape a header *name* may take. */
@@ -113,7 +119,11 @@ export function encodeHeaderValue(value: string): string {
 export function mcpNameRequirement(
   method: string,
   params: Record<string, unknown> | undefined,
-): { required: boolean; expected?: string; sourceField?: "name" | "uri" } {
+): {
+  required: boolean;
+  expected?: string;
+  sourceField?: "name" | "uri" | "taskId";
+} {
   const field = NAME_SOURCE[method];
   if (field === undefined) return { required: false };
   const value = params?.[field];
@@ -290,9 +300,7 @@ export function validateRequestHeaders(
       return {
         ok: false,
         message:
-          `Missing required header 'Mcp-Name' for ${method}. It must mirror ${
-            nameRule.sourceField === "uri" ? "params.uri" : "params.name"
-          }.`,
+          `Missing required header 'Mcp-Name' for ${method}. It must mirror params.${nameRule.sourceField}.`,
       };
     }
     const decoded = decodeHeaderValue(raw);

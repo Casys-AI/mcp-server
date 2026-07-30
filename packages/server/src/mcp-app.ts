@@ -79,6 +79,11 @@ import {
   type MirroredParam,
   validateRequestHeaders,
 } from "./transport/request-headers.ts";
+import {
+  type DetailedTask,
+  isAsyncTaskDescriptor,
+  TaskStore,
+} from "./tasks/mod.ts";
 import { ServerMetrics } from "./observability/metrics.ts";
 import { endToolCallSpan, startToolCallSpan } from "./observability/otel.ts";
 
@@ -207,6 +212,16 @@ const STATELESS_LOG_LEVEL_KEY = "io.modelcontextprotocol/logLevel";
 /** Protocol version whose wire format this server implements natively */
 const SPEC_2026_07_28 = "2026-07-28";
 
+/**
+ * Tasks extension identifier (SEP-2663).
+ *
+ * Declaring it in `McpAppOptions.extensions` is what switches the extension on.
+ * The spec forbids returning a task handle to a client that did not declare
+ * support, and forbids advertising an extension we do not implement — so the
+ * declaration gates both directions.
+ */
+const TASKS_EXTENSION_ID = "io.modelcontextprotocol/tasks";
+
 /** Version echoed in MCP-Protocol-Version header on error responses (server's stable baseline) */
 const STATELESS_FALLBACK_VERSION = "2025-06-18";
 
@@ -233,9 +248,11 @@ const MCP_HEADER_MISMATCH = -32020;
 
 /**
  * Client did not declare a capability the request requires.
- * Reserved here so nothing else claims it; no code path emits it yet.
+ *
+ * Emitted by the Tasks extension guard. `data.requiredCapabilities` must list
+ * the missing capabilities alongside it.
  */
-const _MCP_MISSING_REQUIRED_CLIENT_CAPABILITY = -32021;
+const MCP_MISSING_REQUIRED_CLIENT_CAPABILITY = -32021;
 
 /** Requested protocol version is not one this server implements. */
 const MCP_UNSUPPORTED_PROTOCOL_VERSION = -32022;
@@ -270,6 +287,27 @@ function readLogLevel(meta: Record<string, unknown>): McpLogLevel | undefined {
   return typeof raw === "string" && MCP_LOG_LEVELS.includes(raw as McpLogLevel)
     ? raw as McpLogLevel
     : undefined;
+}
+
+/**
+ * Build a JSON-RPC response with an explicit HTTP status.
+ *
+ * Module-scoped rather than nested in `startHttp`: request-validation helpers on
+ * the class need it too, and duplicating the header defaults is how a response
+ * ends up missing its Content-Type.
+ */
+function jsonRpcResponse(
+  payload: Record<string, unknown>,
+  status: number,
+  headers?: Record<string, string>,
+): Response {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+      ...(headers ?? {}),
+    },
+  });
 }
 
 /**
@@ -356,6 +394,16 @@ export class McpApp {
   private mirroredParams = new Map<string, MirroredParam[]>();
 
   /**
+   * Task store for the Tasks extension, or `null` when the consumer did not
+   * declare it.
+   *
+   * Created only on declaration: a server not using Tasks should not pay for a
+   * sweep timer, and a `tasks/*` call against it must read as the unimplemented
+   * method it is (404 + -32601) rather than hitting an empty store.
+   */
+  private readonly taskStore: TaskStore | null;
+
+  /**
    * Validated `ttlMs`. The spec requires servers to provide a value `>= 0`, and
    * an integer — clients are told to ignore a negative one, which would make a
    * misconfiguration silently do nothing instead of failing.
@@ -414,6 +462,10 @@ export class McpApp {
       );
     }
     this.cacheTtlMs = ttlMs;
+
+    this.taskStore = options.extensions?.[TASKS_EXTENSION_ID] !== undefined
+      ? new TaskStore({ onNotification: (task) => this.onTaskChanged(task) })
+      : null;
 
     // Create SDK MCP server
     this.mcpServer = new McpServer(
@@ -1237,6 +1289,13 @@ export class McpApp {
       this.samplingBridge.cancelAll();
     }
 
+    // Abort in-flight tasks and stop the sweep timer. drain() aborts the work;
+    // dispose() releases the timer, without which the process would not exit.
+    if (this.taskStore) {
+      this.taskStore.drain();
+      this.taskStore.dispose();
+    }
+
     // Close all SSE clients BEFORE shutting down HTTP server.
     // Deno.serve().shutdown() waits for all connections to drain,
     // so long-lived SSE connections must be closed first to avoid blocking.
@@ -1520,20 +1579,6 @@ export class McpApp {
       }
 
       return { allowed: true, retryAfterMs: 0 };
-    };
-
-    const jsonRpcResponse = (
-      payload: Record<string, unknown>,
-      status: number,
-      headers?: Record<string, string>,
-    ): Response => {
-      return new Response(JSON.stringify(payload), {
-        status,
-        headers: {
-          "Content-Type": "application/json",
-          ...(headers ?? {}),
-        },
-      });
     };
 
     // Custom routes (registered before MCP catch-all)
@@ -2058,6 +2103,31 @@ export class McpApp {
               httpAuthInfo,
               statelessClientMeta,
             );
+            // Tasks extension: the handler asked for a task handle instead of
+            // a synchronous result.
+            if (isAsyncTaskDescriptor(result)) {
+              const guard = this.requireTasksCapability(
+                statelessClientMeta?.clientCapabilities,
+                id,
+              );
+              if (guard) return guard;
+
+              const task = this.taskStore!.spawn(result);
+              return c.json({
+                jsonrpc: "2.0",
+                id,
+                // NOT stampResult(): that writes resultType "complete", and a
+                // CreateTaskResult carries "task". Its fields are flat on the
+                // result, not nested under a `task` key.
+                //
+                // Note the asymmetry with tasks/get below, which DOES carry
+                // "complete" — that is an ordinary RPC response which happens to
+                // describe a task. The spec states this distinction three times;
+                // conflating them is the likeliest mistake here.
+                result: { ...task, resultType: "task" },
+              });
+            }
+
             return c.json({
               jsonrpc: "2.0",
               id,
@@ -2210,17 +2280,111 @@ export class McpApp {
           }
         }
 
-        // `ping` and `logging/setLevel` were REMOVED by spec 2026-07-28 — not
-        // deprecated. 0.21.0 kept answering `ping` on the stateless path for
-        // backward compatibility; that reasoning does not survive the final
-        // spec, which requires 404 + -32601 for a method the server does not
-        // implement. That specific response is also how a client distinguishes a
-        // modern server from a legacy HTTP+SSE one, so answering `{}` actively
-        // misleads the backward-compatibility probe.
+        // ── Tasks extension (io.modelcontextprotocol/tasks) ──────────────
         //
-        // The stateful path keeps both: a 2025-11-25 peer is entitled to them,
-        // and `logging/setLevel`'s stub is what its capability negotiation
-        // expects.
+        // The capability guard repeats on every one of these, not just at task
+        // creation: the spec requires the missing-capability error for a
+        // non-declaring client issuing tasks/get, tasks/update OR tasks/cancel.
+        // Guarding creation alone would still let such a client poll and cancel
+        // tasks it could never have been handed.
+        if (
+          this.taskStore !== null &&
+          (method === "tasks/get" || method === "tasks/update" ||
+            method === "tasks/cancel")
+        ) {
+          const store = this.taskStore;
+          const guard = this.requireTasksCapability(
+            isRecord(params) && isRecord(params["_meta"])
+              ? params["_meta"][STATELESS_CLIENT_CAPABILITIES_KEY] as
+                | ClientCapabilities
+                | undefined
+              : undefined,
+            id,
+          );
+          if (guard) return guard;
+
+          const taskId =
+            isRecord(params) && typeof params["taskId"] === "string"
+              ? params["taskId"]
+              : undefined;
+          if (taskId === undefined) {
+            return jsonRpcResponse(
+              {
+                jsonrpc: "2.0",
+                id,
+                error: {
+                  code: JSONRPC_INVALID_PARAMS,
+                  message: `${method} requires a string 'taskId' parameter`,
+                },
+              },
+              400,
+            );
+          }
+
+          if (method === "tasks/get") {
+            const task = store.get(taskId);
+            if (task === null) {
+              return c.json({
+                jsonrpc: "2.0",
+                id,
+                error: {
+                  code: JSONRPC_INVALID_PARAMS,
+                  message: `Unknown taskId: ${taskId}`,
+                },
+              });
+            }
+            // "complete", not "task" — see the note at task creation.
+            return c.json({
+              jsonrpc: "2.0",
+              id,
+              result: this.stampResult({ ...task }, statelessVersion),
+            });
+          }
+
+          if (method === "tasks/update") {
+            // Spec field name is `inputResponses`, matching MRTR's vocabulary.
+            const responses = isRecord(params) &&
+                isRecord(params["inputResponses"])
+              ? params["inputResponses"]
+              : undefined;
+            if (responses === undefined) {
+              return jsonRpcResponse(
+                {
+                  jsonrpc: "2.0",
+                  id,
+                  error: {
+                    code: JSONRPC_INVALID_PARAMS,
+                    message: "tasks/update requires an 'inputResponses' object",
+                  },
+                },
+                400,
+              );
+            }
+            const applied = store.update(taskId, responses);
+            const snapshot = store.get(taskId);
+            return c.json({
+              jsonrpc: "2.0",
+              id,
+              result: this.stampResult(
+                { applied, ...(snapshot ?? {}) },
+                statelessVersion,
+              ),
+            });
+          }
+
+          // tasks/cancel
+          const cancelled = store.cancel(taskId);
+          const snapshot = store.get(taskId);
+          return c.json({
+            jsonrpc: "2.0",
+            id,
+            result: this.stampResult(
+              { cancelled, ...(snapshot ?? {}) },
+              statelessVersion,
+            ),
+          });
+        }
+
         // `ping` and `logging/setLevel` were REMOVED by spec 2026-07-28 — not
         // deprecated. 0.21.0 kept answering `ping` on the stateless path for
         // backward compatibility; that reasoning does not survive the final
@@ -2814,6 +2978,73 @@ export class McpApp {
   }
 
   /**
+   * Reject a Tasks request from a client that did not declare the extension.
+   *
+   * Returns a ready 400 response to return, or `null` when the client is
+   * entitled to proceed. Two distinct spec rules converge here: a server
+   * **MUST NOT** hand a task to a non-declaring client, and **MUST** answer the
+   * missing-capability error when one calls `tasks/*`.
+   *
+   * `-32021` (`MissingRequiredClientCapability`) is the code, and
+   * `data.requiredCapabilities` is required to list what was missing — a client
+   * that gets this back needs to know which capability to add, not just that
+   * something was absent.
+   */
+  private requireTasksCapability(
+    clientCapabilities: ClientCapabilities | undefined,
+    id: unknown,
+  ): Response | null {
+    if (this.taskStore === null) {
+      return jsonRpcResponse(
+        {
+          jsonrpc: "2.0",
+          id,
+          error: {
+            code: ErrorCode.MethodNotFound,
+            message:
+              `Tasks extension is not enabled on this server (declare "${TASKS_EXTENSION_ID}" in McpAppOptions.extensions)`,
+          },
+        },
+        404,
+      );
+    }
+
+    const extensions = clientCapabilities?.extensions;
+    const declared = isRecord(extensions) &&
+      extensions[TASKS_EXTENSION_ID] !== undefined;
+    if (declared) return null;
+
+    return jsonRpcResponse(
+      {
+        jsonrpc: "2.0",
+        id,
+        error: {
+          code: MCP_MISSING_REQUIRED_CLIENT_CAPABILITY,
+          message:
+            `Client did not declare the "${TASKS_EXTENSION_ID}" extension`,
+          data: { requiredCapabilities: [TASKS_EXTENSION_ID] },
+        },
+      },
+      400,
+    );
+  }
+
+  /**
+   * Task status transitions, for pushing to subscribers.
+   *
+   * The spec's notification method is `notifications/tasks` — not a
+   * `tasks/`-prefixed name, which would collide with the request methods.
+   *
+   * Delivery goes out over `subscriptions/listen` once that route is wired
+   * (Track G); the registry exists but the transport does not yet open streams.
+   * Until then this is intentionally a no-op beyond the log: polling via
+   * `tasks/get` is the spec's default and works without it.
+   */
+  private onTaskChanged(task: DetailedTask): void {
+    this.log(`task ${task.taskId} → ${task.status}`);
+  }
+
+  /**
    * Add the required `CacheableResult` fields (spec 2026-07-28, SEP-2549).
    *
    * Applies to `tools/list`, `prompts/list`, `resources/list`, `resources/read`
@@ -2851,6 +3082,8 @@ export class McpApp {
    */
   private buildServerCapabilities(): Record<string, unknown> {
     const { extensions } = this.options;
+    // The declaration in options is the single source of truth: `taskStore` is
+    // created from it, so advertising and behaviour cannot drift apart.
     return {
       tools: {},
       resources: this.resources.size > 0 ? {} : undefined,

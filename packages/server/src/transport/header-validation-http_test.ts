@@ -579,3 +579,55 @@ Deno.test("regression - a negative or fractional ttlMs is refused at constructio
     assertEquals(threw, true, `ttlMs ${bad} must be refused`);
   }
 });
+
+Deno.test("regression - an MRTR-retry result is not marked cacheable", () => {
+  // The caching spec: results from a request carrying inputResponses or
+  // requestState MUST NOT be cached, because they depend on inputs that are not
+  // part of the cache key. A cache would serve this result for a later request
+  // that supplied different input.
+  return (async () => {
+    const server = new McpApp({
+      name: "mrtr-cache-test",
+      version: "1.0.0",
+      logger: () => {},
+      transport: "stateless",
+      cache: { ttlMs: 60_000, scope: "public" },
+    });
+    server.registerResource(
+      { uri: "ui://cache/mrtr", name: "probe", mimeType: "text/plain" },
+      () => ({ uri: "ui://cache/mrtr", mimeType: "text/plain", text: "x" }),
+    );
+    const { http, url } = await start(server);
+    const headers = {
+      "MCP-Protocol-Version": V,
+      "Mcp-Method": "resources/read",
+      "Mcp-Name": "ui://cache/mrtr",
+    };
+    const body = (extra: Record<string, unknown>) => ({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "resources/read",
+      params: {
+        uri: "ui://cache/mrtr",
+        ...extra,
+        _meta: { [PROTO_KEY]: V, [CAPS_KEY]: {} },
+      },
+    });
+    try {
+      // Ordinary read: cacheable.
+      const plain = await (await post(url, headers, body({}))).json();
+      assertEquals(plain.result.ttlMs, 60_000);
+
+      // Same read, but carrying MRTR retry fields: hints must be withheld.
+      const retry = await (await post(
+        url,
+        headers,
+        body({ requestState: "opaque", inputResponses: {} }),
+      )).json();
+      assertEquals(retry.result.ttlMs, undefined);
+      assertEquals(retry.result.cacheScope, undefined);
+    } finally {
+      await http.shutdown();
+    }
+  })();
+});

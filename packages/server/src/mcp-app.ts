@@ -2439,6 +2439,13 @@ export class McpApp {
                 this.withCacheHints(
                   { contents: [finalContent] },
                   statelessVersion,
+                  {
+                    // resources/read is the only cacheable method an MRTR retry
+                    // can target, so it is the only one that needs this guard.
+                    isMrtrRetry: isRecord(params) &&
+                      (params["requestState"] !== undefined ||
+                        params["inputResponses"] !== undefined),
+                  },
                 ),
                 statelessVersion,
               ),
@@ -3507,8 +3514,17 @@ export class McpApp {
   private withCacheHints(
     result: Record<string, unknown>,
     negotiatedVersion?: string,
+    request?: { readonly isMrtrRetry?: boolean },
   ): Record<string, unknown> {
     if (negotiatedVersion !== SPEC_2026_07_28) return result;
+
+    // A result produced by an MRTR retry MUST NOT be cached: it depends on
+    // `inputResponses` / `requestState`, which are not part of the cache key, so
+    // a cache would serve it for a later request that supplied different input.
+    // Emitting no hints is how a server declines to make the result cacheable —
+    // clients read an absent ttlMs as 0.
+    if (request?.isMrtrRetry) return result;
+
     return {
       ...result,
       ttlMs: this.cacheTtlMs,

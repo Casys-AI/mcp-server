@@ -21,6 +21,15 @@ import type { InputRequestEntry } from "./types.ts";
 
 /** Successful capability check — all methods map to declared capabilities. */
 export interface CapabilityCheckOk {
+  /**
+   * The canonical form of `inputRequests` — the value the caller MUST emit.
+   *
+   * Checking a JSON clone and then serialising the original is two serialisations,
+   * and a stateful `toJSON()` can return different values for each. That is not a
+   * theoretical gap: it reopens exactly the bypass canonicalisation was added to
+   * close. Emit this, not the input.
+   */
+  readonly canonicalRequests?: Record<string, unknown>;
   readonly ok: true;
 }
 
@@ -111,23 +120,28 @@ export function checkInputRequestCapabilities(
 ): CapabilityCheckResult {
   // Collect every capability key that is required by the inputRequests.
   // Use a Set to deduplicate: multiple slots may require the same capability.
+  // Canonicalise the WHOLE map once. Everything below inspects this clone, and the
+  // caller emits it — so the value checked and the value sent are the same object,
+  // serialised once.
+  const canonicalRequests = canonicalise(inputRequests);
+  if (!isRecord(canonicalRequests)) {
+    return {
+      ok: false,
+      missingCapabilities: ["<inputRequests could not be serialised>"],
+    };
+  }
+
   const required = new Set<string>();
-  for (const entry of Object.values(inputRequests)) {
+  for (const entry of Object.values(canonicalRequests) as InputRequestEntry[]) {
     // Sub-capabilities: declaring `elicitation` does not grant URL mode, and
     // declaring `sampling` does not grant tool-using sampling. Checking only the
     // top-level key let a server ask for a mode the client cannot service, which
     // strands the request exactly as an undeclared capability would.
-    // Canonicalised first, so the check sees exactly what will be sent.
-    const canonicalParams = canonicalise(entry.params);
-    if (
-      entry.params !== undefined &&
-      (canonicalParams === undefined ||
-        (canonicalParams !== null && !isRecord(canonicalParams)))
-    ) {
-      // Unserialisable, or serialising to something other than an object. Either
-      // is malformed, and reading it as `{}` would skip the sub-capability checks
-      // entirely — a server-authoring bug resolving to "no extra capability
-      // needed".
+    // Already canonical: `entry` came out of the clone above. A `params` that is
+    // present but not an object is malformed — reading it as `{}` would skip the
+    // sub-capability checks entirely, a server-authoring bug resolving to "no
+    // extra capability needed".
+    if (entry.params !== undefined && !isRecord(entry.params)) {
       return {
         ok: false,
         missingCapabilities: [
@@ -135,7 +149,7 @@ export function checkInputRequestCapabilities(
         ],
       };
     }
-    const params = isRecord(canonicalParams) ? canonicalParams : {};
+    const params = isRecord(entry.params) ? entry.params : {};
     if (entry.method === "elicitation/create" && params["mode"] === "url") {
       const elicitation = isRecord(clientCapabilities?.["elicitation"])
         ? clientCapabilities["elicitation"] as Record<string, unknown>
@@ -185,7 +199,7 @@ export function checkInputRequestCapabilities(
 
   if (required.size === 0) {
     // Empty inputRequests map — nothing to check
-    return { ok: true };
+    return { ok: true, canonicalRequests };
   }
 
   const missing: string[] = [];
@@ -201,5 +215,5 @@ export function checkInputRequestCapabilities(
   if (missing.length > 0) {
     return { ok: false, missingCapabilities: missing };
   }
-  return { ok: true };
+  return { ok: true, canonicalRequests };
 }

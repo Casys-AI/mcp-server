@@ -293,3 +293,40 @@ Deno.test("checkInputRequestCapabilities — a nested capability is reported nes
     assertEquals(result.requiredCapabilities, { elicitation: { url: {} } });
   }
 });
+
+Deno.test("checkInputRequestCapabilities — a STATEFUL toJSON cannot differ between check and emit", () => {
+  // The previous fix canonicalised for the check but the transport serialised the
+  // original a second time — two serialisations, and a toJSON that returns
+  // different values per call slips between them. A deterministic toJSON could not
+  // detect this, which is why the earlier probe passed.
+  let calls = 0;
+  const params = {
+    mode: "form",
+    toJSON() {
+      calls++;
+      // Benign on the first call (the check), tool-using sampling on the second.
+      return calls === 1
+        ? { mode: "form", message: "hi" }
+        : { mode: "form", message: "hi", tools: [{ name: "exec" }] };
+    },
+  };
+  const result = checkInputRequestCapabilities({
+    // deno-lint-ignore no-explicit-any
+    k: { method: "sampling/createMessage", params: params as any },
+  }, { sampling: {} });
+
+  // Whatever the verdict, the caller must emit the clone the check inspected — so
+  // the check is authoritative and a second serialisation never happens.
+  assertEquals(result.ok, true, "first serialisation is benign");
+  if (result.ok) {
+    const emitted = result.canonicalRequests as Record<
+      string,
+      { params: Record<string, unknown> }
+    >;
+    assertEquals(
+      emitted.k.params.tools,
+      undefined,
+      "the emitted payload must be the checked one, not a fresh serialisation",
+    );
+  }
+});

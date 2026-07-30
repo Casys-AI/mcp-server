@@ -61,8 +61,11 @@ The ones worth knowing about as a consumer:
   live JS values while the response serialised the original object later — two
   different checks over one payload. `mode: new String("url")` is not
   `=== "url"` but serialises to `"url"`; a `toJSON()` can introduce `tools` only
-  at serialisation time. The gate now canonicalises through JSON first, so it
-  inspects exactly what ships.
+  at serialisation time. The gate canonicalises the whole `inputRequests` map
+  once and the transport emits **that clone**, so the value checked and the
+  value sent are the same object. An earlier attempt canonicalised only for the
+  check and let the transport serialise the original again — which a stateful
+  `toJSON()` walks straight through.
 - **`requiredCapabilities` was flat** (`{"elicitation.url": {}}`), which a typed
   client deserialises as `{}` — reading as "nothing missing", the opposite of
   the message. Now nested per `ClientCapabilities`.
@@ -75,8 +78,10 @@ The ones worth knowing about as a consumer:
   id is not visible there. An empty or non-string key is refused rather than
   collapsing every caller onto one owner.
 - **Shutdown behaviour.** No task is accepted once `stop()` begins, and a
-  restarted server accepts them again — including on stdio, which previously
-  refused every task for the rest of its life after a stop.
+  restarted server accepts them again. Tasks are reachable only over the
+  stateless HTTP transport — stdio has no per-request capability negotiation —
+  but its `start()` shares the same reset, so a stopped stdio server no longer
+  keeps a disposed store.
 
 ### Fixed — conformance and security, from adversarial review
 

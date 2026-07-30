@@ -377,7 +377,7 @@ async function taskOwnerKeyFor(
 }
 
 /** The error to return when `taskOwnerKey` produced an unusable value. */
-function noOwnerKeyError(id: unknown): Response {
+function noOwnerKeyError(id: unknown, version: string): Response {
   return jsonRpcResponse(
     {
       jsonrpc: "2.0",
@@ -398,7 +398,7 @@ function noOwnerKeyError(id: unknown): Response {
 }
 
 /** The error to return when no caller boundary can be established. */
-function noPrincipalError(id: unknown): Response {
+function noPrincipalError(id: unknown, version: string): Response {
   return jsonRpcResponse(
     {
       jsonrpc: "2.0",
@@ -415,12 +415,35 @@ function noPrincipalError(id: unknown): Response {
       },
     },
     500,
+    { "MCP-Protocol-Version": version },
   );
 }
 
 /** Lowercase hex encoding, for the requestState nonce. */
 function bytesToHexLocal(bytes: Uint8Array): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Apply the negotiated protocol version to a raw Response.
+ *
+ * `c.json()` inherits headers set on the Hono context; a `Response` built directly
+ * does not. Every error path that returns one therefore has to carry the header
+ * itself, and forgetting is invisible under the default CORS config — the browser
+ * never sees the omission, and a proxy routing on the header does.
+ *
+ * Applied centrally rather than at each call site, because "remember this header"
+ * repeated 27 times is a rule that will be broken.
+ */
+function withProtocolVersion(response: Response, version: string): Response {
+  if (response.headers.has("MCP-Protocol-Version")) return response;
+  const headers = new Headers(response.headers);
+  headers.set("MCP-Protocol-Version", version);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }
 
 /**
@@ -1424,14 +1447,18 @@ export class McpApp {
    * Start the MCP server with stdio transport
    */
   async start(): Promise<void> {
+    // Guard FIRST. Resetting before the guard meant a concurrent start() during
+    // stop() cleared `stopping` and rebuilt the store on its way to failing with
+    // "already started" — after which a held request produced a live task on a
+    // stopped server. `startHttp()` had the order right; this did not.
+    if (this.started) {
+      throw new Error("Server already started");
+    }
+
     // Same reset as the HTTP path. Without it a stdio server that had been stopped
     // kept `stopping` set and its store disposed, so it refused every task for the
     // rest of its life — with nothing to say why.
     this.prepareForStart();
-
-    if (this.started) {
-      throw new Error("Server already started");
-    }
 
     // Build middleware pipeline before connecting transport
     this.buildPipeline();
@@ -2445,6 +2472,10 @@ export class McpApp {
                 },
               },
               400,
+              {
+                "MCP-Protocol-Version": statelessVersion ??
+                  STATELESS_FALLBACK_VERSION,
+              },
             );
           }
           const echoedResponses = isRecord(rawResponses)
@@ -2462,9 +2493,17 @@ export class McpApp {
           // is either a confused client or an attempt to inject answers past the
           // verification gate — refuse it rather than forwarding unverified
           // responses to the handler.
-          const guardKey = mrtrEnabled
-            ? await this.getMrtrKeySafe(id)
-            : { key: null };
+          // Resolved only when MRTR is actually in play. Resolving on every 2026
+          // tools/call meant a transient key-import failure also broke ordinary
+          // tools that never touch MRTR.
+          const needsKey = mrtrEnabled &&
+            (echoedResponses !== undefined || echoedState !== undefined);
+          const guardKey = needsKey
+            ? await this.getMrtrKeySafe(
+              id,
+              statelessVersion ?? STATELESS_FALLBACK_VERSION,
+            )
+            : { key: null as CryptoKey | null };
           if ("error" in guardKey) return guardKey.error;
           if (
             echoedResponses !== undefined && echoedState === undefined &&
@@ -2486,6 +2525,10 @@ export class McpApp {
                 },
               },
               400,
+              {
+                "MCP-Protocol-Version": statelessVersion ??
+                  STATELESS_FALLBACK_VERSION,
+              },
             );
           }
 
@@ -2503,7 +2546,12 @@ export class McpApp {
               // cross, and any caller could invoke the tool directly anyway. The
               // method and argument bindings still apply in both cases.
               const principal = callerPrincipal(httpAuthInfo);
-              if (principal === null) return noPrincipalError(id);
+              if (principal === null) {
+                return noPrincipalError(
+                  id,
+                  statelessVersion ?? STATELESS_FALLBACK_VERSION,
+                );
+              }
               const verdict = await verifyRequestState(echoedState, key, {
                 principal,
                 method: "tools/call",
@@ -2554,7 +2602,12 @@ export class McpApp {
               result["resultType"] === "input_required"
             ) {
               const sealPrincipal = callerPrincipal(httpAuthInfo);
-              if (sealPrincipal === null) return noPrincipalError(id);
+              if (sealPrincipal === null) {
+                return noPrincipalError(
+                  id,
+                  statelessVersion ?? STATELESS_FALLBACK_VERSION,
+                );
+              }
               const built = await this.buildInputRequiredResult(
                 result as unknown as InputRequiredSignal,
                 {
@@ -2629,17 +2682,31 @@ export class McpApp {
                     },
                   },
                   503,
+                  {
+                    "MCP-Protocol-Version": statelessVersion ??
+                      STATELESS_FALLBACK_VERSION,
+                  },
                 );
               }
               const ownerPrincipal = callerPrincipal(httpAuthInfo);
-              if (ownerPrincipal === null) return noPrincipalError(id);
+              if (ownerPrincipal === null) {
+                return noPrincipalError(
+                  id,
+                  statelessVersion ?? STATELESS_FALLBACK_VERSION,
+                );
+              }
               const owner = await taskOwnerKeyFor(
                 this.options,
                 httpAuthInfo,
                 c.req.raw,
                 ownerPrincipal,
               );
-              if (owner === null) return noOwnerKeyError(id);
+              if (owner === null) {
+                return noOwnerKeyError(
+                  id,
+                  statelessVersion ?? STATELESS_FALLBACK_VERSION,
+                );
+              }
               // Re-checked, and wrapped: the guard above sits before two awaits
               // (the principal lookup and the async owner hook), so shutdown can
               // begin in between. Without this, spawn()'s post-disposal throw
@@ -2670,6 +2737,10 @@ export class McpApp {
                     },
                   },
                   503,
+                  {
+                    "MCP-Protocol-Version": statelessVersion ??
+                      STATELESS_FALLBACK_VERSION,
+                  },
                 );
               }
               return c.json({
@@ -3055,14 +3126,24 @@ export class McpApp {
           }
 
           const callerBase = callerPrincipal(httpAuthInfo);
-          if (callerBase === null) return noPrincipalError(id);
+          if (callerBase === null) {
+            return noPrincipalError(
+              id,
+              statelessVersion ?? STATELESS_FALLBACK_VERSION,
+            );
+          }
           const caller = await taskOwnerKeyFor(
             this.options,
             httpAuthInfo,
             c.req.raw,
             callerBase,
           );
-          if (caller === null) return noOwnerKeyError(id);
+          if (caller === null) {
+            return noOwnerKeyError(
+              id,
+              statelessVersion ?? STATELESS_FALLBACK_VERSION,
+            );
+          }
 
           if (method === "tasks/get") {
             const task = store.get(taskId, caller);
@@ -3819,6 +3900,7 @@ export class McpApp {
    */
   private async getMrtrKeySafe(
     id: unknown,
+    version: string,
   ): Promise<{ key: CryptoKey | null } | { error: Response }> {
     try {
       return { key: await this.getMrtrKey() };
@@ -3840,6 +3922,7 @@ export class McpApp {
             },
           },
           500,
+          { "MCP-Protocol-Version": version },
         ),
       };
     }
@@ -3918,6 +4001,7 @@ export class McpApp {
       };
     }
 
+    let canonicalRequests: Record<string, unknown> | undefined;
     if (hasRequests) {
       const check = checkInputRequestCapabilities(
         requests as Record<string, InputRequestEntry>,
@@ -3945,6 +4029,7 @@ export class McpApp {
           },
         };
       }
+      canonicalRequests = check.canonicalRequests;
     }
 
     // Seal the token so the retry can be proven legitimate. The payload holds
@@ -3972,7 +4057,13 @@ export class McpApp {
       ok: true,
       result: {
         resultType: "input_required",
-        ...(hasRequests ? { inputRequests: requests } : {}),
+        // The clone the check inspected, NOT the handler's object. Serialising the
+        // original again would be a second serialisation, and a stateful
+        // `toJSON()` can return a different value each time — which reopens the
+        // bypass canonicalisation exists to close.
+        ...(hasRequests
+          ? { inputRequests: canonicalRequests ?? requests }
+          : {}),
         ...(requestState !== undefined ? { requestState } : {}),
       },
     };

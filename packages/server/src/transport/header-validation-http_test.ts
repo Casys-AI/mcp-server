@@ -826,3 +826,53 @@ Deno.test("AX - a malformed clientCapabilities is rejected at ingress, not deep 
     }
   })();
 });
+
+Deno.test("round4 - post-negotiation error responses carry MCP-Protocol-Version even with CORS off", () => {
+  // A raw Response does not inherit headers set on the Hono context, so each error
+  // path had to carry the header itself. The default CORS config masked the
+  // omission: a browser never sees it, and a proxy routing on the header does.
+  return (async () => {
+    const server = new McpApp({
+      name: "header-echo-test",
+      version: "1.0.0",
+      logger: () => {},
+      transport: "stateless",
+      extensions: { "io.modelcontextprotocol/tasks": {} },
+    });
+    const listener = Deno.listen({ port: 0 });
+    const port = (listener.addr as Deno.NetAddr).port;
+    listener.close();
+    // CORS explicitly off, which is what exposed this.
+    const http = await server.startHttp({
+      port,
+      cors: false,
+      onListen: () => {},
+    });
+    const url = `http://localhost:${port}/mcp`;
+    try {
+      // A tasks/get for an unknown id: reached only after negotiation.
+      const res = await post(url, {
+        "MCP-Protocol-Version": V,
+        "Mcp-Method": "tasks/get",
+        "Mcp-Name": "nope",
+      }, {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tasks/get",
+        params: {
+          taskId: "nope",
+          _meta: {
+            [PROTO_KEY]: V,
+            [CAPS_KEY]: {
+              extensions: { "io.modelcontextprotocol/tasks": {} },
+            },
+          },
+        },
+      });
+      await res.json();
+      assertEquals(res.headers.get("mcp-protocol-version"), V);
+    } finally {
+      await http.shutdown();
+    }
+  })();
+});

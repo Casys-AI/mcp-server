@@ -2607,7 +2607,16 @@ export class McpApp {
                       ...(built.data !== undefined ? { data: built.data } : {}),
                     },
                   },
-                  400,
+                  // Status follows the code: an InternalError is a server fault
+                  // (500), a capability or shape problem is the caller's (400).
+                  // Flattening both to 400 told a client to fix a request that a
+                  // misconfigured signing key had broken — and the sibling ingress
+                  // path already answered 500 for exactly that.
+                  built.code === ErrorCode.InternalError ? 500 : 400,
+                  {
+                    "MCP-Protocol-Version": statelessVersion ??
+                      STATELESS_FALLBACK_VERSION,
+                  },
                 );
               }
               return c.json({ jsonrpc: "2.0", id, result: built.result });

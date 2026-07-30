@@ -271,7 +271,7 @@ Deno.test("mrtr - a signal with neither inputRequests nor requestState is a serv
     try {
       const res = await call(other.url, "bad_signal");
       const data = await res.json();
-      assertEquals(res.status, 400);
+      assertEquals(res.status, 500);
       assertEquals(data.error.code, -32603);
       assertStringIncludes(data.error.message, "at least one of");
     } finally {
@@ -515,9 +515,13 @@ Deno.test("round5 - an inputRequests map emptied by serialisation is refused", a
   try {
     const res = await call(url, "ask");
     const data = await res.json();
-    assertEquals(res.status, 400);
+    // 500, not 400: an InternalError is a server fault, and telling the client to
+    // fix its request would send it looking for a problem it does not have.
+    assertEquals(res.status, 500);
     assertEquals(data.error.code, -32603);
     assertStringIncludes(data.error.message, "no serialisable entries");
+    // Post-negotiation responses carry the version even on error paths.
+    assertEquals(res.headers.get("mcp-protocol-version"), V);
   } finally {
     await http.shutdown();
   }

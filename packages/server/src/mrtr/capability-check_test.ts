@@ -331,20 +331,37 @@ Deno.test("checkInputRequestCapabilities — a STATEFUL toJSON cannot differ bet
   }
 });
 
-Deno.test("checkInputRequestCapabilities — params: null is refused, absent params is not", () => {
-  // The two are not equivalent: omitting `params` says the request needs none,
+Deno.test("checkInputRequestCapabilities — params: null is refused", () => {
+  // `null` is not "absent": omitting `params` is a statement about the request,
   // while `params: null` asserts a value the schema types as an object. Accepting
-  // null would mean the sub-capability checks silently do not run for a request
-  // that looks like it declared something.
+  // it would mean the sub-capability checks silently do not run for a request that
+  // looks like it declared something.
   const withNull = checkInputRequestCapabilities({
     // deno-lint-ignore no-explicit-any
     k: { method: "elicitation/create", params: null as any },
   }, { elicitation: {} });
   assertEquals(withNull.ok, false);
+});
 
-  const withoutParams = checkInputRequestCapabilities({
+Deno.test("checkInputRequestCapabilities — absent params is method-specific", () => {
+  // This test previously asserted the WRONG behaviour: it locked in that an absent
+  // `params` was fine for every method. The schema requires it on
+  // elicitation/create (message + requestedSchema) and sampling/createMessage
+  // (messages + maxTokens); only ListRootsRequest may omit it. Accepting the
+  // omission everywhere shipped a request no client could service — nothing to
+  // render, nothing to sample.
+  for (const method of ["elicitation/create", "sampling/createMessage"]) {
+    const result = checkInputRequestCapabilities({
+      // deno-lint-ignore no-explicit-any
+      k: { method } as any,
+    }, { elicitation: {}, sampling: {} });
+    assertEquals(result.ok, false, `${method} must require params`);
+  }
+
+  // roots/list carries no parameters at all.
+  const roots = checkInputRequestCapabilities({
     // deno-lint-ignore no-explicit-any
-    k: { method: "elicitation/create" } as any,
-  }, { elicitation: {} });
-  assertEquals(withoutParams.ok, true);
+    k: { method: "roots/list" } as any,
+  }, { roots: {} });
+  assertEquals(roots.ok, true);
 });

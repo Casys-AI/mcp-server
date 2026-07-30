@@ -147,7 +147,21 @@ export function checkInputRequestCapabilities(
     // `params` says the request needs none, while `params: null` asserts a value
     // that the schema types as an object. Accepting it would mean the sub-capability
     // checks silently do not run for a request that looks like it declared
-    // something. A handler wanting no params should omit the field.
+    // something.
+    //
+    // Absence is method-specific: the schema requires `params` on
+    // `elicitation/create` (message + requestedSchema) and `sampling/createMessage`
+    // (messages + maxTokens). Only `ListRootsRequest` may omit it. Accepting an
+    // omission everywhere let a request ship that no client could service — it has
+    // nothing to render or sample.
+    if (entry.params === undefined && entry.method !== "roots/list") {
+      return {
+        ok: false,
+        missingCapabilities: [
+          `<${entry.method} requires params>`,
+        ],
+      };
+    }
     if (entry.params !== undefined && !isRecord(entry.params)) {
       return {
         ok: false,

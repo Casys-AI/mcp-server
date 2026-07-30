@@ -151,6 +151,13 @@ Deno.test("mrtr - a handler asking for input yields resultType 'input_required'"
 
     // stampResult() would have overwritten this with "complete".
     assertEquals(data.result.resultType, "input_required");
+    // `input_required` is still a 2026 Result. It must carry the server's
+    // identity just like a completed result; otherwise the only result that
+    // asks the client to continue is uniquely anonymous.
+    assertEquals(data.result._meta?.["io.modelcontextprotocol/serverInfo"], {
+      name: "mrtr-integration",
+      version: "1.0.0",
+    });
     assertExists(data.result.inputRequests.github_login);
     assertEquals(
       data.result.inputRequests.github_login.method,

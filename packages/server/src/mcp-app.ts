@@ -4225,6 +4225,16 @@ export class McpApp {
       ok: true,
       result: {
         resultType: "input_required",
+        // This path deliberately cannot use stampResult(): that would replace
+        // its `input_required` discriminator with `complete`. It is still a
+        // 2026 Result, though, so carry the same server identity envelope as
+        // every other response.
+        _meta: {
+          [STATELESS_SERVER_INFO_KEY]: {
+            name: this.options.name,
+            version: this.options.version,
+          },
+        },
         // The clone the check inspected, NOT the handler's object. Serialising the
         // original a second time lets a stateful `toJSON()` return a different
         // value for the response than the gate approved.

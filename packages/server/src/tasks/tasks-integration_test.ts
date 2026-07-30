@@ -872,3 +872,44 @@ Deno.test("round3 - a throwing taskOwnerKey fails closed on task routes too", as
     await http.shutdown();
   }
 });
+
+Deno.test("round4 - a restarted server accepts tasks again", async () => {
+  // stop() leaves the store disposed and sets `stopping`; only a start path clears
+  // both. The stdio start() did not, so a stdio server that had been stopped
+  // refused every task for the rest of its life, with nothing to say why.
+  const server = new McpApp({
+    name: "tasks-restart",
+    version: "1.0.0",
+    logger: () => {},
+    transport: "stateless",
+    extensions: { [TASKS_ID]: {} },
+  });
+  server.registerTool(
+    { name: "scan", description: "Scan", inputSchema: { type: "object" } },
+    () => createTask({}, () => new Promise(() => {})),
+  );
+
+  const first = await start(server);
+  const before = await (await post(first.url, "tools/call", {
+    name: "scan",
+    arguments: {},
+  })).json();
+  assertEquals(before.result.resultType, "task");
+  await first.http.shutdown();
+
+  // Back up on a fresh port: tasks must work again.
+  const second = await start(server);
+  try {
+    const after = await (await post(second.url, "tools/call", {
+      name: "scan",
+      arguments: {},
+    })).json();
+    assertEquals(
+      after.result.resultType,
+      "task",
+      "a restarted server must accept tasks again",
+    );
+  } finally {
+    await second.http.shutdown();
+  }
+});

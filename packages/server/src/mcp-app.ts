@@ -1424,6 +1424,11 @@ export class McpApp {
    * Start the MCP server with stdio transport
    */
   async start(): Promise<void> {
+    // Same reset as the HTTP path. Without it a stdio server that had been stopped
+    // kept `stopping` set and its store disposed, so it refused every task for the
+    // rest of its life — with nothing to say why.
+    this.prepareForStart();
+
     if (this.started) {
       throw new Error("Server already started");
     }
@@ -1489,6 +1494,27 @@ export class McpApp {
   /**
    * Stop the server gracefully
    */
+  /**
+   * Restore the invariants a running server relies on.
+   *
+   * Called by both transports' start paths. `stop()` disposes the task store and
+   * leaves it disposed — rebuilding it mid-teardown is what let an in-flight call
+   * spawn into a store nobody would drain — so coming back up is where a live one
+   * is created.
+   */
+  private prepareForStart(): void {
+    this.stopping = false;
+    if (
+      this.options.extensions?.[TASKS_EXTENSION_ID] !== undefined &&
+      (this.taskStore === null || this.taskStore.isDisposed)
+    ) {
+      this.taskStore = new TaskStore({
+        onNotification: (task) => this.onTaskChanged(task),
+        unrefTimer: (timerId) => unrefTimer(timerId as unknown as number),
+      });
+    }
+  }
+
   async stop(): Promise<void> {
     // Synchronous, before any await: a handler settling during shutdown must see
     // this immediately or it can still spawn a task.
@@ -1622,19 +1648,7 @@ export class McpApp {
     this.buildPipeline();
 
     const hostname = options.hostname ?? "0.0.0.0";
-    // A restart gets a live store: stop() disposes rather than replaces, so this is
-    // where the "a started server has a live store" invariant is restored — not
-    // mid-teardown, which is what opened the spawn-during-shutdown window.
-    this.stopping = false;
-    if (
-      this.options.extensions?.[TASKS_EXTENSION_ID] !== undefined &&
-      (this.taskStore === null || this.taskStore.isDisposed)
-    ) {
-      this.taskStore = new TaskStore({
-        onNotification: (task) => this.onTaskChanged(task),
-        unrefTimer: (timerId) => unrefTimer(timerId as unknown as number),
-      });
-    }
+    this.prepareForStart();
 
     if (this.options.transport === "stateless" && this.subscriptions === null) {
       this.subscriptions = new SubscriptionRegistry({
@@ -2590,13 +2604,38 @@ export class McpApp {
                 ownerPrincipal,
               );
               if (owner === null) return noOwnerKeyError(id);
-              const task = this.taskStore!.spawn(
-                result,
-                owner,
-                // Same conversion the synchronous path uses, so a handler's
-                // return value produces an identical result either way.
-                (raw) => this.buildToolCallResult(toolName, raw),
-              );
+              // Re-checked, and wrapped: the guard above sits before two awaits
+              // (the principal lookup and the async owner hook), so shutdown can
+              // begin in between. Without this, spawn()'s post-disposal throw
+              // would escape to the POST-level catch and be reported as -32700
+              // "Parse error".
+              let task;
+              try {
+                task = this.taskStore.spawn(
+                  result,
+                  owner,
+                  // Same conversion the synchronous path uses, so a handler's
+                  // return value produces an identical result either way.
+                  (raw) => this.buildToolCallResult(toolName, raw),
+                );
+              } catch {
+                return jsonRpcResponse(
+                  {
+                    jsonrpc: "2.0",
+                    id,
+                    error: {
+                      code: ErrorCode.InternalError,
+                      message:
+                        "Server is shutting down; no new tasks are accepted.",
+                      data: {
+                        problem: "server_stopping",
+                        recovery: "Retry against a running instance.",
+                      },
+                    },
+                  },
+                  503,
+                );
+              }
               return c.json({
                 jsonrpc: "2.0",
                 id,

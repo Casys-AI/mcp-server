@@ -167,6 +167,29 @@ export interface McpAppOptions {
   transport?: "stateful" | "stateless";
 
   /**
+   * Cache hints emitted on list and read results (spec 2026-07-28,
+   * `CacheableResult`, SEP-2549).
+   *
+   * `ttlMs` and `cacheScope` are **required** fields of those results, so the
+   * framework always emits them. The defaults are deliberately inert:
+   *
+   * - `ttlMs: 0` — "revalidate every time", the HTTP `max-age=0` equivalent.
+   *   Caching is a per-deployment decision: a server whose tool list is built
+   *   from a live database must not have a stale window chosen for it. Opt in
+   *   with a real value.
+   * - `cacheScope: "private"` — shared intermediaries must not cache the
+   *   response. Anything else would be unsafe by default here, since results can
+   *   be scoped to the authenticated principal or tenant. Use `"public"` only for
+   *   a server whose lists are genuinely identical for every caller.
+   */
+  cache?: {
+    /** Freshness window in milliseconds. Default `0`. */
+    ttlMs?: number;
+    /** Whether shared caches may store the response. Default `"private"`. */
+    scope?: "public" | "private";
+  };
+
+  /**
    * Protocol extensions this server declares (spec 2026-07-28).
    *
    * Keyed by reverse-DNS extension identifier — e.g.

@@ -42,12 +42,18 @@ Deno.test(
     try {
       const res = await fetch(`http://localhost:${port}/mcp`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "MCP-Protocol-Version": "2026-07-28",
+          "Mcp-Method": "initialize",
+        },
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: 1,
           method: "initialize",
-          params: { _meta: { [PROTO_KEY]: "2026-07-28" } },
+          params: {
+            _meta: { [PROTO_KEY]: "2026-07-28", [CLIENT_CAPABILITIES_KEY]: {} },
+          },
         }),
       });
 
@@ -88,12 +94,15 @@ Deno.test(
         headers: {
           "Content-Type": "application/json",
           "MCP-Protocol-Version": "2026-07-28",
+          "Mcp-Method": "initialize",
         },
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: 1,
           method: "initialize",
-          params: { _meta: { [PROTO_KEY]: "2026-07-28" } },
+          params: {
+            _meta: { [PROTO_KEY]: "2026-07-28", [CLIENT_CAPABILITIES_KEY]: {} },
+          },
         }),
       });
 
@@ -135,7 +144,9 @@ Deno.test(
           jsonrpc: "2.0",
           id: 2,
           method: "tools/list",
-          params: { _meta: { [PROTO_KEY]: "2026-07-28" } },
+          params: {
+            _meta: { [PROTO_KEY]: "2026-07-28", [CLIENT_CAPABILITIES_KEY]: {} },
+          },
         }),
       });
 
@@ -157,7 +168,7 @@ Deno.test(
 );
 
 Deno.test(
-  "transport stateless - absent MCP-Protocol-Version header accepts _meta version",
+  "transport stateless - absent MCP-Protocol-Version header is rejected (required since 2025-06-18)",
   async () => {
     const server = new McpApp({
       name: "stateless-header-absent-test",
@@ -184,10 +195,13 @@ Deno.test(
         }),
       });
 
-      assertEquals(res.status, 200);
-      assertEquals(res.headers.get("mcp-protocol-version"), "2025-11-25");
+      // This test previously asserted the header was OPTIONAL, which was a
+      // non-conformance we had codified: `MCP-Protocol-Version` was introduced in
+      // 2025-06-18, and the spec grants the omit-it grace only to clients OLDER
+      // than that — which this server does not support at all.
+      assertEquals(res.status, 400);
       const data = await res.json();
-      assertEquals(data.result.tools, []);
+      assertEquals(data.error.code, -32020);
     } finally {
       await http.shutdown();
     }
@@ -213,12 +227,18 @@ Deno.test(
     try {
       const res = await fetch(`http://localhost:${port}/mcp`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "MCP-Protocol-Version": "2026-07-28",
+          "Mcp-Method": "server/discover",
+        },
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: 4,
           method: "server/discover",
-          params: { _meta: { [PROTO_KEY]: "2026-07-28" } },
+          params: {
+            _meta: { [PROTO_KEY]: "2026-07-28", [CLIENT_CAPABILITIES_KEY]: {} },
+          },
         }),
       });
 
@@ -294,12 +314,18 @@ Deno.test(
     try {
       const res = await fetch(`http://localhost:${port}/mcp`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "MCP-Protocol-Version": "2026-07-28",
+          "Mcp-Method": "server/discover",
+        },
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: 6,
           method: "server/discover",
-          params: { _meta: { [PROTO_KEY]: "2026-07-28" } },
+          params: {
+            _meta: { [PROTO_KEY]: "2026-07-28", [CLIENT_CAPABILITIES_KEY]: {} },
+          },
         }),
       });
 
@@ -374,12 +400,18 @@ Deno.test(
     try {
       const res = await fetch(`http://localhost:${port}/mcp`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "MCP-Protocol-Version": "2026-07-28",
+          "Mcp-Method": "tools/list",
+        },
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: 1,
           method: "tools/list",
-          params: { _meta: { [PROTO_KEY]: "2026-07-28" } },
+          params: {
+            _meta: { [PROTO_KEY]: "2026-07-28", [CLIENT_CAPABILITIES_KEY]: {} },
+          },
         }),
       });
 
@@ -434,7 +466,12 @@ Deno.test(
     try {
       const res = await fetch(`http://localhost:${port}/mcp`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "MCP-Protocol-Version": "2026-07-28",
+          "Mcp-Method": "tools/call",
+          "Mcp-Name": "capture-client-meta",
+        },
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: 1,
@@ -463,7 +500,7 @@ Deno.test(
 );
 
 Deno.test(
-  "transport stateless - tools/call tolerates absent client metadata",
+  "transport stateless - tools/call tolerates absent clientInfo (but not absent clientCapabilities)",
   async () => {
     const server = new McpApp({
       name: "stateless-client-meta-absent-test",
@@ -495,13 +532,18 @@ Deno.test(
     try {
       const res = await fetch(`http://localhost:${port}/mcp`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "MCP-Protocol-Version": "2026-07-28",
+          "Mcp-Method": "tools/call",
+          "Mcp-Name": "capture-absent-client-meta",
+        },
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: 2,
           method: "tools/call",
           params: {
-            _meta: { [PROTO_KEY]: "2026-07-28" },
+            _meta: { [PROTO_KEY]: "2026-07-28", [CLIENT_CAPABILITIES_KEY]: {} },
             name: "capture-absent-client-meta",
             arguments: {},
           },
@@ -511,8 +553,34 @@ Deno.test(
       const data = await res.json();
       assertEquals(res.status, 200);
       assertEquals(data.result.content[0].text, "ok");
+      // clientInfo is only SHOULD, so its absence must not fail the call.
       assertEquals(capturedClientInfo, undefined);
-      assertEquals(capturedClientCapabilities, undefined);
+      // clientCapabilities IS required, so it reached the handler.
+      assertEquals(capturedClientCapabilities, {});
+
+      // Omitting it entirely is malformed: -32602 + 400 per the _meta rules.
+      const missing = await fetch(`http://localhost:${port}/mcp`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "MCP-Protocol-Version": "2026-07-28",
+          "Mcp-Method": "tools/call",
+          "Mcp-Name": "capture-absent-client-meta",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 3,
+          method: "tools/call",
+          params: {
+            _meta: { [PROTO_KEY]: "2026-07-28" },
+            name: "capture-absent-client-meta",
+            arguments: {},
+          },
+        }),
+      });
+      const missingBody = await missing.json();
+      assertEquals(missing.status, 400);
+      assertEquals(missingBody.error.code, -32602);
     } finally {
       await http.shutdown();
     }
@@ -685,13 +753,17 @@ Deno.test(
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "MCP-Protocol-Version": "2026-07-28",
+          "Mcp-Method": "tools/list",
           "Mcp-Session-Id": "fake-session-id-that-does-not-exist",
         },
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: 1,
           method: "tools/list",
-          params: { _meta: { [PROTO_KEY]: "2026-07-28" } },
+          params: {
+            _meta: { [PROTO_KEY]: "2026-07-28", [CLIENT_CAPABILITIES_KEY]: {} },
+          },
         }),
       });
 
@@ -898,7 +970,9 @@ Deno.test(
           jsonrpc: "2.0",
           id: 1,
           method: "tools/list",
-          params: { _meta: { [PROTO_KEY]: "2026-07-28" } },
+          params: {
+            _meta: { [PROTO_KEY]: "2026-07-28", [CLIENT_CAPABILITIES_KEY]: {} },
+          },
         }),
       });
       await r1.json(); // consume
@@ -916,7 +990,9 @@ Deno.test(
           jsonrpc: "2.0",
           id: 2,
           method: "tools/list",
-          params: { _meta: { [PROTO_KEY]: "2026-07-28" } },
+          params: {
+            _meta: { [PROTO_KEY]: "2026-07-28", [CLIENT_CAPABILITIES_KEY]: {} },
+          },
         }),
       });
       const d2 = await r2.json();
@@ -959,13 +1035,18 @@ Deno.test(
       // Scenario A: with valid version key → 200, MCP-Protocol-Version header present
       const r1 = await fetch(`http://localhost:${port}/mcp`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "MCP-Protocol-Version": "2026-07-28",
+          "Mcp-Method": "resources/read",
+          "Mcp-Name": "ui://test/page",
+        },
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: 1,
           method: "resources/read",
           params: {
-            _meta: { [PROTO_KEY]: "2026-07-28" },
+            _meta: { [PROTO_KEY]: "2026-07-28", [CLIENT_CAPABILITIES_KEY]: {} },
             uri: "ui://test/page",
           },
         }),
@@ -1016,7 +1097,9 @@ Deno.test(
           jsonrpc: "2.0",
           // no "id" — this is a notification
           method: "notifications/initialized",
-          params: { _meta: { [PROTO_KEY]: "2026-07-28" } },
+          params: {
+            _meta: { [PROTO_KEY]: "2026-07-28", [CLIENT_CAPABILITIES_KEY]: {} },
+          },
         }),
       });
       assertEquals(res.status, 202);
@@ -1082,13 +1165,23 @@ Deno.test(
             jsonrpc: "2.0",
             id: 1,
             method: "tools/list",
-            params: { _meta: { [PROTO_KEY]: "2026-07-28" } },
+            params: {
+              _meta: {
+                [PROTO_KEY]: "2026-07-28",
+                [CLIENT_CAPABILITIES_KEY]: {},
+              },
+            },
           },
           {
             jsonrpc: "2.0",
             id: 2,
             method: "tools/list",
-            params: { _meta: { [PROTO_KEY]: "2026-07-28" } },
+            params: {
+              _meta: {
+                [PROTO_KEY]: "2026-07-28",
+                [CLIENT_CAPABILITIES_KEY]: {},
+              },
+            },
           },
         ]),
       });
@@ -1118,12 +1211,18 @@ Deno.test(
     try {
       const res = await fetch(`http://localhost:${port}/mcp`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "MCP-Protocol-Version": "2026-07-28",
+          "Mcp-Method": "ping",
+        },
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: 99,
           method: "ping",
-          params: { _meta: { [PROTO_KEY]: "2026-07-28" } },
+          params: {
+            _meta: { [PROTO_KEY]: "2026-07-28", [CLIENT_CAPABILITIES_KEY]: {} },
+          },
         }),
       });
       const data = await res.json(); // consume first
@@ -1161,12 +1260,19 @@ Deno.test(
     try {
       const res = await fetch(`http://localhost:${port}/mcp`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "MCP-Protocol-Version": "2026-07-28",
+          "Mcp-Method": "logging/setLevel",
+        },
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: 100,
           method: "logging/setLevel",
-          params: { level: "debug", _meta: { [PROTO_KEY]: "2026-07-28" } },
+          params: {
+            level: "debug",
+            _meta: { [PROTO_KEY]: "2026-07-28", [CLIENT_CAPABILITIES_KEY]: {} },
+          },
         }),
       });
       const data = await res.json();

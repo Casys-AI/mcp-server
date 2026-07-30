@@ -123,7 +123,7 @@ Deno.test("createUnauthorizedResponse - status 401 with WWW-Authenticate", async
     ),
   );
   const body = await res.json();
-  assertEquals(body.error.code, -32001);
+  assertEquals(body.error.code, -31401);
 });
 
 Deno.test("createUnauthorizedResponse - includes error and description", async () => {
@@ -153,7 +153,7 @@ Deno.test("createForbiddenResponse - status 403", async () => {
   );
   assert(wwwAuth?.includes('error="insufficient_scope"'));
   const body = await res.json();
-  assertEquals(body.error.code, -32002);
+  assertEquals(body.error.code, -31403);
   assert(body.error.message.includes("admin"));
   assert(body.error.message.includes("write"));
 });
@@ -702,7 +702,7 @@ Deno.test("HTTP + Auth - scope enforcement 403", async () => {
       ),
     );
     const body = await res.json();
-    assertEquals(body.error.code, -32002);
+    assertEquals(body.error.code, -31403);
     assert(body.error.message.includes("admin"));
   } finally {
     await http.shutdown();

@@ -1,0 +1,581 @@
+/**
+ * Track C — request-metadata validation over the wire.
+ *
+ * `request-headers_test.ts` asserts the rules in isolation; this file asserts
+ * that the transport actually applies them, with the status code and JSON-RPC
+ * error a client really receives. A correct validator wired to the wrong branch
+ * passes the unit tests and fails here.
+ *
+ * @module lib/server/transport/header-validation-http_test
+ */
+
+import { assertEquals, assertStringIncludes } from "@std/assert";
+import { McpApp } from "../mcp-app.ts";
+import { encodeHeaderValue } from "./request-headers.ts";
+
+const PROTO_KEY = "io.modelcontextprotocol/protocolVersion";
+// Required on every request in the final spec, unlike clientInfo.
+const CAPS_KEY = "io.modelcontextprotocol/clientCapabilities";
+const V = "2026-07-28";
+
+function buildServer() {
+  const server = new McpApp({
+    name: "header-validation-test",
+    version: "1.0.0",
+    logger: () => {},
+    transport: "stateless",
+  });
+  server.registerTools(
+    [
+      { name: "echo", description: "Echo", inputSchema: { type: "object" } },
+      {
+        name: "execute_sql",
+        description: "Runs SQL in a region",
+        inputSchema: {
+          type: "object",
+          properties: {
+            region: { type: "string", "x-mcp-header": "Region" },
+            query: { type: "string" },
+          },
+          required: ["region", "query"],
+        },
+      },
+    ],
+    new Map([
+      ["echo", () => "pong"],
+      ["execute_sql", () => "rows"],
+    ]),
+  );
+  return server;
+}
+
+async function start(server: McpApp) {
+  const listener = Deno.listen({ port: 0 });
+  const port = (listener.addr as Deno.NetAddr).port;
+  listener.close();
+  const http = await server.startHttp({ port, onListen: () => {} });
+  return { http, url: `http://localhost:${port}/mcp` };
+}
+
+function post(
+  url: string,
+  headers: Record<string, string>,
+  body: Record<string, unknown>,
+) {
+  return fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...headers },
+    body: JSON.stringify(body),
+  });
+}
+
+const listBody = {
+  jsonrpc: "2.0",
+  id: 1,
+  method: "tools/list",
+  params: { _meta: { [PROTO_KEY]: V, [CAPS_KEY]: {} } },
+};
+
+Deno.test("track C - a missing Mcp-Method is rejected with 400 / -32020", async () => {
+  const { http, url } = await start(buildServer());
+  try {
+    const res = await post(url, { "MCP-Protocol-Version": V }, listBody);
+    const data = await res.json();
+    assertEquals(res.status, 400);
+    assertEquals(data.error.code, -32020);
+    assertStringIncludes(data.error.message, "Mcp-Method");
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("track C - a missing MCP-Protocol-Version header is rejected", async () => {
+  // 0.21.0 accepted this: the header was validated "tolerantly", only when
+  // present. The final spec makes it required on every POST.
+  const { http, url } = await start(buildServer());
+  try {
+    const res = await post(url, { "Mcp-Method": "tools/list" }, listBody);
+    const data = await res.json();
+    assertEquals(res.status, 400);
+    assertEquals(data.error.code, -32020);
+    assertStringIncludes(data.error.message, "MCP-Protocol-Version");
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("track C - Mcp-Method disagreeing with the body is rejected", async () => {
+  // The attack this closes: a gateway routes or meters on the header while the
+  // server executes the body. They must never be allowed to disagree.
+  const { http, url } = await start(buildServer());
+  try {
+    const res = await post(
+      url,
+      { "MCP-Protocol-Version": V, "Mcp-Method": "resources/list" },
+      listBody,
+    );
+    const data = await res.json();
+    assertEquals(res.status, 400);
+    assertEquals(data.error.code, -32020);
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("track C - tools/call requires an Mcp-Name matching params.name", async () => {
+  const { http, url } = await start(buildServer());
+  const body = {
+    jsonrpc: "2.0",
+    id: 1,
+    method: "tools/call",
+    params: {
+      name: "echo",
+      arguments: {},
+      _meta: { [PROTO_KEY]: V, [CAPS_KEY]: {} },
+    },
+  };
+  try {
+    const missing = await post(
+      url,
+      { "MCP-Protocol-Version": V, "Mcp-Method": "tools/call" },
+      body,
+    );
+    assertEquals(missing.status, 400);
+    assertEquals((await missing.json()).error.code, -32020);
+
+    const wrong = await post(url, {
+      "MCP-Protocol-Version": V,
+      "Mcp-Method": "tools/call",
+      "Mcp-Name": "not_echo",
+    }, body);
+    assertEquals(wrong.status, 400);
+    assertEquals((await wrong.json()).error.code, -32020);
+
+    const right = await post(url, {
+      "MCP-Protocol-Version": V,
+      "Mcp-Method": "tools/call",
+      "Mcp-Name": "echo",
+    }, body);
+    assertEquals(right.status, 200);
+    assertEquals((await right.json()).result.resultType, "complete");
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("track C - an x-mcp-header parameter must be mirrored into Mcp-Param-*", async () => {
+  const { http, url } = await start(buildServer());
+  const body = {
+    jsonrpc: "2.0",
+    id: 1,
+    method: "tools/call",
+    params: {
+      name: "execute_sql",
+      arguments: { region: "us-west1", query: "SELECT 1" },
+      _meta: { [PROTO_KEY]: V, [CAPS_KEY]: {} },
+    },
+  };
+  const base = {
+    "MCP-Protocol-Version": V,
+    "Mcp-Method": "tools/call",
+    "Mcp-Name": "execute_sql",
+  };
+  try {
+    const missing = await post(url, base, body);
+    assertEquals(missing.status, 400);
+    assertStringIncludes(
+      (await missing.json()).error.message,
+      "Mcp-Param-Region",
+    );
+
+    const mismatched = await post(
+      url,
+      { ...base, "Mcp-Param-Region": "eu-west1" },
+      body,
+    );
+    assertEquals(mismatched.status, 400);
+
+    const good = await post(
+      url,
+      { ...base, "Mcp-Param-Region": "us-west1" },
+      body,
+    );
+    assertEquals(good.status, 200);
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("track C - a sentinel-encoded Mcp-Name is decoded before comparison", async () => {
+  const server = new McpApp({
+    name: "header-sentinel-test",
+    version: "1.0.0",
+    logger: () => {},
+    transport: "stateless",
+  });
+  const uri = "ui://rapports/été/synthèse";
+  server.registerResource(
+    { uri, name: "accented", mimeType: "text/plain" },
+    () => ({ uri, mimeType: "text/plain", text: "ok" }),
+  );
+  const { http, url } = await start(server);
+  try {
+    const res = await post(url, {
+      "MCP-Protocol-Version": V,
+      "Mcp-Method": "resources/read",
+      "Mcp-Name": encodeHeaderValue(uri),
+    }, {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "resources/read",
+      params: { uri, _meta: { [PROTO_KEY]: V, [CAPS_KEY]: {} } },
+    });
+    assertEquals(res.status, 200);
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("track C - a legacy peer is not held to the 2026 header contract", async () => {
+  // The headers do not exist before 2026-07-28. Demanding them from a
+  // 2025-11-25 client would reject a conforming request.
+  const { http, url } = await start(buildServer());
+  try {
+    // Mcp-Method omitted: 2026-only, not demanded of a legacy peer.
+    // MCP-Protocol-Version present: it exists since 2025-06-18 and is required.
+    const res = await post(url, { "MCP-Protocol-Version": "2025-11-25" }, {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/list",
+      params: { _meta: { [PROTO_KEY]: "2025-11-25" } },
+    });
+    assertEquals(res.status, 200);
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("track C - notifications are exempt from the header contract", async () => {
+  // The revision explicitly leaves header requirements for notification POSTs
+  // undefined, so a missing Mcp-Method there is not a violation to invent.
+  const { http, url } = await start(buildServer());
+  try {
+    const res = await post(url, { "MCP-Protocol-Version": V }, {
+      jsonrpc: "2.0",
+      method: "notifications/something",
+      params: { _meta: { [PROTO_KEY]: V, [CAPS_KEY]: {} } },
+    });
+    assertEquals(res.status, 202);
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("track C - list and read results carry the required cache fields", async () => {
+  const server = new McpApp({
+    name: "cache-fields-test",
+    version: "1.0.0",
+    logger: () => {},
+    transport: "stateless",
+    cache: { ttlMs: 300_000, scope: "public" },
+  });
+  server.registerResource(
+    { uri: "ui://cache/probe", name: "probe", mimeType: "text/plain" },
+    () => ({ uri: "ui://cache/probe", mimeType: "text/plain", text: "x" }),
+  );
+  const { http, url } = await start(server);
+  try {
+    for (
+      const [method, params] of [
+        ["tools/list", {}],
+        ["resources/list", {}],
+        ["prompts/list", {}],
+        ["resources/read", { uri: "ui://cache/probe" }],
+      ] as Array<[string, Record<string, unknown>]>
+    ) {
+      const name = method === "resources/read" ? params.uri : undefined;
+      const res = await post(url, {
+        "MCP-Protocol-Version": V,
+        "Mcp-Method": method,
+        ...(typeof name === "string" ? { "Mcp-Name": name } : {}),
+      }, {
+        jsonrpc: "2.0",
+        id: 1,
+        method,
+        params: { ...params, _meta: { [PROTO_KEY]: V, [CAPS_KEY]: {} } },
+      });
+      const data = await res.json();
+      assertEquals(data.result.ttlMs, 300_000, `${method} ttlMs`);
+      assertEquals(data.result.cacheScope, "public", `${method} cacheScope`);
+    }
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("track C - cache defaults are inert, not invented", async () => {
+  // ttlMs 0 means "revalidate every time" and cacheScope "private" keeps shared
+  // intermediaries out. A framework must not pick a staleness window, nor allow
+  // caching of possibly per-tenant results, on a consumer's behalf.
+  const { http, url } = await start(buildServer());
+  try {
+    const res = await post(
+      url,
+      { "MCP-Protocol-Version": V, "Mcp-Method": "tools/list" },
+      listBody,
+    );
+    const data = await res.json();
+    assertEquals(data.result.ttlMs, 0);
+    assertEquals(data.result.cacheScope, "private");
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("track C - tools/list is ordered deterministically", async () => {
+  // Registered deliberately out of order: the response must not depend on it.
+  const server = new McpApp({
+    name: "ordering-test",
+    version: "1.0.0",
+    logger: () => {},
+    transport: "stateless",
+  });
+  server.registerTools(
+    [
+      { name: "zeta", description: "z", inputSchema: { type: "object" } },
+      { name: "alpha", description: "a", inputSchema: { type: "object" } },
+      { name: "mid", description: "m", inputSchema: { type: "object" } },
+    ],
+    new Map([
+      ["zeta", () => "z"],
+      ["alpha", () => "a"],
+      ["mid", () => "m"],
+    ]),
+  );
+  const { http, url } = await start(server);
+  try {
+    const res = await post(
+      url,
+      { "MCP-Protocol-Version": V, "Mcp-Method": "tools/list" },
+      listBody,
+    );
+    const data = await res.json();
+    assertEquals(
+      (data.result.tools as Array<{ name: string }>).map((t) => t.name),
+      ["alpha", "mid", "zeta"],
+    );
+  } finally {
+    await http.shutdown();
+  }
+});
+
+// Synchronous: registration throws before any server is started.
+Deno.test("track C - a malformed x-mcp-header annotation fails at registration", () => {
+  // A conforming client drops the whole tool from tools/list over this, so a
+  // typo would otherwise present as a tool that silently does not exist.
+  const server = new McpApp({
+    name: "bad-annotation-test",
+    version: "1.0.0",
+    logger: () => {},
+    transport: "stateless",
+  });
+  let threw = false;
+  try {
+    server.registerTools(
+      [{
+        name: "bad",
+        description: "Invalid annotation",
+        inputSchema: {
+          type: "object",
+          properties: { ratio: { type: "number", "x-mcp-header": "Ratio" } },
+        },
+      }],
+      new Map([["bad", () => "x"]]),
+    );
+  } catch (error) {
+    threw = true;
+    assertStringIncludes(String(error), "x-mcp-header");
+  }
+  assertEquals(threw, true, "registration should reject a number-typed mirror");
+});
+
+// ── Regressions found by adversarial review ─────────────────────────────────
+// Each of these shipped as a hole in the first Track C implementation. They are
+// kept as named tests so the specific mistake cannot come back.
+
+Deno.test("regression - server/discover carries cache fields too", () => {
+  // The changelog summarised five list/read methods; the caching page also lists
+  // server/discover. Trusting the summary left it uncovered.
+  return (async () => {
+    const server = new McpApp({
+      name: "discover-cache-test",
+      version: "1.0.0",
+      logger: () => {},
+      transport: "stateless",
+      cache: { ttlMs: 60_000, scope: "public" },
+    });
+    const { http, url } = await start(server);
+    try {
+      const res = await post(
+        url,
+        { "MCP-Protocol-Version": V, "Mcp-Method": "server/discover" },
+        {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "server/discover",
+          params: { _meta: { [PROTO_KEY]: V, [CAPS_KEY]: {} } },
+        },
+      );
+      const data = await res.json();
+      assertEquals(data.result.ttlMs, 60_000);
+      assertEquals(data.result.cacheScope, "public");
+    } finally {
+      await http.shutdown();
+    }
+  })();
+});
+
+Deno.test("regression - an annotated tool registered via registerTool is enforced", () => {
+  // Annotation collection was wired into registerTools (plural) only, so a tool
+  // registered through the singular path advertised Mcp-Param-* to clients while
+  // the server never required or checked it.
+  return (async () => {
+    const server = new McpApp({
+      name: "single-register-test",
+      version: "1.0.0",
+      logger: () => {},
+      transport: "stateless",
+    });
+    server.registerTool(
+      {
+        name: "single",
+        description: "Registered singly",
+        inputSchema: {
+          type: "object",
+          properties: {
+            region: { type: "string", "x-mcp-header": "Region" },
+          },
+        },
+      },
+      () => "ok",
+    );
+    const { http, url } = await start(server);
+    try {
+      const res = await post(url, {
+        "MCP-Protocol-Version": V,
+        "Mcp-Method": "tools/call",
+        "Mcp-Name": "single",
+      }, {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: {
+          name: "single",
+          arguments: { region: "eu-west1" },
+          _meta: { [PROTO_KEY]: V, [CAPS_KEY]: {} },
+        },
+      });
+      assertEquals(
+        res.status,
+        400,
+        "missing Mcp-Param-Region must be rejected",
+      );
+      assertEquals((await res.json()).error.code, -32020);
+    } finally {
+      await http.shutdown();
+    }
+  })();
+});
+
+Deno.test("regression - id 0 is a request, not a notification", () => {
+  // `!id` treated the valid id 0 as a notification, so an unknown method with
+  // id 0 answered 202 instead of 404 / -32601.
+  return (async () => {
+    const { http, url } = await start(buildServer());
+    try {
+      const res = await post(
+        url,
+        { "MCP-Protocol-Version": V, "Mcp-Method": "nonsense/rpc" },
+        {
+          jsonrpc: "2.0",
+          id: 0,
+          method: "nonsense/rpc",
+          params: { _meta: { [PROTO_KEY]: V, [CAPS_KEY]: {} } },
+        },
+      );
+      assertEquals(res.status, 404);
+      const data = await res.json();
+      assertEquals(data.error.code, -32601);
+      assertEquals(data.id, 0);
+    } finally {
+      await http.shutdown();
+    }
+  })();
+});
+
+Deno.test("regression - CORS advertises the headers the server now requires", () => {
+  // Omitting them broke browser clients before the request ever reached us: the
+  // preflight rejects it, so a conforming client cannot send what we demand.
+  return (async () => {
+    const server = new McpApp({
+      name: "cors-headers-test",
+      version: "1.0.0",
+      logger: () => {},
+      transport: "stateless",
+    });
+    server.registerTool(
+      {
+        name: "with_header",
+        description: "Mirrors a param",
+        inputSchema: {
+          type: "object",
+          properties: { region: { type: "string", "x-mcp-header": "Region" } },
+        },
+      },
+      () => "ok",
+    );
+    const { http, url } = await start(server);
+    try {
+      const res = await fetch(url, {
+        method: "OPTIONS",
+        headers: {
+          Origin: "https://example.com",
+          "Access-Control-Request-Method": "POST",
+          "Access-Control-Request-Headers": "mcp-method",
+        },
+      });
+      await res.text();
+      const allowed = (res.headers.get("access-control-allow-headers") ?? "")
+        .toLowerCase();
+      for (const required of ["mcp-method", "mcp-name", "mcp-param-region"]) {
+        assertEquals(
+          allowed.includes(required),
+          true,
+          `${required} must be allowed by CORS (got: ${allowed})`,
+        );
+      }
+    } finally {
+      await http.shutdown();
+    }
+  })();
+});
+
+Deno.test("regression - a negative or fractional ttlMs is refused at construction", () => {
+  // The spec requires ttlMs >= 0 and tells clients to IGNORE a negative value,
+  // so accepting one would silently disable caching instead of failing.
+  for (const bad of [-1, 1.5, -0.001]) {
+    let threw = false;
+    try {
+      new McpApp({
+        name: "bad-ttl",
+        version: "1.0.0",
+        logger: () => {},
+        transport: "stateless",
+        cache: { ttlMs: bad },
+      });
+    } catch {
+      threw = true;
+    }
+    assertEquals(threw, true, `ttlMs ${bad} must be refused`);
+  }
+});

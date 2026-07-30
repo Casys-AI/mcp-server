@@ -12,19 +12,31 @@ import type { AuthInfo } from "./types.ts";
 import type { Middleware } from "../middleware/types.ts";
 import { isOtelEnabled, recordAuthEvent } from "../observability/otel.ts";
 
-/**
- * 403 Forbidden, distinct from the 401's `-32001`.
- *
- * Spec 2026-07-28 partitions the JSON-RPC server-error range: `-32000`..`-32019`
- * stays implementation-defined (existing SDK usage grandfathered), `-32020`
- * onwards is reserved for the specification. `-32002` sits in the former, so a
- * server-specific meaning is legitimate here and needs no migration.
- *
- * Note for anyone re-deriving this choice: 0.21.0 justified it by "SEP-2575
- * reserves `-32003`". That reservation moved to `-32021` in the final spec, so
- * the original argument is void even though the code it produced is still right.
- */
-const JSONRPC_FORBIDDEN = -32002;
+// ── Auth error codes ────────────────────────────────────────────────────────
+//
+// Both codes moved OUT of the JSON-RPC reserved range (`-32768`..`-32000`) for
+// spec 2026-07-28, which is stricter than earlier readings of it suggested:
+//
+//   * `-32002` — "Implementations of this protocol version **MUST NOT** emit
+//     these codes", because 2025-11-25 and earlier used it for resource-not-found
+//     (now `-32602`). Keeping it for 403 was a conformance violation, not a
+//     grandfathered liberty. Two prior reviews, including one of this file, read
+//     the allocation policy as permitting it. It does not.
+//   * `-32001` — inside `-32000`..`-32019`, where "new implementations
+//     **SHOULD NOT** use codes from this sub-range at all" and receivers "**MUST
+//     NOT** assume any specific meaning".
+//
+// The spec's own guidance for codes it does not define: "**SHOULD** be allocated
+// outside the JSON-RPC reserved range". Hence `-31401` / `-31403`, mnemonic for
+// the HTTP statuses they accompany.
+//
+// BREAKING for anything matching on the old numbers — see the changelog.
+
+/** 401 Unauthorized: no token, or an invalid one. */
+export const JSONRPC_UNAUTHORIZED = -31401;
+
+/** 403 Forbidden: authenticated, but missing a required scope. */
+export const JSONRPC_FORBIDDEN = -31403;
 
 function escapeAuthenticateParam(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
@@ -95,7 +107,10 @@ export function createUnauthorizedResponse(
     JSON.stringify({
       jsonrpc: "2.0",
       id: null,
-      error: { code: -32001, message: errorDescription ?? "Unauthorized" },
+      error: {
+        code: JSONRPC_UNAUTHORIZED,
+        message: errorDescription ?? "Unauthorized",
+      },
     }),
     {
       status: 401,

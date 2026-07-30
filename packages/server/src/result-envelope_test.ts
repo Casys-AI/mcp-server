@@ -15,6 +15,8 @@ import { assertEquals, assertExists } from "@std/assert";
 import { McpApp } from "./mcp-app.ts";
 
 const PROTO_KEY = "io.modelcontextprotocol/protocolVersion";
+// Required on every request in the final spec, unlike clientInfo.
+const CAPS_KEY = "io.modelcontextprotocol/clientCapabilities";
 const SERVER_INFO_KEY = "io.modelcontextprotocol/serverInfo";
 const LOG_LEVEL_KEY = "io.modelcontextprotocol/logLevel";
 
@@ -26,19 +28,38 @@ async function startOnFreePort(server: McpApp) {
   return { http, url: `http://localhost:${port}/mcp` };
 }
 
+/**
+ * POST as a conforming 2026-07-28 client: the request-metadata headers
+ * (`MCP-Protocol-Version`, `Mcp-Method`, and `Mcp-Name` where the spec requires
+ * it) are mandatory, and the server rejects their absence with `-32020`.
+ */
 function rpc(
   url: string,
   method: string,
   params: Record<string, unknown> = {},
 ) {
+  const name = method === "resources/read"
+    ? params.uri
+    : method === "tools/call" || method === "prompts/get"
+    ? params.name
+    : undefined;
+
   return fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "MCP-Protocol-Version": "2026-07-28",
+      "Mcp-Method": method,
+      ...(typeof name === "string" ? { "Mcp-Name": name } : {}),
+    },
     body: JSON.stringify({
       jsonrpc: "2.0",
       id: 1,
       method,
-      params: { ...params, _meta: { [PROTO_KEY]: "2026-07-28" } },
+      params: {
+        ...params,
+        _meta: { [PROTO_KEY]: "2026-07-28", [CAPS_KEY]: {} },
+      },
     }),
   });
 }
@@ -192,9 +213,15 @@ Deno.test("envelope - a legacy version negotiated over the stateless transport g
 
   try {
     for (const version of ["2025-06-18", "2025-11-25"]) {
+      // No `Mcp-Method` on purpose: that header is 2026-only, so the server must
+      // not demand it of a legacy peer. `MCP-Protocol-Version` is different — it
+      // exists since 2025-06-18 and stays required.
       const res = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "MCP-Protocol-Version": version,
+        },
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: 1,
@@ -341,7 +368,12 @@ Deno.test("envelope - per-request logLevel reaches the tool handler", async () =
     const call = (meta: Record<string, unknown>) =>
       fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "MCP-Protocol-Version": "2026-07-28",
+          "Mcp-Method": "tools/call",
+          "Mcp-Name": "probe",
+        },
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: 1,
@@ -349,7 +381,7 @@ Deno.test("envelope - per-request logLevel reaches the tool handler", async () =
           params: {
             name: "probe",
             arguments: {},
-            _meta: { [PROTO_KEY]: "2026-07-28", ...meta },
+            _meta: { [PROTO_KEY]: "2026-07-28", [CAPS_KEY]: {}, ...meta },
           },
         }),
       });

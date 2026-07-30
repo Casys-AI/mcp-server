@@ -74,6 +74,11 @@ import {
 import { discoverViewers, resolveViewerDistPath } from "./ui/viewer-utils.ts";
 import type { DiscoverViewersFS } from "./ui/viewer-utils.ts";
 import { buildCspHeader, injectCspMetaTag } from "./security/csp.ts";
+import {
+  collectMirroredParams,
+  type MirroredParam,
+  validateRequestHeaders,
+} from "./transport/request-headers.ts";
 import { ServerMetrics } from "./observability/metrics.ts";
 import { endToolCallSpan, startToolCallSpan } from "./observability/otel.ts";
 
@@ -215,9 +220,13 @@ const JSONRPC_INVALID_PARAMS = ErrorCode.InvalidParams;
 //
 // The codes below were renumbered between the May 2026 Release Candidate — which
 // 0.21.0 shipped against — and the final revision. Do not "restore" the RC
-// values: -32001 and -32004 no longer carry these MCP-defined meanings. They are
-// not meaningless, though — both sit in the implementation-defined range, and
-// -32001 remains in legitimate use here for 401 and session errors.
+// values: -32001 and -32004 no longer carry these MCP-defined meanings.
+//
+// Note the policy is stricter than "the low range is grandfathered": the spec
+// says new implementations SHOULD NOT use -32000..-32019 at all, and MUST NOT
+// emit -32002 (which 2025-11-25 used for resource-not-found). Our auth and
+// session errors therefore live outside the reserved range entirely — see
+// auth/middleware.ts.
 
 /** Headers disagree with the request body, or a required header is missing. */
 const MCP_HEADER_MISMATCH = -32020;
@@ -336,6 +345,26 @@ export class McpApp {
   private schemaValidator: SchemaValidator | null = null;
   private samplingBridge: SamplingBridge | null = null;
   private tools = new Map<string, ToolWithHandler>();
+
+  /**
+   * Tool name → parameters the tool asked clients to mirror into
+   * `Mcp-Param-{Name}` headers (spec 2026-07-28, `x-mcp-header`).
+   *
+   * Populated at registration so the per-request path is a map lookup rather
+   * than a schema walk. Tools without annotations are simply absent.
+   */
+  private mirroredParams = new Map<string, MirroredParam[]>();
+
+  /**
+   * Validated `ttlMs`. The spec requires servers to provide a value `>= 0`, and
+   * an integer — clients are told to ignore a negative one, which would make a
+   * misconfiguration silently do nothing instead of failing.
+   *
+   * Resolved once at construction: a per-response check would pay for the same
+   * validation on every list call, and a bad value is a deployment error that
+   * should surface at startup (AX: fast fail early).
+   */
+  private readonly cacheTtlMs: number;
   private resources = new Map<string, RegisteredResourceInfo>();
   private options: McpAppOptions;
   private started = false;
@@ -374,6 +403,17 @@ export class McpApp {
   constructor(options: McpAppOptions) {
     this.options = options;
     this.name = options.name;
+
+    const ttlMs = options.cache?.ttlMs ?? 0;
+    if (!Number.isInteger(ttlMs) || ttlMs < 0) {
+      throw new Error(
+        `[McpApp] cache.ttlMs must be a non-negative integer (got ${ttlMs}). ` +
+          "The spec requires servers to provide ttlMs >= 0, and clients are told " +
+          "to ignore a negative value — so a bad one would silently disable " +
+          "caching instead of failing.",
+      );
+    }
+    this.cacheTtlMs = ttlMs;
 
     // Create SDK MCP server
     this.mcpServer = new McpServer(
@@ -540,6 +580,13 @@ export class McpApp {
         throw new Error(`No handler provided for tool: ${tool.name}`);
       }
 
+      // Validate annotations BEFORE inserting: a throw must not leave the tool
+      // half-registered. Registration is the right place to fail — a conforming
+      // client drops the whole tool from `tools/list` over a malformed
+      // annotation, so a typo would otherwise surface as a tool that silently
+      // does not exist (AX: fast fail early).
+      this.indexMirroredParams(tool);
+
       this.tools.set(tool.name, {
         ...tool,
         handler,
@@ -560,6 +607,35 @@ export class McpApp {
    * @param tool - Tool definition
    * @param handler - Tool handler function
    */
+  /**
+   * Validate and index a tool's `x-mcp-header` annotations (spec 2026-07-28).
+   *
+   * Every registration path must go through here. Wiring it into `registerTools`
+   * alone was a real bypass: a tool registered via `registerTool` or
+   * `registerToolLive` carried annotations that clients would mirror into
+   * `Mcp-Param-*` headers, while the server never required or checked them.
+   *
+   * Throws *before* the caller inserts the tool, so a rejected definition cannot
+   * leave a half-registered tool behind.
+   */
+  private indexMirroredParams(tool: MCPTool): void {
+    const invalid: string[] = [];
+    const mirrored = collectMirroredParams(
+      tool.inputSchema,
+      (reason) => invalid.push(reason),
+    );
+    if (invalid.length > 0) {
+      throw new Error(
+        `[McpApp] Tool "${tool.name}" has invalid x-mcp-header annotations:\n` +
+          invalid.map((r) => `  - ${r}`).join("\n"),
+      );
+    }
+    // Replace wholesale: re-registering a tool without annotations must clear
+    // whatever a previous definition left behind.
+    if (mirrored.length > 0) this.mirroredParams.set(tool.name, mirrored);
+    else this.mirroredParams.delete(tool.name);
+  }
+
   registerTool(tool: MCPTool, handler: ToolHandler): void {
     if (this.started) {
       throw new Error(
@@ -567,6 +643,7 @@ export class McpApp {
           "Call registerTool() before start() or startHttp().",
       );
     }
+    this.indexMirroredParams(tool);
     this.tools.set(tool.name, {
       ...tool,
       handler,
@@ -593,6 +670,7 @@ export class McpApp {
    * @param handler - Tool handler function
    */
   registerToolLive(tool: MCPTool, handler: ToolHandler): void {
+    this.indexMirroredParams(tool);
     this.tools.set(tool.name, {
       ...tool,
       handler,
@@ -640,6 +718,9 @@ export class McpApp {
    */
   unregisterTool(toolName: string): boolean {
     const deleted = this.tools.delete(toolName);
+    // Stale mirror metadata would make the server demand `Mcp-Param-*` headers
+    // for a tool that no longer exists.
+    this.mirroredParams.delete(toolName);
     if (deleted) {
       this.log(
         `Unregistered tool: ${toolName} (remaining: ${this.tools.size})`,
@@ -1289,6 +1370,22 @@ export class McpApp {
             "mcp-session-id",
             "mcp-protocol-version",
             "last-event-id",
+            // Spec 2026-07-28 request-metadata headers. Omitting them broke
+            // browser clients outright: the preflight rejects the actual request
+            // before the server ever sees it, so a conforming client could not
+            // send the headers the server now requires.
+            "mcp-method",
+            "mcp-name",
+            // `Mcp-Param-*` names are defined by the tools themselves, so the
+            // allowlist is derived from the registered annotations rather than
+            // opened to `*` — which would also widen it for every other header.
+            //
+            // Known limitation: a tool registered via `registerToolLive` AFTER
+            // startHttp() is not reflected here. Register annotated tools before
+            // starting, or widen `corsOrigins`/headers deliberately.
+            ...[...this.mirroredParams.values()]
+              .flat()
+              .map((param) => `mcp-param-${param.headerName.toLowerCase()}`),
           ],
           exposeHeaders: [
             "Content-Length",
@@ -1655,6 +1752,16 @@ export class McpApp {
             ? params["_meta"][STATELESS_PROTO_KEY]
             : undefined;
 
+          // `clientCapabilities` is a REQUIRED per-request `_meta` field in the
+          // final spec (`clientInfo` is not — it is only SHOULD). A request
+          // missing a required field is malformed: -32602 + HTTP 400.
+          //
+          // Checked after the version so a client on an older revision, which
+          // never had this field, still gets the clearer version error first.
+          const capabilitiesPresent = isRecord(params) &&
+            isRecord(params["_meta"]) &&
+            params["_meta"][STATELESS_CLIENT_CAPABILITIES_KEY] !== undefined;
+
           if (typeof clientVersion !== "string") {
             // Header uses fallback version — no negotiated version available yet
             return jsonRpcResponse(
@@ -1691,28 +1798,101 @@ export class McpApp {
             );
           }
 
-          const headerVersion = c.req.header("MCP-Protocol-Version");
-          if (
-            headerVersion !== undefined &&
-            headerVersion !== clientVersion
-          ) {
+          if (clientVersion === SPEC_2026_07_28 && !capabilitiesPresent) {
             return jsonRpcResponse(
               {
                 jsonrpc: "2.0",
                 id,
                 error: {
-                  // Spec 2026-07-28: a header disagreeing with the body is
-                  // HeaderMismatch, not InvalidParams. The distinction matters
-                  // to intermediaries that route on the header — they need to
-                  // know the mismatch was detected, not that a param was bad.
-                  code: MCP_HEADER_MISMATCH,
+                  code: JSONRPC_INVALID_PARAMS,
                   message:
-                    `MCP-Protocol-Version header "${headerVersion}" does not match _meta protocolVersion "${clientVersion}"`,
+                    `Missing required field '${STATELESS_CLIENT_CAPABILITIES_KEY}' in params._meta`,
                 },
               },
               400,
               { "MCP-Protocol-Version": STATELESS_FALLBACK_VERSION },
             );
+          }
+
+          // Track C: request-metadata headers (SEP-2243).
+          //
+          // Enforced only for peers that negotiated 2026-07-28 — `Mcp-Method`
+          // and `Mcp-Name` do not exist in earlier revisions, so demanding them
+          // from a 2025-11-25 client would reject a conforming request.
+          //
+          // Notifications are exempt: the revision explicitly leaves header
+          // requirements for notification POSTs undefined, so a missing
+          // `Mcp-Method` there is not a violation to invent.
+          if (clientVersion === SPEC_2026_07_28 && id !== undefined) {
+            const validation = validateRequestHeaders({
+              getHeader: (name) => c.req.header(name),
+              method: typeof method === "string" ? method : "",
+              params: isRecord(params) ? params : undefined,
+              bodyProtocolVersion: clientVersion,
+              mirroredParams: typeof params?.name === "string"
+                ? this.mirroredParams.get(params.name)
+                : undefined,
+            });
+            if (!validation.ok) {
+              return jsonRpcResponse(
+                {
+                  jsonrpc: "2.0",
+                  id,
+                  error: {
+                    code: MCP_HEADER_MISMATCH,
+                    message: validation.message,
+                  },
+                },
+                400,
+                { "MCP-Protocol-Version": STATELESS_FALLBACK_VERSION },
+              );
+            }
+          } else if (id !== undefined) {
+            // Pre-2026 peer: `Mcp-Method` / `Mcp-Name` did not exist yet, so they
+            // are not demanded. `MCP-Protocol-Version` DID — it was introduced in
+            // 2025-06-18, and the spec grants the omit-the-header grace only to
+            // clients older than that, which this server does not support
+            // (STATELESS_SUPPORTED_VERSIONS starts at 2025-06-18). So it stays
+            // required here, and must agree with the body when present.
+            //
+            // Notifications fall through untouched: the revision states outright
+            // that header requirements for notification POSTs are undefined, so
+            // there is no rule here to enforce and none to invent. Their `_meta`
+            // protocolVersion was already validated above.
+            const headerVersion = c.req.header("MCP-Protocol-Version");
+            if (headerVersion === undefined) {
+              return jsonRpcResponse(
+                {
+                  jsonrpc: "2.0",
+                  id,
+                  error: {
+                    code: MCP_HEADER_MISMATCH,
+                    message:
+                      "Missing required header 'MCP-Protocol-Version' (required since protocol version 2025-06-18)",
+                  },
+                },
+                400,
+                { "MCP-Protocol-Version": STATELESS_FALLBACK_VERSION },
+              );
+            }
+            if (headerVersion !== clientVersion) {
+              return jsonRpcResponse(
+                {
+                  jsonrpc: "2.0",
+                  id,
+                  error: {
+                    // A header disagreeing with the body is HeaderMismatch, not
+                    // InvalidParams: intermediaries routing on the header need
+                    // to know the divergence was detected.
+                    code: MCP_HEADER_MISMATCH,
+                    message:
+                      `MCP-Protocol-Version header "${headerVersion}" does not match _meta protocolVersion "${clientVersion}"`,
+                  },
+                },
+                400,
+                { "MCP-Protocol-Version": STATELESS_FALLBACK_VERSION },
+              );
+            }
           }
 
           statelessVersion = clientVersion;
@@ -1728,17 +1908,20 @@ export class McpApp {
           return c.json({
             jsonrpc: "2.0",
             id,
-            result: this.stampResult({
-              supportedVersions: [...STATELESS_SUPPORTED_VERSIONS],
-              capabilities: this.buildServerCapabilities(),
-              serverInfo: {
-                name: this.options.name,
-                version: this.options.version,
-              },
-              ...(this.options.instructions
-                ? { instructions: this.options.instructions }
-                : {}),
-            }, statelessVersion),
+            result: this.stampResult(
+              this.withCacheHints({
+                supportedVersions: [...STATELESS_SUPPORTED_VERSIONS],
+                capabilities: this.buildServerCapabilities(),
+                serverInfo: {
+                  name: this.options.name,
+                  version: this.options.version,
+                },
+                ...(this.options.instructions
+                  ? { instructions: this.options.instructions }
+                  : {}),
+              }, statelessVersion),
+              statelessVersion,
+            ),
           });
         }
 
@@ -1833,7 +2016,13 @@ export class McpApp {
             return c.json({
               jsonrpc: "2.0",
               id,
-              error: { code: -32001, message: "Session not found or expired" },
+              error: {
+                // Stateful path only (sessions do not exist in 2026-07-28), but
+                // -32001 is in the sub-range new implementations SHOULD NOT use,
+                // so it moves out alongside the auth codes.
+                code: -31404,
+                message: "Session not found or expired",
+              },
             }, 404);
           }
           // Update last activity to prevent premature cleanup
@@ -1947,7 +2136,10 @@ export class McpApp {
             jsonrpc: "2.0",
             id,
             result: this.stampResult(
-              { tools: this.buildToolListing() },
+              this.withCacheHints(
+                { tools: this.buildToolListing() },
+                statelessVersion,
+              ),
               statelessVersion,
             ),
           });
@@ -1958,14 +2150,17 @@ export class McpApp {
           return c.json({
             jsonrpc: "2.0",
             id,
-            result: this.stampResult({
-              resources: Array.from(this.resources.values()).map((r) => ({
-                uri: r.resource.uri,
-                name: r.resource.name,
-                description: r.resource.description,
-                mimeType: r.resource.mimeType ?? MCP_APP_MIME_TYPE,
-              })),
-            }, statelessVersion),
+            result: this.stampResult(
+              this.withCacheHints({
+                resources: Array.from(this.resources.values()).map((r) => ({
+                  uri: r.resource.uri,
+                  name: r.resource.name,
+                  description: r.resource.description,
+                  mimeType: r.resource.mimeType ?? MCP_APP_MIME_TYPE,
+                })),
+              }, statelessVersion),
+              statelessVersion,
+            ),
           });
         }
 
@@ -1989,7 +2184,10 @@ export class McpApp {
               jsonrpc: "2.0",
               id,
               result: this.stampResult(
-                { contents: [finalContent] },
+                this.withCacheHints(
+                  { contents: [finalContent] },
+                  statelessVersion,
+                ),
                 statelessVersion,
               ),
             });
@@ -2050,7 +2248,10 @@ export class McpApp {
           return c.json({
             jsonrpc: "2.0",
             id,
-            result: this.stampResult({ prompts: [] }, statelessVersion),
+            result: this.stampResult(
+              this.withCacheHints({ prompts: [] }, statelessVersion),
+              statelessVersion,
+            ),
           });
         }
         if (method === "completion/complete") {
@@ -2064,8 +2265,12 @@ export class McpApp {
           });
         }
 
-        // Handle notifications: must have a method and no id (JSON-RPC 2.0 notification)
-        if (method && !id) {
+        // Handle notifications: a method and NO id (JSON-RPC 2.0).
+        //
+        // `!id` was wrong: `0` is a valid id and is falsy, so a request with
+        // `id: 0` was answered 202-with-no-body as though it were a
+        // notification. The spec only forbids `null`.
+        if (method && id === undefined) {
           return new Response(null, { status: 202 });
         }
 
@@ -2609,6 +2814,29 @@ export class McpApp {
   }
 
   /**
+   * Add the required `CacheableResult` fields (spec 2026-07-28, SEP-2549).
+   *
+   * Applies to `tools/list`, `prompts/list`, `resources/list`, `resources/read`
+   * and `resources/templates/list`, where the final spec makes both fields
+   * required rather than optional. Same version gate as {@link stampResult}:
+   * neither field exists in an earlier revision.
+   *
+   * Both are hints — a client that ignores them stays correct, it just polls
+   * more often.
+   */
+  private withCacheHints(
+    result: Record<string, unknown>,
+    negotiatedVersion?: string,
+  ): Record<string, unknown> {
+    if (negotiatedVersion !== SPEC_2026_07_28) return result;
+    return {
+      ...result,
+      ttlMs: this.cacheTtlMs,
+      cacheScope: this.options.cache?.scope ?? "private",
+    };
+  }
+
+  /**
    * Capabilities advertised on `server/discover` and `initialize`.
    *
    * Single source of truth: these two responses used to build the same object
@@ -2654,7 +2882,25 @@ export class McpApp {
         if (t.outputSchema !== undefined) entry.outputSchema = t.outputSchema;
         if (t.annotations !== undefined) entry.annotations = t.annotations;
         return entry;
-      });
+      })
+      // Spec 2026-07-28 (minor change 3): return tools in a deterministic order.
+      // It lets clients cache the list and improves LLM prompt-cache hit rates.
+      //
+      // Map iteration is already insertion-ordered, so this only matters where
+      // registration order itself is unstable — which it is for the relay/proxy
+      // case, where tools are registered as child servers are discovered
+      // asynchronously. Sorting by name makes the output independent of who
+      // answered first.
+      //
+      // Deliberately not `localeCompare`: that orders differently per host
+      // locale, reintroducing the very non-determinism being removed here.
+      .sort((a, b) =>
+        (a.name as string) < (b.name as string)
+          ? -1
+          : (a.name as string) > (b.name as string)
+          ? 1
+          : 0
+      );
   }
 
   /**

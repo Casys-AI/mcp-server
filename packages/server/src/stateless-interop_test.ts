@@ -53,11 +53,22 @@ async function conformantPost(
   method: string,
   extraParams: Record<string, unknown> = {},
 ) {
+  // `Mcp-Method` is required on every 2026-07-28 POST, and `Mcp-Name` on the
+  // three methods that define it. Without them a conformant server answers
+  // -32020 — so a helper called `conformantPost` has to send them.
+  const mirroredName = method === "resources/read"
+    ? extraParams.uri
+    : method === "tools/call" || method === "prompts/get"
+    ? extraParams.name
+    : undefined;
+
   const response = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "MCP-Protocol-Version": PROTOCOL_VERSION,
+      "Mcp-Method": method,
+      ...(typeof mirroredName === "string" ? { "Mcp-Name": mirroredName } : {}),
     },
     body: JSON.stringify({
       jsonrpc: "2.0",

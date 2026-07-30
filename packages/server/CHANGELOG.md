@@ -7,19 +7,17 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
 MCP **2026-07-28 is Final** (shipped 2026-07-28). Tracks A–F were built against
 the May 2026 Release Candidate, which the final revision changed in ways that
 made part of 0.21.0 non-conformant. This entry covers **Track H** (result
-envelope + removals) and the **Track F fix** (error-code renumbering).
+envelope + removals), the **Track F fix** (error-code renumbering) and **Track
+C** (request-metadata headers + cache fields).
+
+With Track C landed, the stateless transport implements the request/response
+core of `2026-07-28`. Still outstanding, and none of them core requirements:
+`subscriptions/listen` (Track G), Multi Round-Trip Requests (Track B) and the
+Tasks extension (Track I).
 
 All changes are confined to peers that negotiate `2026-07-28`. The default
 **stateful** transport is byte-identical to 0.22.0, and a peer negotiating an
 earlier revision over the stateless transport also sees the 0.22.0 shape.
-
-> **This does not make the stateless transport `2026-07-28`-conformant yet.**
-> Still missing (Track C): validation of the required `Mcp-Method` / `Mcp-Name`
-> headers — a missing header must be rejected with `-32020`, and today it is
-> accepted — and the required `ttlMs` / `cacheScope` fields on `tools/list`,
-> `prompts/list`, `resources/list`, `resources/read` and
-> `resources/templates/list`. Treat this release as partial support for the
-> revision, not as support for it.
 
 ### Changed — BREAKING on the stateless transport
 
@@ -49,6 +47,65 @@ earlier revision over the stateless transport also sees the 0.22.0 shape.
   The 404 applies to **any** unimplemented stateless RPC, not just these two —
   including `subscriptions/listen` until Track G lands. Special-casing the two
   removed methods would have left every other unknown method answering 200.
+
+### Changed — BREAKING: auth and session error codes moved out of the reserved range
+
+- `401` unauthorized `-32001` → **`-31401`**, `403` forbidden `-32002` →
+  **`-31403`**, stateful session-expired `-32001` → **`-31404`**.
+
+  Not cosmetic. The final spec states that implementations of this revision
+  **MUST NOT** emit `-32002` (2025-11-25 used it for resource-not-found, now
+  `-32602`), and that new implementations **SHOULD NOT** use `-32000`..`-32019`
+  at all — receivers "MUST NOT assume any specific meaning" for that sub-range.
+  Earlier readings of the allocation policy, including a review of this very
+  file, treated the low range as a grandfathered sandbox. It is not.
+
+  The spec's guidance for codes it does not define is to allocate outside the
+  JSON-RPC reserved range entirely, hence `-314xx` — mnemonic for the HTTP
+  status each accompanies. Anything matching on the old numbers must be updated.
+
+### Added — Track C: request-metadata headers and cache fields
+
+- **Required request headers are now validated** (SEP-2243). Every POST from a
+  peer negotiating `2026-07-28` must carry `MCP-Protocol-Version` and
+  `Mcp-Method`, plus `Mcp-Name` on `tools/call`, `prompts/get` and
+  `resources/read`. A missing or disagreeing header is rejected with HTTP 400
+  and `-32020`.
+
+  This closes a real hole rather than ticking a box: intermediaries route, meter
+  and rate-limit on the headers while the server executes the body. Letting the
+  two disagree is what the spec's mandatory validation exists to prevent.
+
+  `MCP-Protocol-Version` was previously checked "tolerantly" — only when
+  present. It is now required.
+
+- **`x-mcp-header` parameter mirroring.** A tool may annotate primitive,
+  statically-reachable `inputSchema` properties so clients mirror them into
+  `Mcp-Param-{Name}` headers; the server validates each against the argument at
+  that exact property path. Annotations are validated **at registration**, not
+  per call: a conforming client drops the whole tool from `tools/list` over a
+  malformed annotation, so a typo would otherwise present as a tool that
+  silently does not exist.
+
+  The `=?base64?…?=` sentinel is decoded before comparison, integers compare
+  numerically (`42.0` equals `42`), and header names compare case-insensitively
+  per RFC 9110.
+
+- **`ttlMs` / `cacheScope` on list and read results** (SEP-2549), required
+  fields of `CacheableResult`. Configured via `McpAppOptions.cache`, with
+  deliberately inert defaults — `ttlMs: 0` and `cacheScope: "private"`. A
+  framework has no business choosing a staleness window for a tool list built
+  from a live database, nor permitting shared caches to store results that may
+  be scoped to the authenticated principal.
+
+- **`tools/list` is ordered deterministically.** Map iteration was already
+  insertion-ordered, so this only matters where registration order is not stable
+  — which it is not in relay/proxy mode, where tools are registered as child
+  servers are discovered asynchronously.
+
+- Legacy peers and notifications are exempt from the header contract: the
+  headers do not exist before `2026-07-28`, and the revision leaves requirements
+  for notification POSTs undefined.
 
 ### Added
 

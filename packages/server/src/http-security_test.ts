@@ -637,7 +637,7 @@ Deno.test("e2e - invalid session returns 404", async () => {
       { "mcp-session-id": "nonexistent-session-id-000" },
     );
     assertEquals(res.status, 404);
-    assertEquals((data as any).error.code, -32001);
+    assertEquals((data as any).error.code, -31404);
   } finally {
     await http.shutdown();
   }

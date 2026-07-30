@@ -3985,6 +3985,18 @@ export class McpApp {
     }
   > {
     const requests = signal.inputRequests;
+
+    // `Object.keys(null)` throws, and `inputRequests: null` survives JSON — so an
+    // unchecked map reached the generic tool-error path as a 200 instead of being
+    // classified as the malformed server output it is. Validated before enumerating.
+    if (requests !== undefined && !isRecord(requests)) {
+      return {
+        ok: false,
+        code: ErrorCode.InternalError,
+        message: "Malformed inputRequest: inputRequests must be an object",
+      };
+    }
+
     const hasRequests = requests !== undefined &&
       Object.keys(requests).length > 0;
 

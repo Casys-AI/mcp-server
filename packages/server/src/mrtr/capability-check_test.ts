@@ -386,3 +386,38 @@ Deno.test("checkInputRequestCapabilities — a non-object map value is malformed
     }
   }
 });
+
+Deno.test("checkInputRequestCapabilities — a non-string method is malformed, not a TypeError", () => {
+  // `{ toString: null }` survives JSON and then throws when used as a property
+  // key, landing in the generic tool-error path as a 200.
+  for (const bad of [null, 42, { toString: null }, ["elicitation/create"]]) {
+    const result = checkInputRequestCapabilities({
+      // deno-lint-ignore no-explicit-any
+      k: { method: bad as any, params: {} },
+    }, { elicitation: {} });
+    assertEquals(result.ok, false, `${JSON.stringify(bad)} must be refused`);
+    if (!result.ok) assertEquals(result.kind, "malformed");
+  }
+});
+
+Deno.test("checkInputRequestCapabilities — inherited property names are not capabilities", () => {
+  // `METHOD_TO_CAPABILITY["toString"]` resolves the INHERITED function rather than
+  // undefined, so `capKey` was truthy and produced a nonsense missing-capability
+  // error naming a method that does not exist. Looked up as an own key now.
+  for (
+    const method of ["toString", "constructor", "hasOwnProperty", "__proto__"]
+  ) {
+    const result = checkInputRequestCapabilities({
+      // deno-lint-ignore no-explicit-any
+      k: { method: method as any, params: {} },
+    }, { elicitation: {}, sampling: {}, roots: {} });
+    assertEquals(result.ok, false, `${method} must be refused`);
+    if (!result.ok) {
+      assertEquals(
+        result.kind,
+        "malformed",
+        `${method} is an unsupported method, not a missing capability`,
+      );
+    }
+  }
+});

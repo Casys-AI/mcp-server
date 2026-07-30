@@ -165,6 +165,22 @@ export function checkInputRequestCapabilities(
       };
     }
 
+    // `method` must be a string, and looked up as an OWN key.
+    //
+    // Two distinct faults hid here. A non-string method — `{ toString: null }`
+    // survives JSON — throws a TypeError when used as a property key, landing in
+    // the generic tool-error path as a 200. And `"toString"` or `"constructor"`
+    // resolve INHERITED properties of the mapping object, so `capKey` came back
+    // as a function rather than undefined and produced a nonsense
+    // missing-capability error naming a method that does not exist.
+    if (typeof entry.method !== "string") {
+      return {
+        ok: false,
+        kind: "malformed",
+        missingCapabilities: ["<inputRequest method must be a string>"],
+      };
+    }
+
     // Already canonical: `entry` came out of the clone above. A `params` that is
     // present but not an object is malformed — reading it as `{}` would skip the
     // sub-capability checks entirely, a server-authoring bug resolving to "no
@@ -234,7 +250,9 @@ export function checkInputRequestCapabilities(
       }
     }
 
-    const capKey = METHOD_TO_CAPABILITY[entry.method];
+    const capKey = Object.hasOwn(METHOD_TO_CAPABILITY, entry.method)
+      ? METHOD_TO_CAPABILITY[entry.method]
+      : undefined;
     if (capKey === undefined) {
       // MRTR permits exactly three methods. An unknown one is invalid outright,
       // so it must fail regardless of what the client declared — mapping it to

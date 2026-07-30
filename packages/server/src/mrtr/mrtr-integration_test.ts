@@ -665,3 +665,36 @@ Deno.test("round8 - a null inputRequests value yields 500, not a 200 tool error"
     await http.shutdown();
   }
 });
+
+Deno.test("round9 - a null inputRequests map is classified, not thrown on", async () => {
+  // `Object.keys(null)` throws, and `inputRequests: null` survives JSON — so the
+  // map reached the generic tool-error path as a 200 rather than the 500 a
+  // malformed server output requires.
+  const server = new McpApp({
+    name: "mrtr-null-map",
+    version: "1.0.0",
+    logger: () => {},
+    transport: "stateless",
+  });
+  server.registerTools(
+    [{ name: "ask", description: "Asks", inputSchema: { type: "object" } }],
+    new Map<string, ToolHandler>([
+      ["ask", () => ({
+        resultType: "input_required",
+        // deno-lint-ignore no-explicit-any
+        inputRequests: null as any,
+        requestState: "opaque",
+      })],
+    ]),
+  );
+
+  const { http, url } = await start(server);
+  try {
+    const res = await call(url, "ask", {}, WITH_ELICITATION);
+    const data = await res.json();
+    assertEquals(res.status, 500);
+    assertStringIncludes(data.error.message, "must be an object");
+  } finally {
+    await http.shutdown();
+  }
+});

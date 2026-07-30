@@ -486,3 +486,95 @@ Deno.test("mrtr - a malformed inputResponses is rejected rather than ignored", a
     await http.shutdown();
   }
 });
+
+Deno.test("round5 - an inputRequests map emptied by serialisation is refused", async () => {
+  // JSON drops keys whose value is `undefined`, so `{ ask: undefined }`
+  // canonicalises to `{}`. The at-least-one rule was checked against the original,
+  // so this emitted an InputRequiredResult with an empty map — and where no signing
+  // key is configured, no requestState either. The client had nothing to answer and
+  // no reason to retry.
+  const server = new McpApp({
+    name: "mrtr-empty-map",
+    version: "1.0.0",
+    logger: () => {},
+    transport: "stateless",
+    // No signing key, so no requestState is added to paper over the empty map.
+  });
+  server.registerTools(
+    [{ name: "ask", description: "Asks", inputSchema: { type: "object" } }],
+    new Map<string, ToolHandler>([
+      ["ask", () => ({
+        resultType: "input_required",
+        // deno-lint-ignore no-explicit-any
+        inputRequests: { ask: undefined as any },
+      })],
+    ]),
+  );
+
+  const { http, url } = await start(server);
+  try {
+    const res = await call(url, "ask");
+    const data = await res.json();
+    assertEquals(res.status, 400);
+    assertEquals(data.error.code, -32603);
+    assertStringIncludes(data.error.message, "no serialisable entries");
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("round5 - post-negotiation task errors carry the protocol version", async () => {
+  // noOwnerKeyError took a `version` argument and never used it: the exact string
+  // my patch expected had been reflowed, so the replacement silently did nothing.
+  // Verified by grep after writing this time, and pinned here.
+  const server = new McpApp({
+    name: "mrtr-header-echo",
+    version: "1.0.0",
+    logger: () => {},
+    transport: "stateless",
+    extensions: { "io.modelcontextprotocol/tasks": {} },
+    taskOwnerKey: () => "",
+  });
+  server.registerTools(
+    [{ name: "ask", description: "Asks", inputSchema: { type: "object" } }],
+    new Map<string, ToolHandler>([["ask", () => "ok"]]),
+  );
+
+  const listener = Deno.listen({ port: 0 });
+  const port = (listener.addr as Deno.NetAddr).port;
+  listener.close();
+  const http = await server.startHttp({
+    port,
+    cors: false,
+    onListen: () => {},
+  });
+  try {
+    const res = await fetch(`http://localhost:${port}/mcp`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "MCP-Protocol-Version": V,
+        "Mcp-Method": "tasks/get",
+        "Mcp-Name": "x",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tasks/get",
+        params: {
+          taskId: "x",
+          _meta: {
+            [PROTO_KEY]: V,
+            [CAPS_KEY]: {
+              extensions: { "io.modelcontextprotocol/tasks": {} },
+            },
+          },
+        },
+      }),
+    });
+    await res.json();
+    assertEquals(res.headers.get("mcp-protocol-version"), V);
+  } finally {
+    await http.shutdown();
+  }
+});

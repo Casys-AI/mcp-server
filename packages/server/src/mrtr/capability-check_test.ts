@@ -330,3 +330,21 @@ Deno.test("checkInputRequestCapabilities — a STATEFUL toJSON cannot differ bet
     );
   }
 });
+
+Deno.test("checkInputRequestCapabilities — params: null is refused, absent params is not", () => {
+  // The two are not equivalent: omitting `params` says the request needs none,
+  // while `params: null` asserts a value the schema types as an object. Accepting
+  // null would mean the sub-capability checks silently do not run for a request
+  // that looks like it declared something.
+  const withNull = checkInputRequestCapabilities({
+    // deno-lint-ignore no-explicit-any
+    k: { method: "elicitation/create", params: null as any },
+  }, { elicitation: {} });
+  assertEquals(withNull.ok, false);
+
+  const withoutParams = checkInputRequestCapabilities({
+    // deno-lint-ignore no-explicit-any
+    k: { method: "elicitation/create" } as any,
+  }, { elicitation: {} });
+  assertEquals(withoutParams.ok, true);
+});

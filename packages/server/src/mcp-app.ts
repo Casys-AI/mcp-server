@@ -394,6 +394,7 @@ function noOwnerKeyError(id: unknown, version: string): Response {
       },
     },
     500,
+    { "MCP-Protocol-Version": version },
   );
 }
 
@@ -422,28 +423,6 @@ function noPrincipalError(id: unknown, version: string): Response {
 /** Lowercase hex encoding, for the requestState nonce. */
 function bytesToHexLocal(bytes: Uint8Array): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-/**
- * Apply the negotiated protocol version to a raw Response.
- *
- * `c.json()` inherits headers set on the Hono context; a `Response` built directly
- * does not. Every error path that returns one therefore has to carry the header
- * itself, and forgetting is invisible under the default CORS config — the browser
- * never sees the omission, and a proxy routing on the header does.
- *
- * Applied centrally rather than at each call site, because "remember this header"
- * repeated 27 times is a rule that will be broken.
- */
-function withProtocolVersion(response: Response, version: string): Response {
-  if (response.headers.has("MCP-Protocol-Version")) return response;
-  const headers = new Headers(response.headers);
-  headers.set("MCP-Protocol-Version", version);
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
 }
 
 /**
@@ -4089,6 +4068,31 @@ export class McpApp {
         code: ErrorCode.InternalError,
         message:
           "Internal invariant violated: inputRequests were not canonicalised before emission",
+      };
+    }
+
+    // Serialisation can EMPTY the map: JSON drops keys whose value is `undefined`,
+    // so `{ ask: undefined }` canonicalises to `{}`. The at-least-one rule was
+    // checked against the original, so that emitted an InputRequiredResult with an
+    // empty map and — where no key is configured — no requestState either, leaving
+    // the client nothing to answer and no reason to retry.
+    const canonicalCount = canonicalRequests === undefined
+      ? 0
+      : Object.keys(canonicalRequests).length;
+    if (hasRequests && canonicalCount === 0) {
+      return {
+        ok: false,
+        code: ErrorCode.InternalError,
+        message:
+          "inputRequests contained no serialisable entries (keys with an undefined value are dropped by JSON)",
+      };
+    }
+    if (canonicalCount === 0 && requestState === undefined) {
+      return {
+        ok: false,
+        code: ErrorCode.InternalError,
+        message:
+          "An InputRequiredResult must carry at least one of inputRequests or requestState (spec 2026-07-28, MRTR server rule 6)",
       };
     }
 

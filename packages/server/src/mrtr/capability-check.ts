@@ -141,6 +141,13 @@ export function checkInputRequestCapabilities(
     // present but not an object is malformed — reading it as `{}` would skip the
     // sub-capability checks entirely, a server-authoring bug resolving to "no
     // extra capability needed".
+    //
+    // `null` is rejected along with the rest, deliberately. I had intended to let
+    // it through as equivalent to "absent", but the two are not the same: omitting
+    // `params` says the request needs none, while `params: null` asserts a value
+    // that the schema types as an object. Accepting it would mean the sub-capability
+    // checks silently do not run for a request that looks like it declared
+    // something. A handler wanting no params should omit the field.
     if (entry.params !== undefined && !isRecord(entry.params)) {
       return {
         ok: false,

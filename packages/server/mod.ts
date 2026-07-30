@@ -252,3 +252,49 @@ export type {
 // Inspector — launch the MCP Inspector for interactive debugging
 export { launchInspector } from "./src/inspector/launcher.ts";
 export type { InspectorOptions } from "./src/inspector/launcher.ts";
+
+// ── Spec 2026-07-28 features ─────────────────────────────────────────────────
+
+// Tasks extension (io.modelcontextprotocol/tasks, SEP-2663).
+//
+// `createTask` is what a tool handler returns to opt into async-task mode, so it
+// has to be reachable from the package root — without it the extension is wired
+// but unusable by any consumer.
+export { createTask } from "./src/tasks/mod.ts";
+export type {
+  AsyncTaskDescriptor,
+  DetailedTask,
+  Task,
+  TaskController,
+  TaskStoreOptions,
+} from "./src/tasks/mod.ts";
+
+// MRTR — Multi Round-Trip Requests (SEP-2322).
+//
+// `InputRequiredSignal` is the shape a handler returns to ask the client for
+// input. The seal/verify primitives are exported for consumers implementing their
+// own transport; the framework seals automatically on `tools/call`.
+export type {
+  InputRequestEntry,
+  InputRequestMethod,
+  InputRequiredSignal,
+  MrtrOptions,
+} from "./src/mrtr/mod.ts";
+export {
+  exportStateKey,
+  generateStateKey,
+  sealRequestState,
+  verifyRequestState,
+} from "./src/mrtr/mod.ts";
+
+// subscriptions/listen (SEP-2575).
+//
+// The registry is owned by McpApp; these are exported for consumers driving their
+// own streams, and for the filter type used when narrowing what a deployment
+// delivers.
+export { SubscriptionRegistry } from "./src/subscriptions/subscription-registry.ts";
+export type {
+  SubscriptionFilter,
+  SubscriptionRegistryOptions,
+  SubscriptionSink,
+} from "./src/subscriptions/subscription-registry.ts";

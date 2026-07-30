@@ -48,6 +48,44 @@ earlier revision over the stateless transport also sees the 0.22.0 shape.
   including `subscriptions/listen` until Track G lands. Special-casing the two
   removed methods would have left every other unknown method answering 200.
 
+### Added — Tracks G, B and I: subscriptions, MRTR and Tasks
+
+All three are now reachable from the transport, not just present as modules.
+
+- **`subscriptions/listen`** replaces the removed GET stream and
+  `resources/subscribe`. The response is the SSE stream; the acknowledgement is
+  guaranteed first; `X-Accel-Buffering: no` keeps proxies from buffering events.
+  `sendNotification()` now fans out through the registry on the stateless
+  transport — previously it walked the session-keyed SSE map, which is always
+  empty there, so notifications vanished with no error.
+- **MRTR** (`resultType: "input_required"`): a handler asks the client for
+  input, and the framework seals the `requestState` binding principal, method,
+  argument digest and expiry. A tampered, expired or cross-request token is
+  rejected before the handler runs. Confined to a negotiated `2026-07-28`.
+- **Tasks extension**, switched on by declaring
+  `extensions["io.modelcontextprotocol/tasks"]`. `createTask()` in a handler
+  returns a task handle; `tasks/get`, `tasks/update` and `tasks/cancel` are each
+  capability-guarded.
+
+New options: `McpAppOptions.mrtr` and the `extensions` declaration for Tasks.
+`ToolHandlerContext` gains `inputResponses` and `retryVerified`.
+
+Not covered: MRTR on `resources/read` (needs a breaking `ResourceHandler` return
+type) and `prompts/get` (needs a prompts API), and single-use `requestState` —
+the spec states plainly that its measures do not guarantee at-most-once.
+
+### Fixed
+
+- `createTask` and the MRTR / subscription types were absent from the package
+  barrel, so the Tasks extension was fully wired, fully tested and **unusable by
+  any consumer**. Added, along with `packages/server/api-surface_test.ts`, which
+  imports through `mod.ts` the way a consumer does — internal tests reach into
+  `src/` and prove nothing about reachability.
+- `enableSampling` now warns that it has no effect on the stateless transport.
+  Spec 2026-07-28 removed server-initiated requests, so the bridge has no
+  channel there; without the warning the failure looks like a request that never
+  returns.
+
 ### Changed — BREAKING: auth and session error codes moved out of the reserved range
 
 - `401` unauthorized `-32001` → **`-31401`**, `403` forbidden `-32002` →

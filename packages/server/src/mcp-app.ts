@@ -546,6 +546,19 @@ export class McpApp {
       this.log(
         "[DEPRECATED] Sampling is deprecated (MCP 2026-07-28) and will be removed after 2027-07-28.",
       );
+      if (options.transport === "stateless") {
+        // Stronger than deprecation: the bridge sends a server-initiated
+        // request, which 2026-07-28 removed outright. There is no channel for it
+        // on this transport, so it cannot work — MRTR is the only legal path.
+        // Said plainly here because the failure would otherwise appear as a
+        // request that simply never gets answered.
+        this.log(
+          "[WARN] enableSampling has no effect on the stateless transport: " +
+            "spec 2026-07-28 removed server-initiated requests. Return an " +
+            "InputRequiredResult with a sampling/createMessage inputRequest " +
+            "(MRTR) instead.",
+        );
+      }
       this.samplingBridge = new SamplingBridge(options.samplingClient);
     }
 
@@ -2931,6 +2944,10 @@ export class McpApp {
    * @param sessionId - Session ID (or "anonymous" for clients without session)
    * @param message - JSON-RPC message to send
    */
+  // Legacy, stateful-only: sessions do not exist in spec 2026-07-28, and the GET
+  // SSE stream these write to returns 405 there. Retained for the stateful
+  // transport; `sendNotification` routes around them in stateless mode. They die
+  // with the stateful path.
   sendToSession(sessionId: string, message: Record<string, unknown>): void {
     const clients = this.sseClients.get(sessionId);
     if (!clients || clients.length === 0) {
@@ -3155,10 +3172,14 @@ export class McpApp {
 
   /**
    * Send a JSON-RPC notification to the connected transport.
-   * For stdio: writes to stdout via MCP SDK transport.
-   * For HTTP: broadcasts to all SSE clients.
    *
-   * @param method - Notification method (e.g. "notifications/message")
+   * Routing depends on the transport:
+   * - **stateless HTTP**: fanned out to `subscriptions/listen` streams, and only
+   *   to the subscribers that opted into that notification type.
+   * - **stateful HTTP**: broadcast to session-keyed SSE clients (legacy).
+   * - **stdio**: written to stdout via the SDK transport.
+   *
+   * @param method - Notification method (e.g. "notifications/tools/list_changed")
    * @param params - Notification parameters
    */
   sendNotification(
@@ -3167,7 +3188,51 @@ export class McpApp {
   ): void {
     if (!this.started) return;
 
-    // For HTTP mode, broadcast via SSE
+    // Stateless: route through the subscription registry.
+    //
+    // Without this branch the call reached broadcastNotification, which walks the
+    // session-keyed SSE map — always empty in stateless mode, since GET /mcp
+    // returns 405 and no session SSE stream can exist. The notification vanished
+    // with no error: a caller had every reason to believe it had been delivered.
+    if (this.subscriptions !== null) {
+      switch (method) {
+        case "notifications/tools/list_changed":
+          this.subscriptions.fanOut("toolsListChanged");
+          return;
+        case "notifications/prompts/list_changed":
+          this.subscriptions.fanOut("promptsListChanged");
+          return;
+        case "notifications/resources/list_changed":
+          this.subscriptions.fanOut("resourcesListChanged");
+          return;
+        case "notifications/resources/updated": {
+          const uri = isRecord(params) && typeof params["uri"] === "string"
+            ? params["uri"]
+            : undefined;
+          if (uri === undefined) {
+            this.log(
+              "[WARN] notifications/resources/updated requires a string 'uri' param; dropped",
+            );
+            return;
+          }
+          this.subscriptions.fanOutResourceUpdated(uri);
+          return;
+        }
+        default:
+          // subscriptions/listen carries only the four change types a client can
+          // opt into. Anything else — a request-scoped progress or log message —
+          // belongs on the response stream of the request it relates to, which is
+          // not something this method can reach. Say so rather than drop silently.
+          this.log(
+            `[WARN] sendNotification("${method}") has no delivery channel in stateless mode: ` +
+              "only the four subscriptions/listen change types can be pushed. " +
+              "Request-scoped notifications must travel on their own request's response stream.",
+          );
+          return;
+      }
+    }
+
+    // For legacy stateful HTTP mode, broadcast via session-keyed SSE
     if (this.httpServer) {
       this.broadcastNotification(method, params);
       return;

@@ -342,6 +342,27 @@ function callerPrincipal(authInfo: AuthInfo | undefined): string | null {
   return subject;
 }
 
+/**
+ * Authorization key for a task-related request.
+ *
+ * Defaults to the authenticated principal. A consumer whose authorization depends
+ * on more than identity — a tenant, an organisation, a workspace — supplies
+ * `taskOwnerKey` so that dimension becomes part of the key. Without it, binding to
+ * the subject alone leaves a task created under one tenant reachable from another
+ * by the same user.
+ */
+function taskOwnerKeyFor(
+  options: McpAppOptions,
+  authInfo: AuthInfo | undefined,
+  request: Request | undefined,
+  principal: string,
+): string {
+  if (options.taskOwnerKey === undefined || request === undefined) {
+    return principal;
+  }
+  return options.taskOwnerKey(authInfo, request);
+}
+
 /** The error to return when no caller boundary can be established. */
 function noPrincipalError(id: unknown): Response {
   return jsonRpcResponse(
@@ -480,7 +501,7 @@ export class McpApp {
    * sweep timer, and a `tasks/*` call against it must read as the unimplemented
    * method it is (404 + -32601) rather than hitting an empty store.
    */
-  private readonly taskStore: TaskStore | null;
+  private taskStore: TaskStore | null;
 
   /**
    * Live `subscriptions/listen` streams, or `null` outside stateless mode.
@@ -498,8 +519,16 @@ export class McpApp {
    * Resolved lazily on first use rather than in the constructor, because
    * `importStateKey` is async and a constructor cannot await.
    */
-  private mrtrKey: CryptoKey | null = null;
-  private mrtrKeyLoaded = false;
+  /**
+   * In-flight or resolved key import.
+   *
+   * A Promise, not a value plus a loaded flag: the flag was set before the await,
+   * so a second request arriving during the import saw "loaded" with the key
+   * still null, received an UNSIGNED requestState, and could then submit raw
+   * inputResponses past the verification guard. Memoising the Promise makes every
+   * caller await the same import.
+   */
+  private mrtrKeyPromise: Promise<CryptoKey | null> | null = null;
 
   /**
    * Validated `ttlMs`. The spec requires servers to provide a value `>= 0`, and
@@ -1418,12 +1447,25 @@ export class McpApp {
    */
   async stop(): Promise<void> {
     // Release the subsystems whose timers exist from construction, BEFORE the
-    // `started` guard. They are created in the constructor, so a server that
-    // failed during startup — or was never started — still has them armed, and
-    // returning early left them running with no way to reach them again.
+    // `started` guard: they are created in the constructor, so a server that
+    // failed during startup still has them armed, and returning early left them
+    // running with no way to reach them again.
+    //
+    // `taskStore` is REPLACED rather than left disposed. Disposing in place made a
+    // stop-before-start permanently silent: a later startHttp() would run with TTL
+    // sweeping and notifications switched off, with nothing to indicate it. A
+    // fresh store restores the invariant that a started server always has a live
+    // one.
     if (this.taskStore) {
       this.taskStore.drain();
       this.taskStore.dispose();
+      this.taskStore =
+        this.options.extensions?.[TASKS_EXTENSION_ID] !== undefined
+          ? new TaskStore({
+            onNotification: (task) => this.onTaskChanged(task),
+            unrefTimer: (timerId) => unrefTimer(timerId as unknown as number),
+          })
+          : null;
     }
     if (this.subscriptions) {
       this.subscriptions.shutdown();
@@ -2462,8 +2504,14 @@ export class McpApp {
               // Owner binding: the spec requires an authorization check on every
               // task-related request, and a task id alone is only one line of
               // defence.
-              const owner = callerPrincipal(httpAuthInfo);
-              if (owner === null) return noPrincipalError(id);
+              const ownerPrincipal = callerPrincipal(httpAuthInfo);
+              if (ownerPrincipal === null) return noPrincipalError(id);
+              const owner = taskOwnerKeyFor(
+                this.options,
+                httpAuthInfo,
+                c.req.raw,
+                ownerPrincipal,
+              );
               const task = this.taskStore!.spawn(
                 result,
                 owner,
@@ -2699,6 +2747,24 @@ export class McpApp {
           }
           const requested = params["notifications"] as SubscriptionFilter;
 
+          // Recognising `taskIds` is mandatory even though pushing task updates is
+          // not: a client that asks for task notifications without declaring the
+          // Tasks extension MUST be refused. Accepting it would open a stream that
+          // can never deliver, with nothing to say why.
+          if (
+            Array.isArray(requested.taskIds) && requested.taskIds.length > 0
+          ) {
+            const guard = this.requireTasksCapability(
+              isRecord(params["_meta"])
+                ? params["_meta"][STATELESS_CLIENT_CAPABILITIES_KEY] as
+                  | ClientCapabilities
+                  | undefined
+                : undefined,
+              id,
+            );
+            if (guard) return guard;
+          }
+
           // Computed ONCE by the registry and reused for both the
           // acknowledgement and the registration. Deriving it independently here
           // is how a client ends up told it subscribed to a set the registry does
@@ -2783,6 +2849,29 @@ export class McpApp {
           (method === "tasks/get" || method === "tasks/update" ||
             method === "tasks/cancel")
         ) {
+          // These are requests, never notifications. Without an id they would
+          // otherwise slip past header validation — which exempts notifications —
+          // then mutate task state and answer with an id-less, malformed
+          // JSON-RPC response.
+          if (id === undefined) {
+            return jsonRpcResponse(
+              {
+                jsonrpc: "2.0",
+                id: null,
+                error: {
+                  code: JSONRPC_INVALID_PARAMS,
+                  message: `${method} is a request and requires a JSON-RPC id`,
+                  data: {
+                    problem: "missing_field",
+                    bodyField: "id",
+                    recovery:
+                      "Send the call as a JSON-RPC request with an id, not as a notification.",
+                  },
+                },
+              },
+              400,
+            );
+          }
           const store = this.taskStore;
           const guard = this.requireTasksCapability(
             isRecord(params) && isRecord(params["_meta"])
@@ -2812,8 +2901,14 @@ export class McpApp {
             );
           }
 
-          const caller = callerPrincipal(httpAuthInfo);
-          if (caller === null) return noPrincipalError(id);
+          const callerBase = callerPrincipal(httpAuthInfo);
+          if (callerBase === null) return noPrincipalError(id);
+          const caller = taskOwnerKeyFor(
+            this.options,
+            httpAuthInfo,
+            c.req.raw,
+            callerBase,
+          );
 
           if (method === "tasks/get") {
             const task = store.get(taskId, caller);
@@ -3560,28 +3655,30 @@ export class McpApp {
    * when tampering can cause nothing worse than the request failing. It is a
    * loud warning because that condition is easy to believe and hard to verify.
    */
-  private async getMrtrKey(): Promise<CryptoKey | null> {
-    if (this.mrtrKeyLoaded) return this.mrtrKey;
-    this.mrtrKeyLoaded = true;
-    const hex = this.options.mrtr?.signingKey;
-    if (hex === undefined) {
-      this.log(
-        "[WARN] MRTR requestState is unprotected: no mrtr.signingKey configured. " +
-          "A client can tamper with it. Only acceptable when requestState " +
-          "influences nothing beyond whether the request succeeds.",
-      );
-      return null;
-    }
-    try {
-      this.mrtrKey = await importStateKey(hex);
-    } catch (error) {
-      throw new Error(
-        `[McpApp] mrtr.signingKey is not a valid 64-character hex key: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    }
-    return this.mrtrKey;
+  private getMrtrKey(): Promise<CryptoKey | null> {
+    // Assigned synchronously, so two concurrent callers share one import rather
+    // than one of them observing a half-initialised state.
+    this.mrtrKeyPromise ??= (async () => {
+      const hex = this.options.mrtr?.signingKey;
+      if (hex === undefined) {
+        this.log(
+          "[WARN] MRTR requestState is unprotected: no mrtr.signingKey configured. " +
+            "A client can tamper with it. Only acceptable when requestState " +
+            "influences nothing beyond whether the request succeeds.",
+        );
+        return null;
+      }
+      try {
+        return await importStateKey(hex);
+      } catch (error) {
+        throw new Error(
+          `[McpApp] mrtr.signingKey is not a valid 64-character hex key: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    })();
+    return this.mrtrKeyPromise;
   }
 
   /**

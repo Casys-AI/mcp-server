@@ -569,3 +569,196 @@ Deno.test("tasks - an auth provider with no usable subject yields a diagnosable 
     await http.shutdown();
   }
 });
+
+// ── Round-2 findings ─────────────────────────────────────────────────────────
+
+Deno.test("round2 - a formatter failure fails the task instead of completing it empty", async () => {
+  // A BigInt cannot be JSON-serialised, so the result formatter throws. Unguarded
+  // that produced a task marked `completed` with NO result — the one state a
+  // polling client cannot interpret — plus an unhandled rejection.
+  const server = new McpApp({
+    name: "tasks-format-fail",
+    version: "1.0.0",
+    logger: () => {},
+    transport: "stateless",
+    extensions: { [TASKS_ID]: {} },
+  });
+  server.registerTool(
+    {
+      name: "bigint",
+      description: "Unserialisable",
+      inputSchema: { type: "object" },
+    },
+    () => createTask({}, () => Promise.resolve({ n: 1n })),
+  );
+
+  const { http, url } = await start(server);
+  try {
+    const created = await (await post(url, "tools/call", {
+      name: "bigint",
+      arguments: {},
+    })).json();
+    const taskId = created.result.taskId as string;
+    await new Promise((r) => setTimeout(r, 20));
+
+    const got = await (await post(url, "tasks/get", { taskId })).json();
+    // Honest terminal state: the work finished, the result cannot be represented.
+    assertEquals(got.result.status, "failed");
+    assertStringIncludes(got.result.error.message, "could not be serialised");
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("round2 - tasks/* without a JSON-RPC id is rejected, not executed", async () => {
+  // Without an id these slipped past header validation (which exempts
+  // notifications), mutated task state, and answered with a malformed id-less
+  // response.
+  const { http, url } = await start(buildServer({ declareExtension: true }));
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "MCP-Protocol-Version": V,
+        "Mcp-Method": "tasks/cancel",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "tasks/cancel",
+        params: {
+          taskId: "whatever",
+          _meta: { [PROTO_KEY]: V, [CAPS_KEY]: WITH_TASKS },
+        },
+      }),
+    });
+    const data = await res.json();
+    assertEquals(res.status, 400);
+    assertEquals(data.error.code, -32602);
+    assertStringIncludes(data.error.message, "requires a JSON-RPC id");
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("round2 - taskIds in a listen filter requires the Tasks capability", async () => {
+  // Recognising the field is mandatory even though pushing task updates is not:
+  // accepting it from a non-declaring client opens a stream that can never
+  // deliver, with nothing to say why.
+  const { http, url } = await start(buildServer({ declareExtension: true }));
+  try {
+    const refused = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "MCP-Protocol-Version": V,
+        "Mcp-Method": "subscriptions/listen",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "subscriptions/listen",
+        params: {
+          notifications: { taskIds: ["t-1"] },
+          _meta: { [PROTO_KEY]: V, [CAPS_KEY]: {} }, // no tasks extension
+        },
+      }),
+    });
+    const data = await refused.json();
+    assertEquals(refused.status, 400);
+    assertEquals(data.error.code, -32021);
+
+    // Declaring it is accepted, and the acknowledgement echoes the ids.
+    const ok = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "MCP-Protocol-Version": V,
+        "Mcp-Method": "subscriptions/listen",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "subscriptions/listen",
+        params: {
+          notifications: { taskIds: ["t-1"] },
+          _meta: { [PROTO_KEY]: V, [CAPS_KEY]: WITH_TASKS },
+        },
+      }),
+    });
+    assertEquals(ok.status, 200);
+    await ok.body?.cancel();
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("round2 - taskOwnerKey scopes a task beyond the subject", async () => {
+  // Binding to the subject alone leaves a task created under one tenant reachable
+  // from another by the same user. The framework cannot derive tenancy — it lives
+  // in consumer middleware — so it is a hook.
+  const server = new McpApp({
+    name: "tasks-tenant",
+    version: "1.0.0",
+    logger: () => {},
+    transport: "stateless",
+    extensions: { [TASKS_ID]: {} },
+    taskOwnerKey: (_authInfo, request) =>
+      `anon@${request.headers.get("x-tenant-id") ?? "none"}`,
+  });
+  server.registerTool(
+    { name: "scan", description: "Scan", inputSchema: { type: "object" } },
+    () => createTask({}, () => new Promise(() => {})),
+  );
+
+  const { http, url } = await start(server);
+  const call = (
+    method: string,
+    params: Record<string, unknown>,
+    tenant: string,
+    name: string,
+  ) =>
+    fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-tenant-id": tenant,
+        "MCP-Protocol-Version": V,
+        "Mcp-Method": method,
+        "Mcp-Name": name,
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method,
+        params: {
+          ...params,
+          _meta: { [PROTO_KEY]: V, [CAPS_KEY]: WITH_TASKS },
+        },
+      }),
+    });
+  try {
+    const created = await (await call(
+      "tools/call",
+      {
+        name: "scan",
+        arguments: {},
+      },
+      "acme",
+      "scan",
+    )).json();
+    const taskId = created.result.taskId as string;
+
+    // Same subject, different tenant: must not resolve.
+    const foreign = await (await call("tasks/get", { taskId }, "other", taskId))
+      .json();
+    assertEquals(foreign.error?.code, -32602, "cross-tenant access must fail");
+
+    // Same tenant: resolves.
+    const own = await (await call("tasks/get", { taskId }, "acme", taskId))
+      .json();
+    assertEquals(own.result.taskId, taskId);
+  } finally {
+    await http.shutdown();
+  }
+});

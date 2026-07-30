@@ -42,6 +42,16 @@ export interface SubscriptionFilter {
   readonly resourcesListChanged?: boolean;
   /** URIs for which the client wants notifications/resources/updated events. */
   readonly resourceSubscriptions?: readonly string[];
+  /**
+   * Task ids for which the client wants `notifications/tasks` (Tasks extension).
+   *
+   * Recognising this field is not optional even though *pushing* task updates is:
+   * a client that asks for task notifications without declaring the Tasks
+   * extension MUST be refused with the missing-capability error, and a filter that
+   * does not know the field cannot tell the difference between that and a client
+   * asking for nothing.
+   */
+  readonly taskIds?: readonly string[];
 }
 
 /**
@@ -113,6 +123,20 @@ export function intersectFilter(
       if (intersection.length > 0) result.resourceSubscriptions = intersection;
     }
     // serverMask === [] → no URI tracking, field omitted.
+  }
+
+  // taskIds mirrors resourceSubscriptions: same undefined/empty/non-empty mask
+  // semantics. Carried through so the acknowledgement tells the client which task
+  // ids the server actually agreed to track.
+  if (Array.isArray(requested.taskIds) && requested.taskIds.length > 0) {
+    const serverMask = serverSupports.taskIds;
+    if (serverMask === undefined) {
+      result.taskIds = [...requested.taskIds];
+    } else if (serverMask.length > 0) {
+      const allowed = new Set(serverMask);
+      const intersection = requested.taskIds.filter((tid) => allowed.has(tid));
+      if (intersection.length > 0) result.taskIds = intersection;
+    }
   }
 
   return result as SubscriptionFilter;
@@ -316,6 +340,7 @@ export class SubscriptionRegistry {
       promptsListChanged: true,
       resourcesListChanged: true,
       resourceSubscriptions: undefined, // undefined = accept all URIs
+      taskIds: undefined, // undefined = accept all task ids
     };
     this.opts = {
       serverInfo: options.serverInfo,

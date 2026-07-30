@@ -173,3 +173,65 @@ Deno.test("checkInputRequestCapabilities — capability declared as empty object
   );
   assertEquals(result.ok, true);
 });
+
+// ── Sub-capabilities (round-2 finding) ───────────────────────────────────────
+
+Deno.test("checkInputRequestCapabilities — URL elicitation needs elicitation.url", () => {
+  // Declaring `elicitation` does not grant URL mode. Checking only the top-level
+  // key let a server ask for a mode the client cannot service, stranding the
+  // request exactly as an undeclared capability would.
+  const requests: Record<string, InputRequestEntry> = {
+    login: {
+      method: "elicitation/create",
+      params: { mode: "url", message: "Sign in", url: "https://example.test" },
+    },
+  };
+  const withoutUrl = checkInputRequestCapabilities(requests, {
+    elicitation: {},
+  });
+  assertEquals(withoutUrl.ok, false);
+  if (!withoutUrl.ok) {
+    assertEquals(withoutUrl.missingCapabilities, ["elicitation.url"]);
+  }
+
+  const withUrl = checkInputRequestCapabilities(requests, {
+    elicitation: { url: {} },
+  });
+  assertEquals(withUrl.ok, true);
+
+  // Form mode is unaffected by the url sub-capability.
+  const formMode = checkInputRequestCapabilities({
+    ask: { method: "elicitation/create", params: { mode: "form" } },
+  }, { elicitation: {} });
+  assertEquals(formMode.ok, true);
+});
+
+Deno.test("checkInputRequestCapabilities — tool-using sampling needs sampling.tools", () => {
+  const requests: Record<string, InputRequestEntry> = {
+    summary: {
+      method: "sampling/createMessage",
+      params: { messages: [], maxTokens: 10, tools: [{ name: "search" }] },
+    },
+  };
+  const withoutTools = checkInputRequestCapabilities(requests, {
+    sampling: {},
+  });
+  assertEquals(withoutTools.ok, false);
+  if (!withoutTools.ok) {
+    assertEquals(withoutTools.missingCapabilities, ["sampling.tools"]);
+  }
+
+  const withTools = checkInputRequestCapabilities(requests, {
+    sampling: { tools: {} },
+  });
+  assertEquals(withTools.ok, true);
+
+  // Plain sampling still only needs the top-level capability.
+  const plain = checkInputRequestCapabilities({
+    s: {
+      method: "sampling/createMessage",
+      params: { messages: [], maxTokens: 5 },
+    },
+  }, { sampling: {} });
+  assertEquals(plain.ok, true);
+});

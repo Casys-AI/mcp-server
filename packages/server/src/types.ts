@@ -190,6 +190,31 @@ export interface McpAppOptions {
   };
 
   /**
+   * Authorization key a task is bound to, derived from the request that created it.
+   *
+   * A task can only be read, answered or cancelled by a caller whose key matches.
+   * The default is the authenticated subject, which is right for a
+   * single-authority deployment and **not enough** for anything that authorizes on
+   * more than identity: a tenant-scoped server where the same subject may act for
+   * several tenants needs the tenant in the key, or a task created under one
+   * tenant stays reachable from another.
+   *
+   * The framework cannot derive that itself — tenancy lives in a consumer's own
+   * middleware — so it is a hook rather than a guess. Return a stable string; it is
+   * compared verbatim.
+   *
+   * @example
+   * ```typescript
+   * taskOwnerKey: (authInfo, request) =>
+   *   `${authInfo?.subject}@${request.headers.get("x-tenant-id")}`
+   * ```
+   */
+  taskOwnerKey?: (
+    authInfo: import("./auth/types.ts").AuthInfo | undefined,
+    request: Request,
+  ) => string;
+
+  /**
    * Multi Round-Trip Requests (spec 2026-07-28, SEP-2322).
    *
    * Configures how `requestState` is protected when a tool handler asks the

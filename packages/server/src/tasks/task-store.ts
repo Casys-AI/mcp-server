@@ -590,15 +590,34 @@ export class TaskStore {
         // the run() promise was settling. Honour the first terminal state.
         if (isTerminal(internal.status)) return;
 
-        internal.status = "completed";
         // A completed task carries the result the original request would have
         // returned — a CallToolResult for tools/call — not the handler's raw
         // return value. The store stays ignorant of MCP result shapes: the
         // transport injects the conversion it already uses for synchronous
         // calls, so both paths produce identical output for the same handler.
-        internal.result = formatResult
-          ? formatResult(rawResult)
-          : normaliseResult(rawResult);
+        //
+        // The formatter can throw: it serialises arbitrary handler output, and a
+        // BigInt or a circular structure is enough. Left unguarded that produced
+        // a task marked `completed` with NO result — the one state a client
+        // polling for a result cannot make sense of — plus an unhandled
+        // rejection. Treat it as what it is: the work finished, the result cannot
+        // be represented.
+        try {
+          internal.result = formatResult
+            ? formatResult(rawResult)
+            : normaliseResult(rawResult);
+          internal.status = "completed";
+        } catch (formatError) {
+          internal.status = "failed";
+          internal.error = {
+            code: -32603,
+            message: `Task result could not be serialised: ${
+              formatError instanceof Error
+                ? formatError.message
+                : String(formatError)
+            }`,
+          };
+        }
         internal.lastUpdatedAt = new Date().toISOString();
         internal.terminalAt = Date.now();
         this._notify(internal);

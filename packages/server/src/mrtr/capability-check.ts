@@ -74,6 +74,10 @@ const METHOD_TO_CAPABILITY: Readonly<Record<string, string>> = {
  *                               treated as "no capabilities declared".
  * @returns `{ ok: true }` or `{ ok: false, missingCapabilities: string[] }`.
  */
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
 export function checkInputRequestCapabilities(
   inputRequests: Record<string, InputRequestEntry>,
   clientCapabilities: Record<string, unknown> | undefined,
@@ -82,6 +86,31 @@ export function checkInputRequestCapabilities(
   // Use a Set to deduplicate: multiple slots may require the same capability.
   const required = new Set<string>();
   for (const entry of Object.values(inputRequests)) {
+    // Sub-capabilities: declaring `elicitation` does not grant URL mode, and
+    // declaring `sampling` does not grant tool-using sampling. Checking only the
+    // top-level key let a server ask for a mode the client cannot service, which
+    // strands the request exactly as an undeclared capability would.
+    const params = isRecord(entry.params) ? entry.params : {};
+    if (entry.method === "elicitation/create" && params["mode"] === "url") {
+      const elicitation = isRecord(clientCapabilities?.["elicitation"])
+        ? clientCapabilities["elicitation"] as Record<string, unknown>
+        : undefined;
+      if (elicitation?.["url"] === undefined) {
+        return { ok: false, missingCapabilities: ["elicitation.url"] };
+      }
+    }
+    if (
+      entry.method === "sampling/createMessage" &&
+      (params["tools"] !== undefined || params["toolChoice"] !== undefined)
+    ) {
+      const sampling = isRecord(clientCapabilities?.["sampling"])
+        ? clientCapabilities["sampling"] as Record<string, unknown>
+        : undefined;
+      if (sampling?.["tools"] === undefined) {
+        return { ok: false, missingCapabilities: ["sampling.tools"] };
+      }
+    }
+
     const capKey = METHOD_TO_CAPABILITY[entry.method];
     if (capKey === undefined) {
       // MRTR permits exactly three methods. An unknown one is invalid outright,

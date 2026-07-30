@@ -32,7 +32,8 @@ npx jsr add @casys/mcp-server
 import { McpApp } from "@casys/mcp-server";
 ```
 
-> `ConcurrentMCPServer` is an alias kept for backwards compatibility. Use `McpApp`.
+> `ConcurrentMCPServer` is an alias kept for backwards compatibility. Use
+> `McpApp`.
 
 ---
 
@@ -44,22 +45,22 @@ const app = new McpApp(options: McpAppOptions);
 
 ### Key constructor options (`McpAppOptions`)
 
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `name` | `string` | required | Server name (shown in MCP protocol) |
-| `version` | `string` | required | Server version |
-| `maxConcurrent` | `number` | `10` | Max parallel tool calls |
-| `backpressureStrategy` | `"sleep" \| "queue" \| "reject"` | `"sleep"` | What to do when at capacity |
-| `backpressureSleepMs` | `number` | `10` | Sleep duration for `"sleep"` strategy |
-| `rateLimit` | `RateLimitOptions` | — | Per-client tool-call rate limiting |
-| `validateSchema` | `boolean` | `false` | Validate args against `inputSchema` before execution |
-| `enableSampling` | `boolean` | `false` | Enable bidirectional LLM sampling |
-| `samplingClient` | `SamplingClient` | — | Required if `enableSampling: true` |
-| `instructions` | `string` | — | LLM instructions sent in initialize response |
-| `toolErrorMapper` | `ToolErrorMapper` | — | Map thrown errors to `isError: true` results |
-| `auth` | `AuthOptions` | — | OAuth2/Bearer auth (HTTP transport only) |
-| `resourceCsp` | `CspOptions` | — | CSP injected into HTML resources |
-| `expectResources` | `boolean` | `false` | Pre-declare `resources` capability for dynamic post-start registration |
+| Option                 | Type                             | Default   | Description                                                            |
+| ---------------------- | -------------------------------- | --------- | ---------------------------------------------------------------------- |
+| `name`                 | `string`                         | required  | Server name (shown in MCP protocol)                                    |
+| `version`              | `string`                         | required  | Server version                                                         |
+| `maxConcurrent`        | `number`                         | `10`      | Max parallel tool calls                                                |
+| `backpressureStrategy` | `"sleep" \| "queue" \| "reject"` | `"sleep"` | What to do when at capacity                                            |
+| `backpressureSleepMs`  | `number`                         | `10`      | Sleep duration for `"sleep"` strategy                                  |
+| `rateLimit`            | `RateLimitOptions`               | —         | Per-client tool-call rate limiting                                     |
+| `validateSchema`       | `boolean`                        | `false`   | Validate args against `inputSchema` before execution                   |
+| `enableSampling`       | `boolean`                        | `false`   | Enable bidirectional LLM sampling                                      |
+| `samplingClient`       | `SamplingClient`                 | —         | Required if `enableSampling: true`                                     |
+| `instructions`         | `string`                         | —         | LLM instructions sent in initialize response                           |
+| `toolErrorMapper`      | `ToolErrorMapper`                | —         | Map thrown errors to `isError: true` results                           |
+| `auth`                 | `AuthOptions`                    | —         | OAuth2/Bearer auth (HTTP transport only)                               |
+| `resourceCsp`          | `CspOptions`                     | —         | CSP injected into HTML resources                                       |
+| `expectResources`      | `boolean`                        | `false`   | Pre-declare `resources` capability for dynamic post-start registration |
 
 ---
 
@@ -90,37 +91,41 @@ app.unregisterTool(toolName: string): boolean
 interface MCPTool {
   name: string;
   description: string;
-  inputSchema: Record<string, unknown>;     // JSON Schema
-  outputSchema?: Record<string, unknown>;   // for structured results
-  annotations?: ToolAnnotations;            // readOnlyHint, destructiveHint, etc.
-  _meta?: MCPToolMeta;                      // UI config for MCP Apps
-  requiredScopes?: string[];                // OAuth scopes enforced by scope middleware
+  inputSchema: Record<string, unknown>; // JSON Schema
+  outputSchema?: Record<string, unknown>; // for structured results
+  annotations?: ToolAnnotations; // readOnlyHint, destructiveHint, etc.
+  _meta?: MCPToolMeta; // UI config for MCP Apps
+  requiredScopes?: string[]; // OAuth scopes enforced by scope middleware
 }
 ```
 
 ### ToolHandler
 
 ```typescript
-type ToolHandler = (args: Record<string, unknown>) => Promise<unknown> | unknown;
+type ToolHandler = (
+  args: Record<string, unknown>,
+) => Promise<unknown> | unknown;
 ```
 
-Return a plain value, or a `StructuredToolResult` to separate LLM text from structured data:
+Return a plain value, or a `StructuredToolResult` to separate LLM text from
+structured data:
 
 ```typescript
 interface StructuredToolResult {
-  content: string;                          // human-readable summary → content[0].text
+  content: string; // human-readable summary → content[0].text
   structuredContent: Record<string, unknown>; // machine-readable → structuredContent
 }
 ```
 
 ### Error handling
 
-By default, thrown errors become JSON-RPC errors. Use `toolErrorMapper` to convert
-them to `isError: true` results instead:
+By default, thrown errors become JSON-RPC errors. Use `toolErrorMapper` to
+convert them to `isError: true` results instead:
 
 ```typescript
 const app = new McpApp({
-  name: "my-server", version: "1.0.0",
+  name: "my-server",
+  version: "1.0.0",
   toolErrorMapper: (error, toolName) => {
     if (error instanceof MyAppError) return error.message;
     return null; // rethrow as JSON-RPC error
@@ -143,7 +148,7 @@ await app.start();
 ```typescript
 const http = await app.startHttp({
   port: 3000,
-  corsOrigins: ["https://app.example.com"],  // use allowlist in production
+  corsOrigins: ["https://app.example.com"], // use allowlist in production
   requireAuth: true,
   ipRateLimit: { maxRequests: 60, windowMs: 60_000 },
 });
@@ -153,12 +158,14 @@ await http.shutdown();
 ```
 
 Built-in endpoints:
+
 - `POST /mcp` — MCP JSON-RPC
 - `GET /mcp` — SSE stream (Streamable HTTP)
 - `DELETE /mcp` — session termination
 - `GET /health` — `{ status: "ok", server, version }`
 - `GET /metrics` — Prometheus text format
-- `GET /.well-known/oauth-protected-resource` — RFC 9728 metadata (when auth configured)
+- `GET /.well-known/oauth-protected-resource` — RFC 9728 metadata (when auth
+  configured)
 
 ### Embed in Hono / Fresh / Express
 
@@ -177,6 +184,7 @@ const handler = await app.getFetchHandler({
 Add custom middlewares with `app.use()` before `start()`/`startHttp()`.
 
 Pipeline order (built-in first, then yours):
+
 ```
 rate-limit → auth → [custom middlewares] → scope-check → validation → backpressure → handler
 ```
@@ -191,6 +199,7 @@ app.use(async (ctx: MiddlewareContext, next) => {
 ```
 
 `MiddlewareContext` fields:
+
 - `toolName: string`
 - `args: Record<string, unknown>`
 - `request?: Request` — only set for HTTP transport
@@ -207,9 +216,9 @@ Configure auth via `McpAppOptions.auth` or auto-loaded from YAML + env vars.
 
 ```typescript
 import {
-  createGoogleAuthProvider,
   createAuth0AuthProvider,
   createGitHubAuthProvider,
+  createGoogleAuthProvider,
   createOIDCAuthProvider,
 } from "@casys/mcp-server";
 
@@ -245,19 +254,26 @@ Wire the provider into McpApp:
 
 ```typescript
 const app = new McpApp({
-  name: "my-server", version: "1.0.0",
+  name: "my-server",
+  version: "1.0.0",
   auth: { provider },
 });
 ```
 
-Auth is only enforced on HTTP transport. STDIO is always unprotected (local process).
+Auth is only enforced on HTTP transport. STDIO is always unprotected (local
+process).
 
 ### Per-tool scope enforcement
 
 ```typescript
 app.registerTool(
-  { name: "admin_action", description: "...", inputSchema: {}, requiredScopes: ["admin"] },
-  handler
+  {
+    name: "admin_action",
+    description: "...",
+    inputSchema: {},
+    requiredScopes: ["admin"],
+  },
+  handler,
 );
 ```
 
@@ -279,11 +295,12 @@ app.registerResource(
     uri: uri.toString(),
     mimeType: MCP_APP_MIME_TYPE,
     text: "<html>...</html>",
-  })
+  }),
 );
 ```
 
-Resource URIs must use the `ui://` scheme. The framework logs a warning for other schemes.
+Resource URIs must use the `ui://` scheme. The framework logs a warning for
+other schemes.
 
 ### registerViewers (batch viewer registration)
 
@@ -332,7 +349,11 @@ import { McpApp } from "@casys/mcp-server";
 const app = new McpApp({ name: "my-server", version: "1.0.0" });
 
 app.registerTool(
-  { name: "greet", description: "Greet someone", inputSchema: { type: "object", properties: { name: { type: "string" } } } },
+  {
+    name: "greet",
+    description: "Greet someone",
+    inputSchema: { type: "object", properties: { name: { type: "string" } } },
+  },
   (args) => `Hello, ${args.name}!`,
 );
 
@@ -342,10 +363,11 @@ await app.start();
 ### HTTP server with Google auth
 
 ```typescript
-import { McpApp, createGoogleAuthProvider } from "@casys/mcp-server";
+import { createGoogleAuthProvider, McpApp } from "@casys/mcp-server";
 
 const app = new McpApp({
-  name: "my-server", version: "1.0.0",
+  name: "my-server",
+  version: "1.0.0",
   auth: {
     provider: createGoogleAuthProvider({
       audience: "https://my-mcp.example.com",
@@ -354,7 +376,10 @@ const app = new McpApp({
   },
 });
 
-app.registerTool({ name: "hello", description: "Hello", inputSchema: {} }, () => "hi");
+app.registerTool(
+  { name: "hello", description: "Hello", inputSchema: {} },
+  () => "hi",
+);
 
 await app.startHttp({
   port: 3000,
@@ -366,5 +391,6 @@ await app.startHttp({
 
 ---
 
-For the full API reference, see [references/api.md](./references/api.md).
-For common patterns and recipes, see [references/patterns.md](./references/patterns.md).
+For the full API reference, see [references/api.md](./references/api.md). For
+common patterns and recipes, see
+[references/patterns.md](./references/patterns.md).

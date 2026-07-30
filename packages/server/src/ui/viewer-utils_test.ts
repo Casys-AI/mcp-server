@@ -54,8 +54,7 @@ Deno.test("resolveViewerDistPath - handles file:// URLs", () => {
 });
 
 Deno.test("resolveViewerDistPath - returns HTTPS URL for remote moduleUrl", () => {
-  const exists = (path: string) =>
-    path.includes("src/ui/dist/invoice-viewer");
+  const exists = (path: string) => path.includes("src/ui/dist/invoice-viewer");
   const result = resolveViewerDistPath(
     "https://jsr.io/@casys/mcp-einvoice/0.5.2/",
     "invoice-viewer",
@@ -103,7 +102,7 @@ Deno.test("discoverViewers - finds directories containing index.html", () => {
     { name: "build-all.mjs", isDirectory: false },
   ];
   const readDir = () => entries;
-  const hasIndexHtml = (dir: string, name: string) =>
+  const hasIndexHtml = (_dir: string, name: string) =>
     ["invoice-viewer", "doclist-viewer"].includes(name);
 
   const result = discoverViewers("/fake/ui", { readDir, hasIndexHtml });

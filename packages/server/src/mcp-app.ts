@@ -34,6 +34,7 @@ import { createRateLimitMiddleware } from "./middleware/rate-limit.ts";
 import { createValidationMiddleware } from "./middleware/validation.ts";
 import { createBackpressureMiddleware } from "./middleware/backpressure.ts";
 import type {
+  McpLogLevel,
   Middleware,
   MiddlewareContext,
   MiddlewareResult,
@@ -71,7 +72,7 @@ import {
   MCP_APP_URI_SCHEME,
 } from "./types.ts";
 import { discoverViewers, resolveViewerDistPath } from "./ui/viewer-utils.ts";
-import type { DirEntry, DiscoverViewersFS } from "./ui/viewer-utils.ts";
+import type { DiscoverViewersFS } from "./ui/viewer-utils.ts";
 import { buildCspHeader, injectCspMetaTag } from "./security/csp.ts";
 import { ServerMetrics } from "./observability/metrics.ts";
 import { endToolCallSpan, startToolCallSpan } from "./observability/otel.ts";
@@ -188,15 +189,78 @@ const STATELESS_SUPPORTED_VERSIONS: readonly string[] = [
   "2025-11-25",
 ];
 
+/** Namespaced serverInfo key in a result's _meta (spec 2026-07-28, SHOULD) */
+const STATELESS_SERVER_INFO_KEY = "io.modelcontextprotocol/serverInfo";
+
+/**
+ * Namespaced per-request log level in params._meta (spec 2026-07-28).
+ * Replaces the removed `logging/setLevel` RPC: the level is now scoped to the
+ * request that asked for it, so there is no server-side level to mutate.
+ */
+const STATELESS_LOG_LEVEL_KEY = "io.modelcontextprotocol/logLevel";
+
+/** Protocol version whose wire format this server implements natively */
+const SPEC_2026_07_28 = "2026-07-28";
+
 /** Version echoed in MCP-Protocol-Version header on error responses (server's stable baseline) */
 const STATELESS_FALLBACK_VERSION = "2025-06-18";
 
 const JSONRPC_INVALID_PARAMS = ErrorCode.InvalidParams;
-const MCP_UNSUPPORTED_PROTOCOL_VERSION = -32004;
+
+// ── Error codes (spec 2026-07-28, allocation policy) ────────────────────────
+//
+// The final spec partitions the JSON-RPC server-error range:
+//   -32000..-32019  implementation-defined (existing SDK usage grandfathered)
+//   -32020..-32099  reserved for the MCP specification
+//
+// The codes below were renumbered between the May 2026 Release Candidate — which
+// 0.21.0 shipped against — and the final revision. Do not "restore" the RC
+// values: -32001 and -32004 no longer carry these MCP-defined meanings. They are
+// not meaningless, though — both sit in the implementation-defined range, and
+// -32001 remains in legitimate use here for 401 and session errors.
+
+/** Headers disagree with the request body, or a required header is missing. */
+const MCP_HEADER_MISMATCH = -32020;
+
+/**
+ * Client did not declare a capability the request requires.
+ * Reserved here so nothing else claims it; no code path emits it yet.
+ */
+const _MCP_MISSING_REQUIRED_CLIENT_CAPABILITY = -32021;
+
+/** Requested protocol version is not one this server implements. */
+const MCP_UNSUPPORTED_PROTOCOL_VERSION = -32022;
 
 interface StatelessClientMeta {
   readonly clientInfo?: Implementation;
   readonly clientCapabilities?: ClientCapabilities;
+  readonly logLevel?: McpLogLevel;
+}
+
+/** Valid `io.modelcontextprotocol/logLevel` values (RFC 5424 severities). */
+const MCP_LOG_LEVELS: readonly McpLogLevel[] = [
+  "debug",
+  "info",
+  "notice",
+  "warning",
+  "error",
+  "critical",
+  "alert",
+  "emergency",
+];
+
+/**
+ * Read the per-request log level out of `params._meta`.
+ *
+ * An unrecognized value is dropped rather than rejected: the level is an
+ * optional hint, and failing a whole tool call because a client sent
+ * `"verbose"` would be a worse outcome than emitting nothing.
+ */
+function readLogLevel(meta: Record<string, unknown>): McpLogLevel | undefined {
+  const raw = meta[STATELESS_LOG_LEVEL_KEY];
+  return typeof raw === "string" && MCP_LOG_LEVELS.includes(raw as McpLogLevel)
+    ? raw as McpLogLevel
+    : undefined;
 }
 
 /**
@@ -205,6 +269,28 @@ interface StatelessClientMeta {
  */
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/**
+ * Stamp a result with the spec-2026-07-28 envelope: the required `resultType`
+ * (SEP-2322) and the server's identity under `_meta` (SEP-2575, SHOULD).
+ *
+ * `_meta` is merged, never replaced — tool results carry their own `_meta` (MCP
+ * Apps UI hints, for instance) and losing it would break the viewers.
+ *
+ * Pure by design so the envelope can be asserted directly in tests without
+ * standing up a server; the caller decides whether the envelope applies.
+ */
+function completeResult(
+  result: Record<string, unknown>,
+  serverInfo: Implementation,
+): Record<string, unknown> {
+  const existingMeta = isRecord(result["_meta"]) ? result["_meta"] : undefined;
+  return {
+    ...result,
+    resultType: "complete",
+    _meta: { ...existingMeta, [STATELESS_SERVER_INFO_KEY]: serverInfo },
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -355,7 +441,7 @@ export class McpApp {
     server.registerCapabilities({ resources: {} });
 
     // resources/list — returns currently registered resources
-    server.setRequestHandler(ListResourcesRequestSchema, async () => {
+    server.setRequestHandler(ListResourcesRequestSchema, () => {
       return {
         resources: Array.from(this.resources.values()).map((r) => ({
           uri: r.resource.uri,
@@ -658,6 +744,7 @@ export class McpApp {
         ...(ctx.clientCapabilities !== undefined
           ? { clientCapabilities: ctx.clientCapabilities }
           : {}),
+        ...(ctx.logLevel !== undefined ? { logLevel: ctx.logLevel } : {}),
       }));
     });
   }
@@ -700,6 +787,9 @@ export class McpApp {
         : {}),
       ...(clientMeta?.clientCapabilities !== undefined
         ? { clientCapabilities: clientMeta.clientCapabilities }
+        : {}),
+      ...(clientMeta?.logLevel !== undefined
+        ? { logLevel: clientMeta.logLevel }
         : {}),
     };
 
@@ -1611,7 +1701,11 @@ export class McpApp {
                 jsonrpc: "2.0",
                 id,
                 error: {
-                  code: JSONRPC_INVALID_PARAMS,
+                  // Spec 2026-07-28: a header disagreeing with the body is
+                  // HeaderMismatch, not InvalidParams. The distinction matters
+                  // to intermediaries that route on the header — they need to
+                  // know the mismatch was detected, not that a param was bad.
+                  code: MCP_HEADER_MISMATCH,
                   message:
                     `MCP-Protocol-Version header "${headerVersion}" does not match _meta protocolVersion "${clientVersion}"`,
                 },
@@ -1634,12 +1728,9 @@ export class McpApp {
           return c.json({
             jsonrpc: "2.0",
             id,
-            result: {
+            result: this.stampResult({
               supportedVersions: [...STATELESS_SUPPORTED_VERSIONS],
-              capabilities: {
-                tools: {},
-                resources: this.resources.size > 0 ? {} : undefined,
-              },
+              capabilities: this.buildServerCapabilities(),
               serverInfo: {
                 name: this.options.name,
                 version: this.options.version,
@@ -1647,7 +1738,7 @@ export class McpApp {
               ...(this.options.instructions
                 ? { instructions: this.options.instructions }
                 : {}),
-            },
+            }, statelessVersion),
           });
         }
 
@@ -1659,12 +1750,9 @@ export class McpApp {
             return c.json({
               jsonrpc: "2.0",
               id,
-              result: {
+              result: this.stampResult({
                 protocolVersion: statelessVersion as string,
-                capabilities: {
-                  tools: {},
-                  resources: this.resources.size > 0 ? {} : undefined,
-                },
+                capabilities: this.buildServerCapabilities(),
                 serverInfo: {
                   name: this.options.name,
                   version: this.options.version,
@@ -1672,7 +1760,7 @@ export class McpApp {
                 ...(this.options.instructions
                   ? { instructions: this.options.instructions }
                   : {}),
-              },
+              }, statelessVersion),
             });
             // Note: c.json() inherits MCP-Protocol-Version header set above.
             // No Mcp-Session-Id header emitted — stateless by design.
@@ -1768,6 +1856,7 @@ export class McpApp {
                 clientCapabilities: params["_meta"][
                   STATELESS_CLIENT_CAPABILITIES_KEY
                 ] as ClientCapabilities | undefined,
+                logLevel: readLogLevel(params["_meta"]),
               }
               : undefined;
 
@@ -1783,7 +1872,10 @@ export class McpApp {
             return c.json({
               jsonrpc: "2.0",
               id,
-              result: this.buildToolCallResult(toolName, result),
+              result: this.stampResult(
+                this.buildToolCallResult(toolName, result),
+                statelessVersion,
+              ),
             });
           } catch (error) {
             // Handle AuthError with proper HTTP status codes
@@ -1811,7 +1903,13 @@ export class McpApp {
               return c.json({
                 jsonrpc: "2.0",
                 id,
-                result: isErrorResult,
+                // An `isError: true` tool result is still a completed JSON-RPC
+                // result, so it carries `resultType: "complete"`. Only MRTR
+                // interim results (Track B) use `"input_required"`.
+                result: this.stampResult(
+                  isErrorResult as Record<string, unknown>,
+                  statelessVersion,
+                ),
               });
             } catch (rethrown) {
               this.log(
@@ -1848,7 +1946,10 @@ export class McpApp {
           return c.json({
             jsonrpc: "2.0",
             id,
-            result: { tools: this.buildToolListing() },
+            result: this.stampResult(
+              { tools: this.buildToolListing() },
+              statelessVersion,
+            ),
           });
         }
 
@@ -1857,14 +1958,14 @@ export class McpApp {
           return c.json({
             jsonrpc: "2.0",
             id,
-            result: {
+            result: this.stampResult({
               resources: Array.from(this.resources.values()).map((r) => ({
                 uri: r.resource.uri,
                 name: r.resource.name,
                 description: r.resource.description,
                 mimeType: r.resource.mimeType ?? MCP_APP_MIME_TYPE,
               })),
-            },
+            }, statelessVersion),
           });
         }
 
@@ -1887,7 +1988,10 @@ export class McpApp {
             return c.json({
               jsonrpc: "2.0",
               id,
-              result: { contents: [finalContent] },
+              result: this.stampResult(
+                { contents: [finalContent] },
+                statelessVersion,
+              ),
             });
           } catch (error) {
             this.log(
@@ -1908,26 +2012,55 @@ export class McpApp {
           }
         }
 
-        // MCP protocol methods we don't implement — return empty results
-        // ping: SEP-2575 removes ping in stateless mode, but we deliberately keep
-        // answering it for backward compatibility. A SEP-conformant client won't send
-        // it, and a stale client using ping for liveness keeps working. (Decision:
-        // tolerant over strict, consistent with the rest of the stateless conformance work.)
-        if (method === "ping") {
-          return c.json({ jsonrpc: "2.0", id, result: {} });
+        // `ping` and `logging/setLevel` were REMOVED by spec 2026-07-28 — not
+        // deprecated. 0.21.0 kept answering `ping` on the stateless path for
+        // backward compatibility; that reasoning does not survive the final
+        // spec, which requires 404 + -32601 for a method the server does not
+        // implement. That specific response is also how a client distinguishes a
+        // modern server from a legacy HTTP+SSE one, so answering `{}` actively
+        // misleads the backward-compatibility probe.
+        //
+        // The stateful path keeps both: a 2025-11-25 peer is entitled to them,
+        // and `logging/setLevel`'s stub is what its capability negotiation
+        // expects.
+        // `ping` and `logging/setLevel` were REMOVED by spec 2026-07-28 — not
+        // deprecated. 0.21.0 kept answering `ping` on the stateless path for
+        // backward compatibility; that reasoning does not survive the final
+        // spec, which requires 404 + -32601 for a method the server does not
+        // implement. That response is also how a client distinguishes a modern
+        // server from a legacy HTTP+SSE one, so answering `{}` actively misled
+        // the probe.
+        //
+        // Rather than special-casing these two, the stateless path simply does
+        // not handle them: they fall through to the generic method-not-found
+        // branch at the end, which returns 404 for *any* unimplemented RPC.
+        //
+        // The stateful path keeps both — its peers negotiated `2025-06-18`,
+        // where `logging/setLevel`'s stub is what capability negotiation
+        // expects. Deliberately unstamped: no 2026 envelope on that path.
+        if (this.options.transport !== "stateless") {
+          if (method === "ping") {
+            return c.json({ jsonrpc: "2.0", id, result: {} });
+          }
+          if (method === "logging/setLevel") {
+            return c.json({ jsonrpc: "2.0", id, result: {} });
+          }
         }
         if (method === "prompts/list") {
-          return c.json({ jsonrpc: "2.0", id, result: { prompts: [] } });
-        }
-        // @deprecated (MCP 2026-07-28)
-        if (method === "logging/setLevel") {
-          return c.json({ jsonrpc: "2.0", id, result: {} });
+          return c.json({
+            jsonrpc: "2.0",
+            id,
+            result: this.stampResult({ prompts: [] }, statelessVersion),
+          });
         }
         if (method === "completion/complete") {
           return c.json({
             jsonrpc: "2.0",
             id,
-            result: { completion: { values: [] } },
+            result: this.stampResult(
+              { completion: { values: [] } },
+              statelessVersion,
+            ),
           });
         }
 
@@ -1948,7 +2081,29 @@ export class McpApp {
           });
         }
 
-        // Method not found
+        // Method not found.
+        //
+        // Spec 2026-07-28 requires HTTP **404** here, not 200: "If the server
+        // does not implement the requested RPC method, it MUST respond with
+        // 404 Not Found and a JSON-RPC error with code -32601". The status is
+        // load-bearing — a client probing an unknown URL uses exactly this
+        // response to tell a modern MCP endpoint from a legacy HTTP+SSE server,
+        // so answering 200 defeats the backward-compatibility probe.
+        //
+        // This is the general rule that also covers the methods the spec
+        // removed (`ping`, `logging/setLevel`) and the ones not yet implemented
+        // (`subscriptions/listen`, Track G). The legacy stateful path keeps
+        // answering 200 — its peers negotiated a revision with no such rule.
+        if (this.options.transport === "stateless") {
+          return jsonRpcResponse(
+            {
+              jsonrpc: "2.0",
+              id,
+              error: { code: -32601, message: `Method not found: ${method}` },
+            },
+            404,
+          );
+        }
         return c.json({
           jsonrpc: "2.0",
           id,
@@ -2403,7 +2558,6 @@ export class McpApp {
    * Pre-formatted results have a `content` array and are passed through
    * without re-wrapping. This supports proxy/gateway patterns.
    */
-  // deno-lint-ignore no-explicit-any
   private isPreformattedResult(
     result: unknown,
   ): result is {
@@ -2418,6 +2572,64 @@ export class McpApp {
       obj.content[0] !== null &&
       "type" in obj.content[0] &&
       "text" in obj.content[0];
+  }
+
+  /**
+   * Apply the spec-2026-07-28 result envelope when — and only when — the peer
+   * negotiated that revision.
+   *
+   * Gated on the **negotiated version**, not on the transport. An earlier draft
+   * used `transport === "stateless"` as a proxy for "modern peer", which is
+   * wrong: the stateless transport also accepts `2025-06-18` and `2025-11-25`
+   * (see `STATELESS_SUPPORTED_VERSIONS`), so that gate stamped a 2026 envelope
+   * onto responses to peers that had negotiated a revision predating it. The
+   * stateful path negotiates nothing per-request and advertises `2025-06-18`, so
+   * it passes `undefined` here and stays on the legacy shape.
+   *
+   * Omitting the envelope for a genuinely legacy peer is safe in the other
+   * direction too: the spec instructs clients to read a missing `resultType` as
+   * `"complete"`.
+   *
+   * Every HTTP result path funnels through here. Adding a new one without it is
+   * the failure mode to watch for — hence the conformance test that walks the
+   * method table rather than asserting one endpoint at a time.
+   *
+   * @param negotiatedVersion Version from the request's `_meta`, or `undefined`
+   *   where no per-request negotiation happens.
+   */
+  private stampResult(
+    result: Record<string, unknown>,
+    negotiatedVersion?: string,
+  ): Record<string, unknown> {
+    if (negotiatedVersion !== SPEC_2026_07_28) return result;
+    return completeResult(result, {
+      name: this.options.name,
+      version: this.options.version,
+    });
+  }
+
+  /**
+   * Capabilities advertised on `server/discover` and `initialize`.
+   *
+   * Single source of truth: these two responses used to build the same object
+   * independently, which is how they drift.
+   *
+   * `extensions` (spec 2026-07-28) is the declaration point for opt-in
+   * extensions such as `io.modelcontextprotocol/tasks`. It is emitted only when
+   * the consumer actually declares one — an empty `extensions: {}` would read as
+   * "this server supports no extensions", which is a stronger claim than we can
+   * make while MCP Apps support is de-facto (via `ui://` resources) rather than
+   * declared. Wire it up here once the Apps extension identifier is pinned.
+   */
+  private buildServerCapabilities(): Record<string, unknown> {
+    const { extensions } = this.options;
+    return {
+      tools: {},
+      resources: this.resources.size > 0 ? {} : undefined,
+      ...(extensions && Object.keys(extensions).length > 0
+        ? { extensions }
+        : {}),
+    };
   }
 
   /**

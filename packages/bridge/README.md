@@ -81,33 +81,35 @@ console.log(`Bridge running at ${server.baseUrl}`);
 ```html
 <!DOCTYPE html>
 <html>
-  <head><title>My MCP App</title></head>
+  <head>
+    <title>My MCP App</title>
+  </head>
   <body>
     <button id="btn">Get Data</button>
     <div id="result"></div>
     <script>
-      // bridge.js is auto-injected by the resource server
-      // It intercepts postMessage and routes via WebSocket to your handler
+    // bridge.js is auto-injected by the resource server
+    // It intercepts postMessage and routes via WebSocket to your handler
 
-      window.addEventListener("mcp-bridge-ready", () => {
-        document.getElementById("btn").onclick = async () => {
-          const id = Date.now();
-          window.parent.postMessage({
-            jsonrpc: "2.0",
-            id,
-            method: "tools/call",
-            params: { name: "get_data", arguments: {} },
-          }, "*");
-        };
-      });
+    window.addEventListener("mcp-bridge-ready", () => {
+      document.getElementById("btn").onclick = async () => {
+        const id = Date.now();
+        window.parent.postMessage({
+          jsonrpc: "2.0",
+          id,
+          method: "tools/call",
+          params: { name: "get_data", arguments: {} },
+        }, "*");
+      };
+    });
 
-      window.addEventListener("message", (e) => {
-        if (e.data?.result) {
-          document.getElementById("result").textContent = JSON.stringify(
-            e.data.result,
-          );
-        }
-      });
+    window.addEventListener("message", (e) => {
+      if (e.data?.result) {
+        document.getElementById("result").textContent = JSON.stringify(
+          e.data.result,
+        );
+      }
+    });
     </script>
   </body>
 </html>

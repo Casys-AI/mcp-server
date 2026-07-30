@@ -145,7 +145,7 @@ Deno.test("stateless acceptance - round-robin across two instances without stick
   }
 });
 
-Deno.test("stateless acceptance - header/_meta version mismatch is rejected (400, -32602)", async () => {
+Deno.test("stateless acceptance - header/_meta version mismatch is rejected (400, -32020)", async () => {
   // Negative case: both versions are individually supported, but they differ.
   // This isolates the header/_meta consistency check (not version support) and
   // keeps this file sensitive to a regression that drops the comparison.
@@ -175,7 +175,8 @@ Deno.test("stateless acceptance - header/_meta version mismatch is rejected (400
     const data = await response.json();
 
     assertEquals(response.status, 400);
-    assertEquals(data.error.code, -32602);
+    // HeaderMismatch (spec 2026-07-28), renumbered from the RC's -32001.
+    assertEquals(data.error.code, -32020);
   } finally {
     await http.shutdown();
   }

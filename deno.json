@@ -4,5 +4,9 @@
     "./packages/compose",
     "./packages/bridge",
     "./packages/view"
+  ],
+  "exclude": [
+    "**/dist/",
+    "**/node_modules/"
   ]
 }

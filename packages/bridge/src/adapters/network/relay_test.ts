@@ -320,7 +320,7 @@ Deno.test("relay frees agent slot when send throws synchronously", async () => {
 });
 
 function withTimeout<T>(promise: Promise<T>, message: string): Promise<T> {
-  let timer: number | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new Error(message)), 20);
   });

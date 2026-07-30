@@ -20,21 +20,21 @@ new McpApp(options: McpAppOptions)
 
 ```typescript
 interface McpAppOptions {
-  name: string;                          // Server name (MCP protocol)
-  version: string;                       // Server version
-  maxConcurrent?: number;                // Default: 10
+  name: string; // Server name (MCP protocol)
+  version: string; // Server version
+  maxConcurrent?: number; // Default: 10
   backpressureStrategy?: "sleep" | "queue" | "reject"; // Default: "sleep"
-  backpressureSleepMs?: number;          // Default: 10 (ms, for "sleep" strategy)
-  rateLimit?: RateLimitOptions;          // Per-client tool-call rate limiting
-  validateSchema?: boolean;              // Default: false — validate args against inputSchema
-  enableSampling?: boolean;              // Default: false
-  samplingClient?: SamplingClient;       // Required if enableSampling: true
-  instructions?: string;                 // LLM system instructions (sent in initialize)
-  toolErrorMapper?: ToolErrorMapper;     // Map errors to isError:true vs rethrow
-  auth?: AuthOptions;                    // OAuth2/Bearer auth config
-  resourceCsp?: CspOptions;             // CSP for HTML resources
-  expectResources?: boolean;             // Pre-declare resources capability before connect
-  logger?: (msg: string) => void;       // Default: console.error
+  backpressureSleepMs?: number; // Default: 10 (ms, for "sleep" strategy)
+  rateLimit?: RateLimitOptions; // Per-client tool-call rate limiting
+  validateSchema?: boolean; // Default: false — validate args against inputSchema
+  enableSampling?: boolean; // Default: false
+  samplingClient?: SamplingClient; // Required if enableSampling: true
+  instructions?: string; // LLM system instructions (sent in initialize)
+  toolErrorMapper?: ToolErrorMapper; // Map errors to isError:true vs rethrow
+  auth?: AuthOptions; // OAuth2/Bearer auth config
+  resourceCsp?: CspOptions; // CSP for HTML resources
+  expectResources?: boolean; // Pre-declare resources capability before connect
+  logger?: (msg: string) => void; // Default: console.error
 }
 ```
 
@@ -48,7 +48,8 @@ interface McpAppOptions {
 registerTool(tool: MCPTool, handler: ToolHandler): void
 ```
 
-Register a single tool before `start()` or `startHttp()`. Throws if called after start.
+Register a single tool before `start()` or `startHttp()`. Throws if called after
+start.
 
 #### registerTools
 
@@ -56,8 +57,8 @@ Register a single tool before `start()` or `startHttp()`. Throws if called after
 registerTools(tools: MCPTool[], handlers: Map<string, ToolHandler>): void
 ```
 
-Register multiple tools at once. Every tool in the array must have a matching entry in
-`handlers` or the call throws (fail-fast).
+Register multiple tools at once. Every tool in the array must have a matching
+entry in `handlers` or the call throws (fail-fast).
 
 #### registerToolLive
 
@@ -65,8 +66,9 @@ Register multiple tools at once. Every tool in the array must have a matching en
 registerToolLive(tool: MCPTool, handler: ToolHandler): void
 ```
 
-Register a tool while the server is running. Intended for relay/proxy patterns where
-tools are discovered dynamically. The tool immediately appears in `tools/list`.
+Register a tool while the server is running. Intended for relay/proxy patterns
+where tools are discovered dynamically. The tool immediately appears in
+`tools/list`.
 
 #### registerAppOnlyTool
 
@@ -75,8 +77,8 @@ registerAppOnlyTool(tool: MCPTool, handler: ToolHandler): void
 ```
 
 Register a tool with `_meta.ui.visibility: ["app"]`. The tool is hidden from
-`tools/list` (invisible to the model) but callable via `tools/call` if the caller
-knows its name. Used for internal app-to-server calls in MCP Apps.
+`tools/list` (invisible to the model) but callable via `tools/call` if the
+caller knows its name. Used for internal app-to-server calls in MCP Apps.
 
 #### unregisterTool
 
@@ -101,6 +103,7 @@ Add a middleware to the pipeline. Must be called before `start()`/`startHttp()`.
 Returns `this` for chaining.
 
 Pipeline order:
+
 ```
 rate-limit → auth → [custom middlewares] → scope-check → validation → backpressure → handler
 ```
@@ -115,8 +118,9 @@ rate-limit → auth → [custom middlewares] → scope-check → validation → 
 registerResource(resource: MCPResource, handler: ResourceHandler): void
 ```
 
-Register a single resource. URI must use `ui://` scheme (warning logged otherwise).
-Throws on duplicate URI. When `expectResources: true`, can be called after `start()`.
+Register a single resource. URI must use `ui://` scheme (warning logged
+otherwise). Throws on duplicate URI. When `expectResources: true`, can be called
+after `start()`.
 
 #### registerResources
 
@@ -124,8 +128,8 @@ Throws on duplicate URI. When `expectResources: true`, can be called after `star
 registerResources(resources: MCPResource[], handlers: Map<string, ResourceHandler>): void
 ```
 
-Atomic batch registration. Validates all handlers and checks for duplicates before
-registering any — either all succeed or none are registered.
+Atomic batch registration. Validates all handlers and checks for duplicates
+before registering any — either all succeed or none are registered.
 
 #### registerViewers
 
@@ -133,15 +137,15 @@ registering any — either all succeed or none are registered.
 registerViewers(config: RegisterViewersConfig): RegisterViewersSummary
 ```
 
-Batch-register MCP App viewers with automatic dist path resolution.
-Each viewer gets URI `ui://{prefix}/{viewerName}`.
+Batch-register MCP App viewers with automatic dist path resolution. Each viewer
+gets URI `ui://{prefix}/{viewerName}`.
 
 ```typescript
 interface RegisterViewersConfig {
-  prefix: string;                  // URI prefix
-  moduleUrl: string;               // import.meta.url of caller (for path resolution)
-  viewers?: string[];              // explicit list of viewer names
-  discover?: {                     // auto-discover from a directory
+  prefix: string; // URI prefix
+  moduleUrl: string; // import.meta.url of caller (for path resolution)
+  viewers?: string[]; // explicit list of viewer names
+  discover?: { // auto-discover from a directory
     uiDir: string;
     // ... DiscoverViewersFS options
   };
@@ -157,8 +161,8 @@ interface RegisterViewersSummary {
 }
 ```
 
-Viewers whose built dist is not found are skipped with a warning (not an error), so
-the server can start in dev without running the UI build.
+Viewers whose built dist is not found are skipped with a warning (not an error),
+so the server can start in dev without running the UI build.
 
 ---
 
@@ -194,7 +198,8 @@ getFetchHandler(
 ```
 
 Returns a Web Standard `(req: Request) => Promise<Response>` handler without
-binding a port. Use to embed the MCP HTTP stack inside Hono, Fresh, Express, etc.
+binding a port. Use to embed the MCP HTTP stack inside Hono, Fresh, Express,
+etc.
 
 ```typescript
 type FetchHandler = (req: Request) => Promise<Response>;
@@ -226,7 +231,8 @@ getMetrics(): QueueMetrics
 getServerMetrics(): ServerMetricsSnapshot
 ```
 
-Full snapshot: tool call counters, duration histograms, active session/SSE gauges.
+Full snapshot: tool call counters, duration histograms, active session/SSE
+gauges.
 
 #### getPrometheusMetrics
 
@@ -254,8 +260,8 @@ Returns `null` when rate limiting is not configured.
 sendToSession(sessionId: string, message: Record<string, unknown>): void
 ```
 
-Push a JSON-RPC message to all SSE clients in a session. Used for server-initiated
-notifications in streaming scenarios.
+Push a JSON-RPC message to all SSE clients in a session. Used for
+server-initiated notifications in streaming scenarios.
 
 #### broadcastNotification
 
@@ -281,8 +287,8 @@ getSSEClientCount(): number
 getClientMcpAppsCapability(): McpAppsClientCapability | undefined
 ```
 
-Read the MCP Apps capability advertised by the connected client. Returns `undefined`
-if the client did not advertise MCP Apps support (did not send the
+Read the MCP Apps capability advertised by the connected client. Returns
+`undefined` if the client did not advertise MCP Apps support (did not send the
 `io.modelcontextprotocol/ui` extension in `clientCapabilities.extensions`).
 
 ```typescript
@@ -307,11 +313,11 @@ getSamplingBridge(): SamplingBridge | null
 interface MCPTool {
   name: string;
   description: string;
-  inputSchema: Record<string, unknown>;   // JSON Schema
+  inputSchema: Record<string, unknown>; // JSON Schema
   outputSchema?: Record<string, unknown>; // JSON Schema for structured output
   annotations?: ToolAnnotations;
-  _meta?: MCPToolMeta;                    // UI metadata for MCP Apps
-  requiredScopes?: string[];              // OAuth scopes (enforced by scope middleware)
+  _meta?: MCPToolMeta; // UI metadata for MCP Apps
+  requiredScopes?: string[]; // OAuth scopes (enforced by scope middleware)
 }
 
 interface MCPToolMeta {
@@ -319,9 +325,9 @@ interface MCPToolMeta {
 }
 
 interface McpUiToolMeta {
-  resourceUri: string;     // MUST use ui:// scheme
-  emits?: string[];        // PML: events this UI emits
-  accepts?: string[];      // PML: events this UI accepts
+  resourceUri: string; // MUST use ui:// scheme
+  emits?: string[]; // PML: events this UI emits
+  accepts?: string[]; // PML: events this UI accepts
   visibility?: ("model" | "app")[];
 }
 
@@ -337,12 +343,14 @@ interface ToolAnnotations {
 ### ToolHandler & StructuredToolResult
 
 ```typescript
-type ToolHandler = (args: Record<string, unknown>) => Promise<unknown> | unknown;
+type ToolHandler = (
+  args: Record<string, unknown>,
+) => Promise<unknown> | unknown;
 
 type ToolErrorMapper = (error: unknown, toolName: string) => string | null;
 
 interface StructuredToolResult {
-  content: string;                           // → content[0].text (for the LLM)
+  content: string; // → content[0].text (for the LLM)
   structuredContent: Record<string, unknown>; // → structuredContent (machine-readable)
 }
 ```
@@ -351,10 +359,10 @@ interface StructuredToolResult {
 
 ```typescript
 interface MCPResource {
-  uri: string;           // SHOULD use ui:// scheme
+  uri: string; // SHOULD use ui:// scheme
   name: string;
   description?: string;
-  mimeType?: string;     // Default: MCP_APP_MIME_TYPE
+  mimeType?: string; // Default: MCP_APP_MIME_TYPE
 }
 
 type ResourceHandler = (uri: URL) => Promise<ResourceContent> | ResourceContent;
@@ -375,11 +383,11 @@ const MCP_APPS_PROTOCOL_VERSION = "2026-01-26";
 ```typescript
 interface HttpServerOptions {
   port: number;
-  hostname?: string;                    // Default: "0.0.0.0"
-  cors?: boolean;                       // Default: true
-  corsOrigins?: "*" | string[];         // Default: "*" (use allowlist in production)
-  maxBodyBytes?: number | null;         // Default: 1_000_000; null = no limit
-  requireAuth?: boolean;                // Default: false; true = throw if no auth configured
+  hostname?: string; // Default: "0.0.0.0"
+  cors?: boolean; // Default: true
+  corsOrigins?: "*" | string[]; // Default: "*" (use allowlist in production)
+  maxBodyBytes?: number | null; // Default: 1_000_000; null = no limit
+  requireAuth?: boolean; // Default: false; true = throw if no auth configured
   ipRateLimit?: HttpRateLimitOptions;
   customRoutes?: Array<{
     method: "get" | "post";
@@ -387,7 +395,7 @@ interface HttpServerOptions {
     handler: (req: Request) => Response | Promise<Response>;
   }>;
   onListen?: (info: { hostname: string; port: number }) => void;
-  embedded?: boolean;                   // Skip port binding, use embeddedHandlerCallback
+  embedded?: boolean; // Skip port binding, use embeddedHandlerCallback
   embeddedHandlerCallback?: (handler: FetchHandler) => void;
 }
 ```
@@ -398,8 +406,8 @@ interface HttpServerOptions {
 interface RateLimitOptions {
   maxRequests: number;
   windowMs: number;
-  keyExtractor?: (ctx: RateLimitContext) => string;  // Default: "default" (global)
-  onLimitExceeded?: "reject" | "wait";               // Default: "wait"
+  keyExtractor?: (ctx: RateLimitContext) => string; // Default: "default" (global)
+  onLimitExceeded?: "reject" | "wait"; // Default: "wait"
 }
 
 interface RateLimitContext {
@@ -443,7 +451,7 @@ interface AuthInfo {
   scopes: string[];
   claims?: Record<string, unknown>;
   expiresAt?: number;
-  tenantId?: string;   // set by createMultiTenantMiddleware
+  tenantId?: string; // set by createMultiTenantMiddleware
 }
 ```
 
@@ -453,14 +461,17 @@ interface AuthInfo {
 interface MiddlewareContext {
   toolName: string;
   args: Record<string, unknown>;
-  request?: Request;     // HTTP transport only
-  sessionId?: string;    // HTTP transport only
+  request?: Request; // HTTP transport only
+  sessionId?: string; // HTTP transport only
   [key: string]: unknown; // extensible
 }
 
 type MiddlewareResult = unknown;
 type NextFunction = () => Promise<MiddlewareResult>;
-type Middleware = (ctx: MiddlewareContext, next: NextFunction) => Promise<MiddlewareResult>;
+type Middleware = (
+  ctx: MiddlewareContext,
+  next: NextFunction,
+) => Promise<MiddlewareResult>;
 ```
 
 ### QueueMetrics
@@ -481,7 +492,9 @@ interface SamplingClient {
 
 interface SamplingParams {
   messages: Array<{ role: "user" | "assistant"; content: string }>;
-  tools?: Array<{ name: string; description: string; inputSchema: Record<string, unknown> }>;
+  tools?: Array<
+    { name: string; description: string; inputSchema: Record<string, unknown> }
+  >;
   toolChoice?: "auto" | "required" | "none";
   maxTokens?: number;
   maxIterations?: number;
@@ -489,7 +502,14 @@ interface SamplingParams {
 }
 
 interface SamplingResult {
-  content: Array<{ type: string; text?: string; name?: string; input?: Record<string, unknown> }>;
+  content: Array<
+    {
+      type: string;
+      text?: string;
+      name?: string;
+      input?: Record<string, unknown>;
+    }
+  >;
   stopReason: "end_turn" | "tool_use" | "max_tokens";
 }
 ```
@@ -551,15 +571,16 @@ bridge.cancelAll(): void
 
 ```typescript
 import {
-  createGoogleAuthProvider,    // issuer: https://accounts.google.com
-  createAuth0AuthProvider,     // issuer: https://{domain}/
-  createGitHubAuthProvider,    // issuer: https://token.actions.githubusercontent.com
-  createOIDCAuthProvider,      // generic, any OIDC-compliant provider
-  JwtAuthProvider,             // underlying class (use presets when possible)
+  createAuth0AuthProvider, // issuer: https://{domain}/
+  createGitHubAuthProvider, // issuer: https://token.actions.githubusercontent.com
+  createGoogleAuthProvider, // issuer: https://accounts.google.com
+  createOIDCAuthProvider, // generic, any OIDC-compliant provider
+  JwtAuthProvider, // underlying class (use presets when possible)
 } from "@casys/mcp-server";
 ```
 
 All presets accept `PresetOptions`:
+
 ```typescript
 interface PresetOptions {
   audience: string;
@@ -568,8 +589,8 @@ interface PresetOptions {
 }
 ```
 
-Auth0 additionally requires `domain: string`.
-`createOIDCAuthProvider` accepts `JwtAuthProviderOptions` (includes `issuer`, `jwksUri`, `authorizationServers`).
+Auth0 additionally requires `domain: string`. `createOIDCAuthProvider` accepts
+`JwtAuthProviderOptions` (includes `issuer`, `jwksUri`, `authorizationServers`).
 
 ### Multi-tenant auth
 
@@ -577,7 +598,9 @@ Auth0 additionally requires `domain: string`.
 import { createMultiTenantMiddleware } from "@casys/mcp-server";
 
 app.use(createMultiTenantMiddleware({
-  resolver: async (ctx) => ({ tenantId: ctx.authInfo.claims?.tenant_id as string }),
+  resolver: async (ctx) => ({
+    tenantId: ctx.authInfo.claims?.tenant_id as string,
+  }),
 }));
 ```
 
@@ -587,10 +610,10 @@ app.use(createMultiTenantMiddleware({
 
 ```typescript
 import {
-  MCP_APP_MIME_TYPE,          // "text/html;profile=mcp-app"
-  MCP_APPS_EXTENSION_ID,      // "io.modelcontextprotocol/ui"
-  MCP_APPS_PROTOCOL_VERSION,  // "2026-01-26"
-  getMcpAppsCapability,       // standalone reader for clientCapabilities
+  getMcpAppsCapability, // standalone reader for clientCapabilities
+  MCP_APP_MIME_TYPE, // "text/html;profile=mcp-app"
+  MCP_APPS_EXTENSION_ID, // "io.modelcontextprotocol/ui"
+  MCP_APPS_PROTOCOL_VERSION, // "2026-01-26"
 } from "@casys/mcp-server";
 ```
 
@@ -605,7 +628,7 @@ getMcpAppsCapability(clientCapabilities: Record<string, unknown> | null | undefi
 ## MCP Compose (re-exported)
 
 ```typescript
-import { uiMeta, composeEvents, COMPOSE_EVENT_METHOD } from "@casys/mcp-server";
+import { COMPOSE_EVENT_METHOD, composeEvents, uiMeta } from "@casys/mcp-server";
 ```
 
 `uiMeta` and `composeEvents` are re-exported from `@casys/mcp-compose/sdk` for
@@ -639,12 +662,12 @@ Launches the MCP Inspector UI for interactive debugging.
 
 ```typescript
 import {
+  endToolCallSpan,
   getServerTracer,
   isOtelEnabled,
-  startToolCallSpan,
-  endToolCallSpan,
   recordAuthEvent,
   ServerMetrics,
+  startToolCallSpan,
 } from "@casys/mcp-server";
 ```
 

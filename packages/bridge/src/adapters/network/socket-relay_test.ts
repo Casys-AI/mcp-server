@@ -520,7 +520,7 @@ Deno.test("attachNetworkTunnelSocket closes idle sockets that never send hello",
 });
 
 function withTimeout<T>(promise: Promise<T>, message: string): Promise<T> {
-  let timer: number | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new Error(message)), 20);
   });

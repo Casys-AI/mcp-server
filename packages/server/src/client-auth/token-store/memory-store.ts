@@ -9,19 +9,24 @@ import type { StoredCredentials, TokenStore } from "../types.ts";
 export class MemoryTokenStore implements TokenStore {
   private store = new Map<string, StoredCredentials>();
 
-  async get(serverUrl: string): Promise<StoredCredentials | null> {
-    return this.store.get(serverUrl) ?? null;
+  // Not `async`: the Map operations are synchronous. The interface returns
+  // Promises so a real store can be I/O-backed; `Promise.resolve` satisfies it
+  // without claiming an await point that does not exist.
+  get(serverUrl: string): Promise<StoredCredentials | null> {
+    return Promise.resolve(this.store.get(serverUrl) ?? null);
   }
 
-  async set(serverUrl: string, credentials: StoredCredentials): Promise<void> {
+  set(serverUrl: string, credentials: StoredCredentials): Promise<void> {
     this.store.set(serverUrl, credentials);
+    return Promise.resolve();
   }
 
-  async delete(serverUrl: string): Promise<void> {
+  delete(serverUrl: string): Promise<void> {
     this.store.delete(serverUrl);
+    return Promise.resolve();
   }
 
-  async list(): Promise<string[]> {
-    return [...this.store.keys()];
+  list(): Promise<string[]> {
+    return Promise.resolve([...this.store.keys()]);
   }
 }

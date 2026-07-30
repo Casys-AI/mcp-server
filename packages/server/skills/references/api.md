@@ -252,33 +252,6 @@ Returns `null` when rate limiting is not configured.
 
 ---
 
-### SSE / Session methods
-
-#### sendToSession
-
-```typescript
-sendToSession(sessionId: string, message: Record<string, unknown>): void
-```
-
-Push a JSON-RPC message to all SSE clients in a session. Used for
-server-initiated notifications in streaming scenarios.
-
-#### broadcastNotification
-
-```typescript
-broadcastNotification(method: string, params?: Record<string, unknown>): void
-```
-
-Send a notification to all connected SSE clients across all sessions.
-
-#### getSSEClientCount
-
-```typescript
-getSSEClientCount(): number
-```
-
----
-
 ### MCP Apps methods
 
 #### getClientMcpAppsCapability
@@ -295,12 +268,6 @@ Read the MCP Apps capability advertised by the connected client. Returns
 interface McpAppsClientCapability {
   mimeTypes?: string[];
 }
-```
-
-#### getSamplingBridge
-
-```typescript
-getSamplingBridge(): SamplingBridge | null
 ```
 
 ---
@@ -554,15 +521,6 @@ interface ValidationResult {
   valid: boolean;
   errors?: ValidationError[];
 }
-```
-
-### SamplingBridge
-
-```typescript
-import { SamplingBridge } from "@casys/mcp-server";
-
-const bridge = new SamplingBridge(samplingClient);
-bridge.cancelAll(): void
 ```
 
 ---

@@ -80,8 +80,9 @@ export interface McpAppOptions {
   validateSchema?: boolean;
 
   /**
-   * Enable sampling support for agentic tools (default: false)
-   * @deprecated Deprecated (MCP 2026-07-28). Removal after 2027-07-28. Prefer the explicit handle-based pattern.
+   * @deprecated No-op as of 0.24.0. The SamplingBridge was removed in the
+   * MCP 2026-07-28 spec drop. Passing this option has zero effect and emits
+   * a console warning at startup. Will be removed in 0.25.0.
    */
   enableSampling?: boolean;
 
@@ -92,8 +93,9 @@ export interface McpAppOptions {
   instructions?: string;
 
   /**
-   * Sampling client implementation (required if enableSampling is true)
-   * @deprecated Deprecated (MCP 2026-07-28). Removal after 2027-07-28. Prefer the explicit handle-based pattern.
+   * @deprecated No-op as of 0.24.0. The SamplingBridge was removed in the
+   * MCP 2026-07-28 spec drop. Passing this option has zero effect and emits
+   * a console warning at startup. Will be removed in 0.25.0.
    */
   samplingClient?: SamplingClient;
 
@@ -625,10 +627,11 @@ export type ToolErrorMapper = (
 ) => string | null;
 
 /**
- * Sampling client interface for bidirectional LLM delegation
- * Compatible with the agentic sampling protocol (SEP-1577)
+ * Sampling client interface — no-op as of 0.24.0. The SamplingBridge was
+ * removed with MCP 2026-07-28. This type is kept for source compatibility
+ * only and will be removed in 0.25.0.
  *
- * @deprecated Deprecated (MCP 2026-07-28). Removal after 2027-07-28. Prefer the explicit handle-based pattern.
+ * @deprecated No-op as of 0.24.0. Will be removed in 0.25.0.
  */
 export interface SamplingClient {
   /**
@@ -640,10 +643,9 @@ export interface SamplingClient {
 }
 
 /**
- * Parameters for sampling request
- * Compatible with MCP sampling protocol
+ * Parameters for sampling request — no-op as of 0.24.0.
  *
- * @deprecated Deprecated (MCP 2026-07-28). Removal after 2027-07-28. Prefer the explicit handle-based pattern.
+ * @deprecated No-op as of 0.24.0. Will be removed in 0.25.0.
  */
 export interface SamplingParams {
   messages: Array<{ role: "user" | "assistant"; content: string }>;
@@ -663,10 +665,9 @@ export interface SamplingParams {
 }
 
 /**
- * Result from sampling request
- * Compatible with MCP sampling protocol
+ * Result from sampling request — no-op as of 0.24.0.
  *
- * @deprecated Deprecated (MCP 2026-07-28). Removal after 2027-07-28. Prefer the explicit handle-based pattern.
+ * @deprecated No-op as of 0.24.0. Will be removed in 0.25.0.
  */
 export interface SamplingResult {
   content: Array<{

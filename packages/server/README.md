@@ -22,19 +22,18 @@ rate-limit → auth → custom middleware → scope-check → validation → bac
 The official SDK gives you the protocol. This framework gives you the production
 stack.
 
-|                         | Official SDK |       @casys/mcp-server        |
-| ----------------------- | :----------: | :----------------------------: |
-| MCP protocol compliance |     Yes      |              Yes               |
-| Concurrency control     |      --      |   3 backpressure strategies    |
-| Middleware pipeline     |      --      |     Composable onion model     |
-| OAuth2 / JWT auth       |      --      |   Built-in + 4 OIDC presets    |
-| Rate limiting           |      --      |   Sliding window, per-client   |
-| Schema validation       |      --      |       JSON Schema (ajv)        |
-| Streamable HTTP + SSE   |    Manual    |  Built-in session management   |
-| OpenTelemetry tracing   |      --      | Automatic spans per tool call  |
-| Prometheus metrics      |      --      |      `/metrics` endpoint       |
-| MCP Apps (UI resources) |    Manual    | `registerResource()` + `ui://` |
-| Sampling bridge         |      --      |  Bidirectional LLM delegation  |
+|                             | Official SDK |       @casys/mcp-server        |
+| --------------------------- | :----------: | :----------------------------: |
+| MCP protocol compliance     |     Yes      |              Yes               |
+| Concurrency control         |      --      |   3 backpressure strategies    |
+| Middleware pipeline         |      --      |     Composable onion model     |
+| OAuth2 / JWT auth           |      --      |   Built-in + 4 OIDC presets    |
+| Rate limiting               |      --      |   Sliding window, per-client   |
+| Schema validation           |      --      |       JSON Schema (ajv)        |
+| Streamable HTTP (stateless) |    Manual    |    `startHttp()` / handler     |
+| OpenTelemetry tracing       |      --      | Automatic spans per tool call  |
+| Prometheus metrics          |      --      |      `/metrics` endpoint       |
+| MCP Apps (UI resources)     |    Manual    | `registerResource()` + `ui://` |
 
 ---
 
@@ -134,7 +133,7 @@ await server.startHttp({ port: 3000 });
 // GET  /health   → { status: "ok" }
 // GET  /metrics  → Prometheus text format
 // POST /mcp      → JSON-RPC (tools/call, tools/list, ...)
-// GET  /mcp      → SSE stream (server→client notifications)
+// GET  /mcp      → 405 Method Not Allowed (stateless transport)
 ```
 
 **Secure-by-default HTTP options:**
@@ -313,8 +312,6 @@ mcp_server_tool_call_duration_ms_bucket{le="50"} 892
 mcp_server_tool_call_duration_ms_bucket{le="100"} 987
 mcp_server_tool_calls_by_name{tool="query",status="success"} 512
 mcp_server_active_requests 3
-mcp_server_active_sessions 42
-mcp_server_sse_clients 7
 mcp_server_uptime_seconds 86400
 ```
 
@@ -479,11 +476,6 @@ server.getToolCount();
 server.getToolNames();
 server.getResourceCount();
 server.getResourceUris();
-server.getSSEClientCount();
-
-// SSE (Streamable HTTP)
-server.sendToSession(sessionId, message);
-server.broadcastNotification(method, params);
 ```
 
 ### Standalone Components
@@ -530,7 +522,6 @@ When running with `startHttp()`:
 | Method | Path                                    | Description                                                 |
 | ------ | --------------------------------------- | ----------------------------------------------------------- |
 | `POST` | `/mcp` or `/`                           | JSON-RPC endpoint (initialize, tools/call, tools/list, ...) |
-| `GET`  | `/mcp` or `/`                           | SSE stream (server→client notifications)                    |
 | `GET`  | `/health`                               | Health check                                                |
 | `GET`  | `/metrics`                              | Prometheus metrics                                          |
 | `GET`  | `/.well-known/oauth-protected-resource` | RFC 9728 metadata (when auth enabled)                       |

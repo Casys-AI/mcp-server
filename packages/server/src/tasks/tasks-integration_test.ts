@@ -348,6 +348,62 @@ Deno.test("tasks - cancel reports through and the task reaches a terminal state"
   }
 });
 
+// ── Version-gate invariant ────────────────────────────────────────────────────
+// The Tasks extension is 2026-only. The version gate at STATELESS_SUPPORTED_VERSIONS
+// (mcp-app.ts) is the enforcement point: any request arriving with an unsupported
+// protocol version is rejected before reaching the method-dispatch layer.
+// This test documents that invariant so a future addition of a pre-2026 version
+// to STATELESS_SUPPORTED_VERSIONS would produce a failing test that forces
+// a conscious review of the Tasks gate.
+
+Deno.test("tasks - a peer with an unsupported protocol version is rejected at the version gate, not by the tasks layer", async () => {
+  // Spec MUST NOT: "A server MUST NOT serve Tasks extension methods to a client
+  // that negotiated a pre-2026 protocol version". The gate is upstream
+  // (STATELESS_SUPPORTED_VERSIONS check), so the error code is -32022
+  // (unsupported protocol version), never -32021 (missing capability).
+  const { http, url } = await start(buildServer({ declareExtension: true }));
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "MCP-Protocol-Version": "2025-11-25",
+        "Mcp-Method": "tasks/get",
+        "Mcp-Name": "some-task",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tasks/get",
+        params: {
+          taskId: "some-task",
+          _meta: {
+            [PROTO_KEY]: "2025-11-25",
+            [CAPS_KEY]: WITH_TASKS,
+          },
+        },
+      }),
+    });
+    assertEquals(res.status, 400);
+    const data = await res.json();
+    // Must be a version error, not a capability error (-32021) or method-not-found (-32601).
+    // If someone adds "2025-11-25" back to STATELESS_SUPPORTED_VERSIONS this
+    // test will catch the regression.
+    assertEquals(
+      data.error.code,
+      -32022,
+      "must be rejected by the version gate",
+    );
+    assertEquals(
+      Array.isArray(data.error.data?.supported),
+      true,
+      "error.data.supported must list the server's accepted versions",
+    );
+  } finally {
+    await http.shutdown();
+  }
+});
+
 // ── Findings from the final adversarial review ───────────────────────────────
 
 Deno.test("tasks - a task is bound to its creator; another caller cannot reach it", async () => {

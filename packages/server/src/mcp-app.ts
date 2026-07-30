@@ -1,8 +1,8 @@
 /**
  * McpApp — Hono-style framework for MCP servers
  *
- * High-performance MCP server with built-in concurrency control,
- * backpressure, and optional sampling support.
+ * High-performance MCP server with built-in concurrency control
+ * and backpressure.
  *
  * Wraps the official @modelcontextprotocol/sdk with production-ready
  * middleware, auth, and observability features.
@@ -546,7 +546,6 @@ function canonicaliseWireResult(
  * - Wraps official @modelcontextprotocol/sdk
  * - Concurrency limiting (default: 10 max concurrent)
  * - Multiple backpressure strategies (sleep/queue/reject)
- * - Optional bidirectional sampling support
  * - Metrics for monitoring
  * - Graceful shutdown
  *
@@ -665,6 +664,17 @@ export class McpApp {
   constructor(options: McpAppOptions) {
     this.options = options;
     this.name = options.name;
+
+    // enableSampling / samplingClient are no-ops since 0.24.0 (SamplingBridge
+    // was removed with MCP 2026-07-28). Warn loudly so migrating consumers
+    // know immediately rather than discovering it silently in production.
+    if (options.enableSampling || options.samplingClient) {
+      (options.logger ?? console.error)(
+        "[McpApp] WARNING: enableSampling and samplingClient have no effect " +
+          "as of 0.24.0 — the SamplingBridge was removed with MCP 2026-07-28. " +
+          "Remove these options from your McpApp constructor call.",
+      );
+    }
 
     const ttlMs = options.cache?.ttlMs ?? 0;
     if (!Number.isInteger(ttlMs) || ttlMs < 0) {
@@ -2785,10 +2795,9 @@ export class McpApp {
         // non-declaring client issuing tasks/get, tasks/update OR tasks/cancel.
         // Guarding creation alone would still let such a client poll and cancel
         // tasks it could never have been handed.
-        // Version-gated as well as capability-gated: a 2026-only extension must
-        // not be reachable by a peer that negotiated 2025-11-25, which the Tasks
-        // spec states as a MUST NOT. Falling through leaves it a 404, which is
-        // what an unimplemented method looks like from that peer's perspective.
+        // Capability-gated: a non-declaring client must not reach tasks/*.
+        // The version gate (STATELESS_SUPPORTED_VERSIONS) upstream of this block
+        // already rejects any peer running a pre-2026 protocol version.
         if (
           this.taskStore !== null &&
           (method === "tasks/get" || method === "tasks/update" ||
@@ -3115,13 +3124,12 @@ export class McpApp {
    *
    * The returned handler accepts a Web Standard {@link Request} and returns
    * a Web Standard {@link Response}. It exposes the same routes as
-   * {@link startHttp}: `POST /mcp`, `GET /mcp` (SSE), `GET /health`,
-   * `GET /metrics`, and `GET /.well-known/oauth-protected-resource`.
+   * {@link startHttp}: `POST /mcp`, `GET /health`, `GET /metrics`, and
+   * `GET /.well-known/oauth-protected-resource`. `GET /mcp` returns 405.
    *
    * Auth, multi-tenant middleware, scope checks, and rate limiting are all
-   * applied identically. The session cleanup timer and OTel hooks are
-   * started, so the server is fully live after this returns — just without
-   * its own listening socket.
+   * applied identically. OTel hooks are started, so the server is fully
+   * live after this returns — just without its own listening socket.
    *
    * Multi-tenant SaaS pattern: cache one `McpApp` per tenant
    * and call `getFetchHandler()` once per server, then dispatch each

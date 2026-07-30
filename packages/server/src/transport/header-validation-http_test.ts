@@ -783,3 +783,46 @@ Deno.test("AX - a malformed mrtr.signingKey fails at construction, not on first 
     );
   }
 });
+
+Deno.test("AX - a malformed clientCapabilities is rejected at ingress, not deep in a handler", () => {
+  // `!== undefined` accepted null, a scalar or an array, which then reached the
+  // handler as a supposed ClientCapabilities and failed later as -32603 — an
+  // internal error for what is plainly a malformed request.
+  return (async () => {
+    const { http, url } = await start(buildServer());
+    try {
+      for (const bad of [null, "caps", 42, ["elicitation"]]) {
+        const res = await post(
+          url,
+          { "MCP-Protocol-Version": V, "Mcp-Method": "tools/list" },
+          {
+            jsonrpc: "2.0",
+            id: 1,
+            method: "tools/list",
+            params: { _meta: { [PROTO_KEY]: V, [CAPS_KEY]: bad } },
+          },
+        );
+        const data = await res.json();
+        assertEquals(res.status, 400, `${JSON.stringify(bad)} must be refused`);
+        assertEquals(data.error.code, -32602);
+        assertEquals(data.error.data.problem, "missing_field");
+      }
+
+      // `{}` is valid: it declares no capabilities.
+      const empty = await post(
+        url,
+        { "MCP-Protocol-Version": V, "Mcp-Method": "tools/list" },
+        {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/list",
+          params: { _meta: { [PROTO_KEY]: V, [CAPS_KEY]: {} } },
+        },
+      );
+      assertEquals(empty.status, 200);
+      await empty.json();
+    } finally {
+      await http.shutdown();
+    }
+  })();
+});

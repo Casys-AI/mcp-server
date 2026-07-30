@@ -2077,9 +2077,13 @@ export class McpApp {
           //
           // Checked after the version so a client on an older revision, which
           // never had this field, still gets the clearer version error first.
-          const capabilitiesPresent = isRecord(params) &&
+          // Must be an OBJECT, not merely present. `!== undefined` accepted
+          // `null`, a scalar or an array, which then reached the handler as a
+          // supposed ClientCapabilities and failed later as -32603 — an internal
+          // error for what is plainly a malformed request.
+          const capabilitiesValid = isRecord(params) &&
             isRecord(params["_meta"]) &&
-            params["_meta"][STATELESS_CLIENT_CAPABILITIES_KEY] !== undefined;
+            isRecord(params["_meta"][STATELESS_CLIENT_CAPABILITIES_KEY]);
 
           if (typeof clientVersion !== "string") {
             // Header uses fallback version — no negotiated version available yet
@@ -2117,7 +2121,7 @@ export class McpApp {
             );
           }
 
-          if (clientVersion === SPEC_2026_07_28 && !capabilitiesPresent) {
+          if (clientVersion === SPEC_2026_07_28 && !capabilitiesValid) {
             return jsonRpcResponse(
               {
                 jsonrpc: "2.0",
@@ -2125,7 +2129,14 @@ export class McpApp {
                 error: {
                   code: JSONRPC_INVALID_PARAMS,
                   message:
-                    `Missing required field '${STATELESS_CLIENT_CAPABILITIES_KEY}' in params._meta`,
+                    `Missing or malformed field '${STATELESS_CLIENT_CAPABILITIES_KEY}' in params._meta: expected an object`,
+                  data: {
+                    problem: "missing_field",
+                    bodyField:
+                      `params._meta['${STATELESS_CLIENT_CAPABILITIES_KEY}']`,
+                    recovery:
+                      "Send a ClientCapabilities object; `{}` is valid and means no capabilities declared.",
+                  },
                 },
               },
               400,
@@ -2410,9 +2421,34 @@ export class McpApp {
           const ingressDigest = mrtrEnabled
             ? await paramsDigest({ arguments: args, name: toolName })
             : "";
-          const echoedResponses = mrtrEnabled && isRecord(params) &&
-              isRecord(params["inputResponses"])
+          // A scalar or array `inputResponses` was silently dropped, so a client
+          // sending the wrong shape saw its answers ignored and the same
+          // InputRequiredResult come back, with nothing to indicate why.
+          const rawResponses = mrtrEnabled && isRecord(params)
             ? params["inputResponses"]
+            : undefined;
+          if (rawResponses !== undefined && !isRecord(rawResponses)) {
+            return jsonRpcResponse(
+              {
+                jsonrpc: "2.0",
+                id,
+                error: {
+                  code: JSONRPC_INVALID_PARAMS,
+                  message:
+                    "inputResponses must be an object keyed by the ids from inputRequests",
+                  data: {
+                    problem: "malformed_field",
+                    bodyField: "params.inputResponses",
+                    recovery:
+                      "Send an object whose keys match the inputRequests keys the server issued.",
+                  },
+                },
+              },
+              400,
+            );
+          }
+          const echoedResponses = isRecord(rawResponses)
+            ? rawResponses
             : undefined;
           const echoedState = mrtrEnabled && isRecord(params) &&
               typeof params["requestState"] === "string"

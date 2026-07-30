@@ -456,3 +456,33 @@ Deno.test("mrtr - an argument-normalising middleware does not break a legitimate
     await http.shutdown();
   }
 });
+
+Deno.test("mrtr - a malformed inputResponses is rejected rather than ignored", async () => {
+  // Silently dropping the wrong shape meant a client saw its answers ignored and
+  // the same InputRequiredResult come back, with nothing to indicate why.
+  const { server } = buildServer({ signingKey: KEY });
+  const { http, url } = await start(server);
+  try {
+    const first = await (await call(url, "ask")).json();
+    const requestState = first.result.requestState as string;
+
+    for (const bad of ["answers", 42, ["a"], true]) {
+      const res = await call(
+        url,
+        "ask",
+        {
+          requestState,
+          inputResponses: bad,
+        },
+        WITH_ELICITATION,
+        2,
+      );
+      const data = await res.json();
+      assertEquals(res.status, 400, `${JSON.stringify(bad)} must be refused`);
+      assertEquals(data.error.data.problem, "malformed_field");
+      assertEquals(data.error.data.bodyField, "params.inputResponses");
+    }
+  } finally {
+    await http.shutdown();
+  }
+});

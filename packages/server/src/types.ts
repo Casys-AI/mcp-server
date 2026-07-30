@@ -155,9 +155,11 @@ export interface McpAppOptions {
    *   request. `GET /mcp` returns 405 (Track G replaces the SSE channel with
    *   `subscriptions/listen`).
    *
-   * The mode also gates the spec-2026-07-28 result envelope: `"stateless"`
-   * results carry `resultType` and `_meta` serverInfo, `"stateful"` ones stay on
-   * the 2025-11-25 shape.
+   * The mode does **not** gate the spec-2026-07-28 result envelope — the
+   * negotiated version does. `"stateless"` also accepts `2025-06-18` and
+   * `2025-11-25`, and a peer on one of those gets the legacy shape over this same
+   * transport. `"stateful"` advertises `2025-06-18` and negotiates nothing
+   * per-request, so it never carries the envelope.
    *
    * Default: `"stateful"`.
    */

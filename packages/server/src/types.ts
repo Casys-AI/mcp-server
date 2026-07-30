@@ -190,6 +190,20 @@ export interface McpAppOptions {
   };
 
   /**
+   * Multi Round-Trip Requests (spec 2026-07-28, SEP-2322).
+   *
+   * Configures how `requestState` is protected when a tool handler asks the
+   * client for input mid-call. Only consulted on the stateless transport with a
+   * negotiated `2026-07-28`: MRTR replaces the server-initiated request pattern
+   * that earlier revisions still use, so it has no meaning on the legacy path.
+   *
+   * Without `signingKey`, `requestState` travels unprotected and the server logs
+   * a warning at startup. That is only acceptable when tampering with it can
+   * cause nothing worse than the request failing.
+   */
+  mrtr?: import("./mrtr/mod.ts").MrtrOptions;
+
+  /**
    * Protocol extensions this server declares (spec 2026-07-28).
    *
    * Keyed by reverse-DNS extension identifier — e.g.
@@ -517,6 +531,28 @@ export interface ToolHandlerContext {
   readonly authInfo?: import("./auth/types.ts").AuthInfo;
   readonly clientInfo?: Implementation;
   readonly clientCapabilities?: ClientCapabilities;
+
+  /**
+   * Answers to a previous `InputRequiredResult`, keyed by the ids the server
+   * assigned (spec 2026-07-28 MRTR).
+   *
+   * Present only on a retry. Read from `params.inputResponses` — a sibling of
+   * `_meta`, not a member of it, unlike every other per-request field. Getting
+   * that wrong yields a silent `undefined` even when the client sent them.
+   */
+  readonly inputResponses?: Record<string, unknown>;
+
+  /**
+   * True when the client echoed a `requestState` that passed integrity
+   * verification, so the handler may trust this is a legitimate retry of its own
+   * earlier request.
+   *
+   * The token carries no application state — it binds the principal, method,
+   * argument digest and expiry. Since the digest guarantees the arguments are
+   * byte-identical to the original call, a handler reconstructs its context from
+   * those arguments rather than from the token.
+   */
+  readonly retryVerified?: boolean;
 
   /**
    * Log level requested for this call (spec 2026-07-28), read from

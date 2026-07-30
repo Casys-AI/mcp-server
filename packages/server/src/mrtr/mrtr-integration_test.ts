@@ -1,0 +1,362 @@
+/**
+ * Track B — MRTR over the wire.
+ *
+ * The pure module proves seal/verify in isolation. This proves the transport
+ * actually calls it: that a tampered, expired or cross-request token is refused
+ * before the handler runs, that `resultType` survives as `"input_required"`, and
+ * that the retry fields are read from `params` rather than `params._meta`.
+ *
+ * @module lib/server/mrtr/mrtr-integration_test
+ */
+
+import { assertEquals, assertExists, assertStringIncludes } from "@std/assert";
+import { McpApp } from "../mcp-app.ts";
+import type { ToolHandler } from "../types.ts";
+
+const PROTO_KEY = "io.modelcontextprotocol/protocolVersion";
+const CAPS_KEY = "io.modelcontextprotocol/clientCapabilities";
+const V = "2026-07-28";
+
+/** 32 bytes of hex — a deterministic key keeps these tests reproducible. */
+const KEY = "a".repeat(64);
+
+/** Client capabilities declaring elicitation support. */
+const WITH_ELICITATION = { elicitation: {} };
+
+interface Seen {
+  inputResponses?: Record<string, unknown>;
+  retryVerified?: boolean;
+}
+
+function buildServer(opts: { signingKey?: string } = {}) {
+  const seen: Seen = {};
+  const server = new McpApp({
+    name: "mrtr-integration",
+    version: "1.0.0",
+    logger: () => {},
+    transport: "stateless",
+    ...(opts.signingKey !== undefined
+      ? { mrtr: { signingKey: opts.signingKey } }
+      : {}),
+  });
+
+  const askThenAnswer: ToolHandler = (_args, ctx) => {
+    seen.inputResponses = ctx?.inputResponses;
+    seen.retryVerified = ctx?.retryVerified;
+
+    // Second leg: the client came back with answers.
+    if (ctx?.inputResponses !== undefined) {
+      return `got ${JSON.stringify(ctx.inputResponses)}`;
+    }
+    // First leg: ask for a username.
+    return {
+      resultType: "input_required",
+      inputRequests: {
+        github_login: {
+          method: "elicitation/create",
+          params: {
+            mode: "form",
+            message: "Your GitHub username?",
+            requestedSchema: {
+              type: "object",
+              properties: { name: { type: "string" } },
+              required: ["name"],
+            },
+          },
+        },
+      },
+    };
+  };
+
+  server.registerTools(
+    [
+      {
+        name: "ask",
+        description: "Asks for input",
+        inputSchema: { type: "object" },
+      },
+      {
+        name: "bad_signal",
+        description: "Empty signal",
+        inputSchema: { type: "object" },
+      },
+      {
+        name: "needs_sampling",
+        description: "Wants sampling",
+        inputSchema: { type: "object" },
+      },
+    ],
+    new Map<string, ToolHandler>([
+      ["ask", askThenAnswer],
+      // Violates server rule 6: neither inputRequests nor requestState.
+      ["bad_signal", () => ({ resultType: "input_required" })],
+      // Asks for a capability the test client will not declare.
+      ["needs_sampling", () => ({
+        resultType: "input_required",
+        inputRequests: {
+          summary: {
+            method: "sampling/createMessage",
+            params: { messages: [], maxTokens: 10 },
+          },
+        },
+      })],
+    ]),
+  );
+  return { server, seen };
+}
+
+async function start(server: McpApp) {
+  const listener = Deno.listen({ port: 0 });
+  const port = (listener.addr as Deno.NetAddr).port;
+  listener.close();
+  const http = await server.startHttp({ port, onListen: () => {} });
+  return { http, url: `http://localhost:${port}/mcp` };
+}
+
+function call(
+  url: string,
+  toolName: string,
+  extra: Record<string, unknown> = {},
+  caps: Record<string, unknown> = WITH_ELICITATION,
+  id = 1,
+) {
+  return fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "MCP-Protocol-Version": V,
+      "Mcp-Method": "tools/call",
+      "Mcp-Name": toolName,
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id,
+      method: "tools/call",
+      params: {
+        name: toolName,
+        arguments: {},
+        // MRTR fields sit HERE, beside _meta — not inside it.
+        ...extra,
+        _meta: { [PROTO_KEY]: V, [CAPS_KEY]: caps },
+      },
+    }),
+  });
+}
+
+Deno.test("mrtr - a handler asking for input yields resultType 'input_required'", async () => {
+  const { server } = buildServer({ signingKey: KEY });
+  const { http, url } = await start(server);
+  try {
+    const data = await (await call(url, "ask")).json();
+
+    // stampResult() would have overwritten this with "complete".
+    assertEquals(data.result.resultType, "input_required");
+    assertExists(data.result.inputRequests.github_login);
+    assertEquals(
+      data.result.inputRequests.github_login.method,
+      "elicitation/create",
+    );
+    // Sealed because a signing key is configured.
+    assertEquals(typeof data.result.requestState, "string");
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("mrtr - the retry round-trips and reaches the handler", async () => {
+  const { server, seen } = buildServer({ signingKey: KEY });
+  const { http, url } = await start(server);
+  try {
+    const first = await (await call(url, "ask")).json();
+    const requestState = first.result.requestState as string;
+
+    const retry = await (await call(
+      url,
+      "ask",
+      {
+        requestState,
+        inputResponses: {
+          github_login: { action: "accept", content: { name: "octocat" } },
+        },
+      },
+      WITH_ELICITATION,
+      2,
+    )).json();
+
+    assertEquals(retry.result.resultType, "complete");
+    assertStringIncludes(retry.result.content[0].text, "octocat");
+    // Read from params, not params._meta — the silent-undefined trap.
+    assertExists(seen.inputResponses);
+    assertEquals(seen.retryVerified, true);
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("mrtr - a tampered requestState is refused before the handler runs", async () => {
+  const { server, seen } = buildServer({ signingKey: KEY });
+  const { http, url } = await start(server);
+  try {
+    const first = await (await call(url, "ask")).json();
+    const token = first.result.requestState as string;
+    seen.inputResponses = undefined; // reset the observation
+
+    // Flip a byte of the payload half.
+    const [payload, mac] = token.split(".");
+    const tampered = `${payload.slice(0, -1)}${
+      payload.at(-1) === "A" ? "B" : "A"
+    }.${mac}`;
+
+    const res = await call(
+      url,
+      "ask",
+      {
+        requestState: tampered,
+        inputResponses: {
+          github_login: { action: "accept", content: { name: "attacker" } },
+        },
+      },
+      WITH_ELICITATION,
+      2,
+    );
+    const data = await res.json();
+
+    assertEquals(res.status, 400);
+    assertEquals(data.error.code, -32602);
+    assertEquals(data.error.data.reason, "tampered");
+    // The handler must never have seen the forged answers.
+    assertEquals(seen.inputResponses, undefined);
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("mrtr - a token minted for one tool is refused on another", async () => {
+  // Cross-request replay: the paramsDigest binding is what stops a token issued
+  // for a harmless call being spent on a different one.
+  const { server } = buildServer({ signingKey: KEY });
+  const { http, url } = await start(server);
+  try {
+    const first = await (await call(url, "ask")).json();
+    const token = first.result.requestState as string;
+
+    const res = await call(
+      url,
+      "needs_sampling",
+      {
+        requestState: token,
+      },
+      WITH_ELICITATION,
+      2,
+    );
+    const data = await res.json();
+
+    assertEquals(res.status, 400);
+    assertEquals(data.error.code, -32602);
+    assertEquals(data.error.data.reason, "wrong_params");
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("mrtr - a signal with neither inputRequests nor requestState is a server error", async () => {
+  // Server rule 6. Surfaces as -32603 rather than being emitted as an invalid
+  // MRTR result for the client to puzzle over: it is the server author's bug.
+  const { server } = buildServer({ signingKey: KEY });
+  const { http, url } = await start(server);
+  try {
+    // No signing key path would add a requestState, so run this one unsigned.
+    const bare = buildServer();
+    const other = await start(bare.server);
+    try {
+      const res = await call(other.url, "bad_signal");
+      const data = await res.json();
+      assertEquals(res.status, 400);
+      assertEquals(data.error.code, -32603);
+      assertStringIncludes(data.error.message, "at least one of");
+    } finally {
+      await other.http.shutdown();
+    }
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("mrtr - input cannot be requested for an undeclared capability", async () => {
+  // Spec rule 7 is a MUST NOT on the server: asking for sampling from a client
+  // that never declared it would strand the request.
+  const { server } = buildServer({ signingKey: KEY });
+  const { http, url } = await start(server);
+  try {
+    const res = await call(url, "needs_sampling", {}, WITH_ELICITATION);
+    const data = await res.json();
+    assertEquals(res.status, 400);
+    assertEquals(data.error.code, -32021);
+    assertStringIncludes(data.error.message, "sampling");
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("mrtr - without a signing key the handler is told the retry is unverified", async () => {
+  // Rather than being handed a false assurance. The startup warning covers the
+  // operator; this covers the handler.
+  const { server, seen } = buildServer();
+  const { http, url } = await start(server);
+  try {
+    const first = await (await call(url, "ask")).json();
+    assertEquals(first.result.resultType, "input_required");
+    // Nothing to seal, so nothing is emitted.
+    assertEquals(first.result.requestState, undefined);
+
+    const retry = await (await call(
+      url,
+      "ask",
+      {
+        requestState: "anything-at-all",
+        inputResponses: { github_login: { action: "accept" } },
+      },
+      WITH_ELICITATION,
+      2,
+    )).json();
+
+    assertEquals(retry.result.resultType, "complete");
+    assertEquals(seen.retryVerified, false);
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("mrtr - a legacy peer never enters the MRTR path", async () => {
+  // MRTR replaces the server-initiated pattern that 2025-era revisions still
+  // use, so the fields are ignored there rather than half-honoured.
+  const { server } = buildServer({ signingKey: KEY });
+  const { http, url } = await start(server);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "MCP-Protocol-Version": "2025-11-25",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: {
+          name: "ask",
+          arguments: {},
+          requestState: "ignored-here",
+          _meta: { [PROTO_KEY]: "2025-11-25" },
+        },
+      }),
+    });
+    const data = await res.json();
+    // The handler still runs; its signal is simply not turned into an MRTR
+    // result, and no envelope is applied for a legacy peer.
+    assertEquals(res.status, 200);
+    assertEquals(data.result.resultType, undefined);
+  } finally {
+    await http.shutdown();
+  }
+});

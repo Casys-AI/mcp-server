@@ -52,6 +52,12 @@ export interface MiddlewareContext {
   /** Client capabilities metadata (stateless HTTP transport, when provided) */
   clientCapabilities?: ClientCapabilities;
 
+  /** MRTR: answers the client echoed back on a retry (spec 2026-07-28). */
+  inputResponses?: Record<string, unknown>;
+
+  /** MRTR: whether the echoed `requestState` passed integrity verification. */
+  retryVerified?: boolean;
+
   /**
    * Log level the client requested **for this request** (spec 2026-07-28).
    *

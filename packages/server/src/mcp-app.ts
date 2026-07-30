@@ -85,6 +85,15 @@ import {
   TaskStore,
 } from "./tasks/mod.ts";
 import {
+  checkInputRequestCapabilities,
+  importStateKey,
+  type InputRequestEntry,
+  type InputRequiredSignal,
+  paramsDigest,
+  sealRequestState,
+  verifyRequestState,
+} from "./mrtr/mod.ts";
+import {
   buildAcknowledgedMessage,
   encodeSSEEvent,
   type SubscriptionFilter,
@@ -296,6 +305,11 @@ function readLogLevel(meta: Record<string, unknown>): McpLogLevel | undefined {
     : undefined;
 }
 
+/** Lowercase hex encoding, for the requestState nonce. */
+function bytesToHexLocal(bytes: Uint8Array): string {
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 /**
  * Build a JSON-RPC response with an explicit HTTP status.
  *
@@ -418,6 +432,16 @@ export class McpApp {
    * machinery, which this replaces once that path is retired.
    */
   private subscriptions: SubscriptionRegistry | null = null;
+
+  /**
+   * Imported HMAC key for sealing `requestState`, or `null` when the deployment
+   * configured none.
+   *
+   * Resolved lazily on first use rather than in the constructor, because
+   * `importStateKey` is async and a constructor cannot await.
+   */
+  private mrtrKey: CryptoKey | null = null;
+  private mrtrKeyLoaded = false;
 
   /**
    * Validated `ttlMs`. The spec requires servers to provide a value `>= 0`, and
@@ -894,6 +918,12 @@ export class McpApp {
           ? { clientCapabilities: ctx.clientCapabilities }
           : {}),
         ...(ctx.logLevel !== undefined ? { logLevel: ctx.logLevel } : {}),
+        ...(ctx.inputResponses !== undefined
+          ? { inputResponses: ctx.inputResponses }
+          : {}),
+        ...(ctx.retryVerified !== undefined
+          ? { retryVerified: ctx.retryVerified }
+          : {}),
       }));
     });
   }
@@ -915,6 +945,10 @@ export class McpApp {
     sessionId?: string,
     preVerifiedAuthInfo?: AuthInfo,
     clientMeta?: StatelessClientMeta,
+    mrtr?: {
+      inputResponses?: Record<string, unknown>;
+      retryVerified?: boolean;
+    },
   ): Promise<MiddlewareResult> {
     if (!this.middlewareRunner) {
       throw new Error(
@@ -939,6 +973,12 @@ export class McpApp {
         : {}),
       ...(clientMeta?.logLevel !== undefined
         ? { logLevel: clientMeta.logLevel }
+        : {}),
+      ...(mrtr?.inputResponses !== undefined
+        ? { inputResponses: mrtr.inputResponses }
+        : {}),
+      ...(mrtr?.retryVerified !== undefined
+        ? { retryVerified: mrtr.retryVerified }
         : {}),
     };
 
@@ -2131,6 +2171,63 @@ export class McpApp {
               }
               : undefined;
 
+          // MRTR retry fields live in `params` directly — siblings of `_meta`,
+          // not members of it, unlike every other per-request field. Reading them
+          // from `_meta` yields a silent undefined even when the client sent them.
+          //
+          // Confined to a negotiated 2026-07-28: MRTR replaces the
+          // server-initiated request pattern that earlier revisions still use, so
+          // it has no meaning on the legacy path — and the client capabilities it
+          // needs only arrive per-request there.
+          const mrtrEnabled = statelessVersion === SPEC_2026_07_28;
+          const echoedResponses = mrtrEnabled && isRecord(params) &&
+              isRecord(params["inputResponses"])
+            ? params["inputResponses"]
+            : undefined;
+          const echoedState = mrtrEnabled && isRecord(params) &&
+              typeof params["requestState"] === "string"
+            ? params["requestState"]
+            : undefined;
+
+          let retryVerified: boolean | undefined;
+          if (echoedState !== undefined) {
+            const key = await this.getMrtrKey();
+            if (key === null) {
+              // Unprotected mode: nothing to verify, and the handler is told so
+              // rather than being handed a false assurance.
+              retryVerified = false;
+            } else {
+              const principal = httpAuthInfo?.subject ?? "anonymous";
+              const verdict = await verifyRequestState(echoedState, key, {
+                principal,
+                method: "tools/call",
+                paramsDigest: await paramsDigest({
+                  arguments: args,
+                  name: toolName,
+                }),
+              });
+              if (!verdict.ok) {
+                // Attacker-controlled input that failed its integrity or binding
+                // checks. Rejected before the handler runs, and the reason is
+                // returned so a legitimate client can recover (e.g. re-elicit
+                // after an expiry) rather than guessing.
+                return jsonRpcResponse(
+                  {
+                    jsonrpc: "2.0",
+                    id,
+                    error: {
+                      code: JSONRPC_INVALID_PARAMS,
+                      message: `Invalid requestState: ${verdict.reason}`,
+                      data: { reason: verdict.reason },
+                    },
+                  },
+                  400,
+                );
+              }
+              retryVerified = true;
+            }
+          }
+
           try {
             const result = await this.executeToolCall(
               toolName,
@@ -2139,7 +2236,42 @@ export class McpApp {
               reqSessionId,
               httpAuthInfo,
               statelessClientMeta,
+              {
+                ...(echoedResponses !== undefined
+                  ? { inputResponses: echoedResponses }
+                  : {}),
+                ...(retryVerified !== undefined ? { retryVerified } : {}),
+              },
             );
+            // MRTR: the handler is asking the client for input rather than
+            // returning a result. Checked BEFORE the task branch and before
+            // stampResult, which would overwrite resultType with "complete".
+            if (
+              mrtrEnabled && isRecord(result) &&
+              result["resultType"] === "input_required"
+            ) {
+              const built = await this.buildInputRequiredResult(
+                result as unknown as InputRequiredSignal,
+                {
+                  clientCapabilities: statelessClientMeta?.clientCapabilities,
+                  principal: httpAuthInfo?.subject ?? "anonymous",
+                  method: "tools/call",
+                  salientParams: { arguments: args, name: toolName },
+                },
+              );
+              if (!built.ok) {
+                return jsonRpcResponse(
+                  {
+                    jsonrpc: "2.0",
+                    id,
+                    error: { code: built.code, message: built.message },
+                  },
+                  400,
+                );
+              }
+              return c.json({ jsonrpc: "2.0", id, result: built.result });
+            }
+
             // Tasks extension: the handler asked for a task handle instead of
             // a synchronous result.
             if (isAsyncTaskDescriptor(result)) {
@@ -3112,6 +3244,121 @@ export class McpApp {
       name: this.options.name,
       version: this.options.version,
     });
+  }
+
+  /**
+   * Resolve the MRTR signing key once, warning if a deployment has none.
+   *
+   * A missing key is not an error: the spec permits unprotected `requestState`
+   * when tampering can cause nothing worse than the request failing. It is a
+   * loud warning because that condition is easy to believe and hard to verify.
+   */
+  private async getMrtrKey(): Promise<CryptoKey | null> {
+    if (this.mrtrKeyLoaded) return this.mrtrKey;
+    this.mrtrKeyLoaded = true;
+    const hex = this.options.mrtr?.signingKey;
+    if (hex === undefined) {
+      this.log(
+        "[WARN] MRTR requestState is unprotected: no mrtr.signingKey configured. " +
+          "A client can tamper with it. Only acceptable when requestState " +
+          "influences nothing beyond whether the request succeeds.",
+      );
+      return null;
+    }
+    try {
+      this.mrtrKey = await importStateKey(hex);
+    } catch (error) {
+      throw new Error(
+        `[McpApp] mrtr.signingKey is not a valid 64-character hex key: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+    return this.mrtrKey;
+  }
+
+  /**
+   * Turn a handler's `InputRequiredSignal` into the wire result.
+   *
+   * Validates what the spec puts on the server rather than the client:
+   *  - at least one of `inputRequests` / `requestState` must be present;
+   *  - no input request may name a capability the client did not declare.
+   *
+   * A violation is the server author's bug, so it surfaces as `-32603` rather
+   * than being emitted as an invalid MRTR result for the client to puzzle over.
+   */
+  private async buildInputRequiredResult(
+    signal: InputRequiredSignal,
+    context: {
+      clientCapabilities: ClientCapabilities | undefined;
+      principal: string;
+      method: string;
+      salientParams: unknown;
+    },
+  ): Promise<
+    { ok: true; result: Record<string, unknown> } | {
+      ok: false;
+      message: string;
+      code: number;
+    }
+  > {
+    const requests = signal.inputRequests;
+    const hasRequests = requests !== undefined &&
+      Object.keys(requests).length > 0;
+
+    if (!hasRequests && signal.requestState === undefined) {
+      return {
+        ok: false,
+        code: ErrorCode.InternalError,
+        message:
+          "An InputRequiredResult must carry at least one of inputRequests or requestState (spec 2026-07-28, MRTR server rule 6)",
+      };
+    }
+
+    if (hasRequests) {
+      const check = checkInputRequestCapabilities(
+        requests as Record<string, InputRequestEntry>,
+        context.clientCapabilities as Record<string, unknown> | undefined,
+      );
+      if (!check.ok) {
+        // Spec rule 7 is a MUST NOT on the server: never ask for input the
+        // client cannot provide. Emitting it anyway would strand the request.
+        return {
+          ok: false,
+          code: MCP_MISSING_REQUIRED_CLIENT_CAPABILITY,
+          message:
+            `Cannot request input for capabilities the client did not declare: ${
+              check.missingCapabilities.join(", ")
+            }`,
+        };
+      }
+    }
+
+    // Seal the token so the retry can be proven legitimate. The payload holds
+    // only bindings — principal, method, argument digest, expiry, nonce — not
+    // application state: since the digest guarantees identical arguments, a
+    // handler rebuilds its context from those.
+    const key = await this.getMrtrKey();
+    let requestState = signal.requestState;
+    if (key !== null) {
+      const ttl = this.options.mrtr?.defaultTtlSecs ?? 300;
+      requestState = await sealRequestState({
+        sub: context.principal,
+        method: context.method,
+        paramsDigest: await paramsDigest(context.salientParams),
+        exp: Math.floor(Date.now() / 1000) + ttl,
+        nonce: bytesToHexLocal(crypto.getRandomValues(new Uint8Array(16))),
+      }, key);
+    }
+
+    return {
+      ok: true,
+      result: {
+        resultType: "input_required",
+        ...(hasRequests ? { inputRequests: requests } : {}),
+        ...(requestState !== undefined ? { requestState } : {}),
+      },
+    };
   }
 
   /**

@@ -4040,7 +4040,26 @@ export class McpApp {
     // The principal binding is only meaningful when auth is configured; see the
     // verification site. Sealing happens AFTER the capability check on purpose —
     // no point minting a token for a result that will be refused.
-    const key = await this.getMrtrKey();
+    // Resolved here regardless of `needsKey` at ingress: a FIRST leg carries
+    // neither MRTR field and still needs a sealed token. A rejected import is
+    // reported as what it is rather than surfacing as a tool failure — the
+    // handler did nothing wrong.
+    let key: CryptoKey | null;
+    try {
+      key = await this.getMrtrKey();
+    } catch (error) {
+      return {
+        ok: false,
+        code: ErrorCode.InternalError,
+        message: "MRTR signing key is unavailable",
+        data: {
+          problem: "mrtr_key_unavailable",
+          detail: error instanceof Error ? error.message : String(error),
+          recovery:
+            "Check mrtr.signingKey. The import is retried on the next request, so a transient failure clears itself.",
+        },
+      };
+    }
     let requestState = signal.requestState;
     if (key !== null) {
       const ttl = this.options.mrtr?.defaultTtlSecs ?? 300;
@@ -4053,16 +4072,27 @@ export class McpApp {
       }, key);
     }
 
+    // No `?? requests` fallback. Falling back to the handler's object would
+    // silently restore the very bypass this closes — a fallback that reopens a
+    // security hole is worse than a failure. If the invariant ever breaks, say so.
+    if (hasRequests && canonicalRequests === undefined) {
+      return {
+        ok: false,
+        code: ErrorCode.InternalError,
+        message:
+          "Internal invariant violated: inputRequests were not canonicalised before emission",
+      };
+    }
+
     return {
       ok: true,
       result: {
         resultType: "input_required",
         // The clone the check inspected, NOT the handler's object. Serialising the
-        // original again would be a second serialisation, and a stateful
-        // `toJSON()` can return a different value each time — which reopens the
-        // bypass canonicalisation exists to close.
-        ...(hasRequests
-          ? { inputRequests: canonicalRequests ?? requests }
+        // original a second time lets a stateful `toJSON()` return a different
+        // value for the response than the gate approved.
+        ...(canonicalRequests !== undefined
+          ? { inputRequests: canonicalRequests }
           : {}),
         ...(requestState !== undefined ? { requestState } : {}),
       },

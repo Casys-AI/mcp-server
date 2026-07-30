@@ -111,27 +111,62 @@ console.log("node client-auth smoke ok");
   app.registerTools([], {});
   const http = await app.startHttp({ port: 38988, hostname: "127.0.0.1" });
   try {
+    // A conforming 2026-07-28 request: the protocol version lives in
+    // `params._meta` under its namespaced key, and is mirrored in the
+    // MCP-Protocol-Version header. The pre-2026 shape (top-level
+    // `params.protocolVersion`, no headers) is rejected since 0.24.0.
     const res = await fetch("http://127.0.0.1:38988/mcp", {
       method: "POST",
       headers: {
         "content-type": "application/json",
         accept: "application/json, text/event-stream",
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "tools/list",
       },
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: 1,
-        method: "initialize",
+        method: "tools/list",
         params: {
-          protocolVersion: "2025-06-18",
-          capabilities: {},
-          clientInfo: { name: "node-smoke", version: "0" },
+          _meta: {
+            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+            "io.modelcontextprotocol/clientCapabilities": {},
+            "io.modelcontextprotocol/clientInfo": {
+              name: "node-smoke",
+              version: "0",
+            },
+          },
         },
       }),
     });
     if (res.status !== 200) {
-      throw new Error(`McpApp.startHttp initialize returned ${res.status}`);
+      throw new Error(`McpApp.startHttp tools/list returned ${res.status}`);
     }
     await res.body?.cancel();
+
+    // And the legacy shape must be refused — this is the 0.24.0 break, so the
+    // smoke test is the right place to catch a silent regression of it.
+    const legacy = await fetch("http://127.0.0.1:38988/mcp", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "initialize",
+        params: { protocolVersion: "2025-06-18", capabilities: {} },
+      }),
+    });
+    if (legacy.status !== 400) {
+      throw new Error(
+        `pre-2026 request should be rejected with 400, got ${legacy.status}`,
+      );
+    }
+    const legacyBody = await legacy.json();
+    if (legacyBody.error?.code !== -32020) {
+      throw new Error(
+        `missing MCP-Protocol-Version should be -32020, got ${legacyBody.error?.code}`,
+      );
+    }
   } finally {
     await http.shutdown();
   }

@@ -617,6 +617,48 @@ Deno.test("round2 - a formatter failure fails the task instead of completing it 
   }
 });
 
+Deno.test("tasks - a preformatted unserialisable result fails before tasks/get", async () => {
+  // Preformatted proxy results bypass the plain-value JSON.stringify path. A
+  // BigInt hidden in structuredContent used to let the task become completed,
+  // then made a later tasks/get fail while serialising the stored result.
+  const server = new McpApp({
+    name: "tasks-preformatted-format-fail",
+    version: "1.0.0",
+    logger: () => {},
+    transport: "stateless",
+    extensions: { [TASKS_ID]: {} },
+  });
+  server.registerTool(
+    {
+      name: "preformatted_bigint",
+      description: "Unserialisable proxy result",
+      inputSchema: { type: "object" },
+    },
+    () =>
+      createTask({}, () =>
+        Promise.resolve({
+          content: [{ type: "text", text: "done" }],
+          structuredContent: { n: 1n },
+        })),
+  );
+
+  const { http, url } = await start(server);
+  try {
+    const created = await (await post(url, "tools/call", {
+      name: "preformatted_bigint",
+      arguments: {},
+    })).json();
+    const taskId = created.result.taskId as string;
+    await new Promise((r) => setTimeout(r, 20));
+
+    const got = await (await post(url, "tasks/get", { taskId })).json();
+    assertEquals(got.result.status, "failed");
+    assertStringIncludes(got.result.error.message, "could not be serialised");
+  } finally {
+    await http.shutdown();
+  }
+});
+
 Deno.test("round2 - tasks/* without a JSON-RPC id is rejected, not executed", async () => {
   // Without an id these slipped past header validation (which exempts
   // notifications), mutated task state, and answered with a malformed id-less

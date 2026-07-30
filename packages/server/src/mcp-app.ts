@@ -539,6 +539,26 @@ function completeResult(
   };
 }
 
+/**
+ * Reduce a handler-built result to the exact JSON object that will cross the
+ * transport boundary. Preformatted proxy results bypass the normal text
+ * serialisation path, so without this gate a BigInt or cycle could be stored as
+ * a completed task and only explode on a later tasks/get response.
+ */
+function canonicaliseWireResult(
+  result: Record<string, unknown>,
+): Record<string, unknown> {
+  const serialised = JSON.stringify(result);
+  if (serialised === undefined) {
+    throw new Error("Tool result is not JSON-serialisable");
+  }
+  const canonical = JSON.parse(serialised);
+  if (!isRecord(canonical)) {
+    throw new Error("Tool result must serialise to an object");
+  }
+  return canonical;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -4492,7 +4512,7 @@ export class McpApp {
   ): Record<string, unknown> {
     // Proxy/gateway pattern — pass through as-is
     if (this.isPreformattedResult(result)) {
-      return result as Record<string, unknown>;
+      return canonicaliseWireResult(result as Record<string, unknown>);
     }
 
     const tool = this.tools.get(toolName);
@@ -4504,7 +4524,7 @@ export class McpApp {
         structuredContent: result.structuredContent,
       };
       if (tool?._meta) r._meta = tool._meta;
-      return r;
+      return canonicaliseWireResult(r);
     }
 
     // Plain value: JSON-stringify into content[0].text
@@ -4517,7 +4537,7 @@ export class McpApp {
       }],
     };
     if (tool?._meta) r._meta = tool._meta;
-    return r;
+    return canonicaliseWireResult(r);
   }
 
   /**

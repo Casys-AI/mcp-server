@@ -2210,6 +2210,12 @@ export class McpApp {
               // rather than being handed a false assurance.
               retryVerified = false;
             } else {
+              // On an authenticated server this binds the token to one user, so
+              // a token minted for A cannot be spent by B. On an UNAUTHENTICATED
+              // server every caller is "anonymous", and the binding protects
+              // nothing — correctly so: without auth there is no user boundary to
+              // cross, and any caller could invoke the tool directly anyway. The
+              // method and argument bindings still apply in both cases.
               const principal = httpAuthInfo?.subject ?? "anonymous";
               const verdict = await verifyRequestState(echoedState, key, {
                 principal,
@@ -3410,6 +3416,10 @@ export class McpApp {
     // only bindings — principal, method, argument digest, expiry, nonce — not
     // application state: since the digest guarantees identical arguments, a
     // handler rebuilds its context from those.
+    //
+    // The principal binding is only meaningful when auth is configured; see the
+    // verification site. Sealing happens AFTER the capability check on purpose —
+    // no point minting a token for a result that will be refused.
     const key = await this.getMrtrKey();
     let requestState = signal.requestState;
     if (key !== null) {

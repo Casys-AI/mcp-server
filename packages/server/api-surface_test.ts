@@ -103,3 +103,89 @@ Deno.test("api surface - the subscription registry and its filter type are expor
   );
   registry.shutdown();
 });
+
+Deno.test("api surface - stop() releases every subsystem's resources", async () => {
+  // Three subsystems hold timers or streams: the task sweep, the subscription
+  // keep-alive, and session cleanup. A leak here means the process stops exiting,
+  // which is the kind of regression nobody notices until a CI job hangs.
+  //
+  // Deno's resource sanitizer is what actually enforces this: were a timer left
+  // armed or a stream left open, this test would fail on leak detection rather
+  // than on an assertion.
+  const app = new McpApp({
+    name: "lifecycle",
+    version: "1.0.0",
+    logger: () => {},
+    transport: "stateless",
+    extensions: { "io.modelcontextprotocol/tasks": {} },
+    mrtr: { signingKey: "c".repeat(64) },
+  });
+
+  app.registerTool(
+    {
+      name: "spawn",
+      description: "Spawns a task",
+      inputSchema: { type: "object" },
+    },
+    () => createTask({}, () => new Promise(() => {/* never settles */})),
+  );
+
+  const listener = Deno.listen({ port: 0 });
+  const port = (listener.addr as Deno.NetAddr).port;
+  listener.close();
+  const http = await app.startHttp({ port, onListen: () => {} });
+
+  // Leave a task in flight and a subscription stream open, so shutdown has
+  // something to actually tear down.
+  const call = await fetch(`http://localhost:${port}/mcp`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "MCP-Protocol-Version": "2026-07-28",
+      "Mcp-Method": "tools/call",
+      "Mcp-Name": "spawn",
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: {
+        name: "spawn",
+        arguments: {},
+        _meta: {
+          "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+          "io.modelcontextprotocol/clientCapabilities": {
+            extensions: { "io.modelcontextprotocol/tasks": {} },
+          },
+        },
+      },
+    }),
+  });
+  const created = await call.json();
+  assertEquals(created.result.resultType, "task");
+
+  const stream = await fetch(`http://localhost:${port}/mcp`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "MCP-Protocol-Version": "2026-07-28",
+      "Mcp-Method": "subscriptions/listen",
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 2,
+      method: "subscriptions/listen",
+      params: {
+        notifications: { toolsListChanged: true },
+        _meta: {
+          "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+          "io.modelcontextprotocol/clientCapabilities": {},
+        },
+      },
+    }),
+  });
+  assertEquals(stream.status, 200);
+  await stream.body?.cancel();
+
+  await http.shutdown();
+});

@@ -208,13 +208,18 @@ export function buildGracefulCloseResult(
 export function buildServerCancelledNotification(
   subscriptionId: string | number,
 ): Record<string, unknown> {
-  return {
+  // Stamped like every other message on the stream. The rule is unconditional —
+  // "All notifications delivered on the stream carry
+  // io.modelcontextprotocol/subscriptionId in _meta" — and on stdio, where every
+  // subscription shares one channel, it is the only way a client can tell which
+  // subscription is being torn down.
+  return stampSubscriptionMeta({
     jsonrpc: "2.0",
     method: "notifications/cancelled",
     params: {
       requestId: subscriptionId,
     },
-  };
+  }, subscriptionId);
 }
 
 /**
@@ -353,7 +358,10 @@ export class SubscriptionRegistry {
    *
    * No-op when the key is not found (race between shutdown and disconnect).
    */
-  unregister(internalKey: string, initiator: "client" | "server" = "client"): void {
+  unregister(
+    internalKey: string,
+    initiator: "client" | "server" = "client",
+  ): void {
     const entry = this.entries.get(internalKey);
     if (!entry) return;
     this.entries.delete(internalKey);

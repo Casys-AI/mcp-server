@@ -25,7 +25,9 @@ const TEST_KEY_HEX =
   "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
 
 /** A valid payload that should pass all checks when everything is correct. */
-function makePayload(overrides: Partial<RequestStatePayload> = {}): RequestStatePayload {
+function makePayload(
+  overrides: Partial<RequestStatePayload> = {},
+): RequestStatePayload {
   return {
     sub: "user-abc",
     method: "tools/call",
@@ -312,8 +314,14 @@ Deno.test("verify — rejects token replayed on a different method", async () =>
 
 Deno.test("verify — rejects token replayed with different arguments", async () => {
   const key = await importStateKey(TEST_KEY_HEX);
-  const origDigest = await paramsDigest({ name: "echo", arguments: { msg: "hello" } });
-  const otherDigest = await paramsDigest({ name: "exec", arguments: { cmd: "rm -rf /" } });
+  const origDigest = await paramsDigest({
+    name: "echo",
+    arguments: { msg: "hello" },
+  });
+  const otherDigest = await paramsDigest({
+    name: "exec",
+    arguments: { cmd: "rm -rf /" },
+  });
 
   const payload = makePayload({ paramsDigest: origDigest });
   const token = await sealRequestState(payload, key);
@@ -396,7 +404,13 @@ Deno.test("verify — wrong_method fires before wrong_params", async () => {
 Deno.test("seal — different nonces produce different tokens for the same payload", async () => {
   const key = await importStateKey(TEST_KEY_HEX);
   const base = makePayload();
-  const t1 = await sealRequestState({ ...base, nonce: "aabbcc001122334455667788aabbccdd" }, key);
-  const t2 = await sealRequestState({ ...base, nonce: "00112233445566778899aabbccddeeff" }, key);
+  const t1 = await sealRequestState({
+    ...base,
+    nonce: "aabbcc001122334455667788aabbccdd",
+  }, key);
+  const t2 = await sealRequestState({
+    ...base,
+    nonce: "00112233445566778899aabbccddeeff",
+  }, key);
   assertEquals(t1 === t2, false);
 });

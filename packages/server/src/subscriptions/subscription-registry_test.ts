@@ -70,7 +70,9 @@ class MemorySink implements SubscriptionSink {
 
 const SERVER_INFO = { name: "test-server", version: "1.0.0" };
 
-function makeRegistry(overrides?: Partial<ConstructorParameters<typeof SubscriptionRegistry>[0]>) {
+function makeRegistry(
+  overrides?: Partial<ConstructorParameters<typeof SubscriptionRegistry>[0]>,
+) {
   return new SubscriptionRegistry({ serverInfo: SERVER_INFO, ...overrides });
 }
 
@@ -160,7 +162,9 @@ Deno.test("buildAcknowledgedMessage: correct shape with numeric id", () => {
 });
 
 Deno.test("buildAcknowledgedMessage: works with string id", () => {
-  const msg = buildAcknowledgedMessage("req-42", { resourcesListChanged: true });
+  const msg = buildAcknowledgedMessage("req-42", {
+    resourcesListChanged: true,
+  });
   const params = msg.params as Record<string, unknown>;
   const meta = params._meta as Record<string, unknown>;
   assertEquals(meta["io.modelcontextprotocol/subscriptionId"], "req-42");
@@ -240,10 +244,32 @@ Deno.test("buildServerCancelledNotification: correct shape", () => {
   assertEquals(params.requestId, 42);
 });
 
+Deno.test("buildServerCancelledNotification: carries subscriptionId in _meta", () => {
+  // This was the one message on the stream built without stamping, while
+  // fanOut() stamped every other one. The rule is unconditional: "All
+  // notifications delivered on the stream carry
+  // io.modelcontextprotocol/subscriptionId in _meta". On stdio, where every
+  // subscription shares a single channel, an unstamped teardown cannot be
+  // correlated to the subscription it ends.
+  //
+  // The shape assertion above passed throughout the bug — it never looked at
+  // _meta. Asserting only the fields you remembered to set is how this survives.
+  const params = buildServerCancelledNotification(7).params as Record<
+    string,
+    unknown
+  >;
+  const meta = params._meta as Record<string, unknown>;
+  assertEquals(meta["io.modelcontextprotocol/subscriptionId"], 7);
+});
+
 // ── encodeSSEEvent ────────────────────────────────────────────────────────────
 
 Deno.test("encodeSSEEvent: format is 'data: {json}\\n\\n'", () => {
-  const msg = { jsonrpc: "2.0", method: "notifications/tools/list_changed", params: {} };
+  const msg = {
+    jsonrpc: "2.0",
+    method: "notifications/tools/list_changed",
+    params: {},
+  };
   const encoded = decode(encodeSSEEvent(msg));
   assertEquals(encoded, `data: ${JSON.stringify(msg)}\n\n`);
 });
@@ -359,17 +385,27 @@ Deno.test("fanOut toolsListChanged: only reaches sinks that opted in", () => {
 
   reg.register(1, { toolsListChanged: true }, sink_tools);
   reg.register(2, { promptsListChanged: true }, sink_prompts);
-  reg.register(3, { toolsListChanged: true, promptsListChanged: true }, sink_both);
+  reg.register(
+    3,
+    { toolsListChanged: true, promptsListChanged: true },
+    sink_both,
+  );
 
   reg.fanOut("toolsListChanged");
 
   assertEquals(sink_tools.events().length, 1);
-  assertEquals(sink_tools.events()[0].method, "notifications/tools/list_changed");
+  assertEquals(
+    sink_tools.events()[0].method,
+    "notifications/tools/list_changed",
+  );
 
   assertEquals(sink_prompts.events().length, 0); // not subscribed to tools
 
   assertEquals(sink_both.events().length, 1);
-  assertEquals(sink_both.events()[0].method, "notifications/tools/list_changed");
+  assertEquals(
+    sink_both.events()[0].method,
+    "notifications/tools/list_changed",
+  );
 });
 
 Deno.test("fanOut: notification carries subscriptionId in _meta", () => {
@@ -442,7 +478,11 @@ Deno.test("fanOutResourceUpdated: reaches only subscriptions that include the UR
 
   reg.register(1, { resourceSubscriptions: ["file:///a"] }, sink_a);
   reg.register(2, { resourceSubscriptions: ["file:///b"] }, sink_b);
-  reg.register(3, { resourceSubscriptions: ["file:///a", "file:///b"] }, sink_c);
+  reg.register(
+    3,
+    { resourceSubscriptions: ["file:///a", "file:///b"] },
+    sink_c,
+  );
 
   reg.fanOutResourceUpdated("file:///a");
 
@@ -483,7 +523,10 @@ Deno.test("shutdown: sends server-teardown sequence to all live subscriptions", 
   for (const sink of [sink1, sink2]) {
     assertEquals(sink.chunks.length, 2);
     assertEquals(sink.isClosed, true);
-    assertEquals(parseSSEEvent(sink.chunks[0]).method, "notifications/cancelled");
+    assertEquals(
+      parseSSEEvent(sink.chunks[0]).method,
+      "notifications/cancelled",
+    );
     const r = parseSSEEvent(sink.chunks[1]).result as Record<string, unknown>;
     assertEquals(r.resultType, "complete");
   }
@@ -606,7 +649,11 @@ Deno.test("graceful close result on unregister(server): id matches subscriptionI
   const sink = new MemorySink();
   reg.register("sub-abc", { toolsListChanged: true }, sink);
   reg.unregister(reg.register("sub-abc", {}, new MemorySink()), "client"); // create & remove another
-  const realKey = reg.register("sub-abc", { toolsListChanged: true }, new MemorySink());
+  const realKey = reg.register(
+    "sub-abc",
+    { toolsListChanged: true },
+    new MemorySink(),
+  );
 
   // Use a fresh registry to get a clean key.
   const reg2 = makeRegistry();

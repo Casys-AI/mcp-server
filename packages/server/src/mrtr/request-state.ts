@@ -373,7 +373,9 @@ export async function verifyRequestState(
 
   let payload: RequestStatePayload;
   try {
-    const jsonText = new TextDecoder("utf-8", { fatal: true }).decode(jsonBytes);
+    const jsonText = new TextDecoder("utf-8", { fatal: true }).decode(
+      jsonBytes,
+    );
     const parsed: unknown = JSON.parse(jsonText);
     if (
       parsed === null || typeof parsed !== "object" || Array.isArray(parsed)
@@ -414,7 +416,8 @@ export async function verifyRequestState(
     return {
       ok: false,
       reason: "wrong_method",
-      message: `Token method "${payload.method}" does not match request method "${expected.method}"`,
+      message:
+        `Token method "${payload.method}" does not match request method "${expected.method}"`,
     };
   }
 

@@ -356,11 +356,38 @@ function taskOwnerKeyFor(
   authInfo: AuthInfo | undefined,
   request: Request | undefined,
   principal: string,
-): string {
+): string | null {
   if (options.taskOwnerKey === undefined || request === undefined) {
     return principal;
   }
-  return options.taskOwnerKey(authInfo, request);
+  const key = options.taskOwnerKey(authInfo, request);
+  // An empty or non-string key would put every caller under one owner, undoing
+  // the isolation the hook exists to provide — and `""` is exactly what the
+  // obvious implementation yields when a header is missing. Refuse it rather
+  // than silently sharing tasks between callers.
+  if (typeof key !== "string" || key.length === 0) return null;
+  return key;
+}
+
+/** The error to return when `taskOwnerKey` produced an unusable value. */
+function noOwnerKeyError(id: unknown): Response {
+  return jsonRpcResponse(
+    {
+      jsonrpc: "2.0",
+      id,
+      error: {
+        code: ErrorCode.InternalError,
+        message:
+          "taskOwnerKey returned an empty or non-string value, which would place every caller under one owner.",
+        data: {
+          problem: "invalid_task_owner_key",
+          recovery:
+            'Return a non-empty string. If the value it derives from can be absent, decide explicitly what an anonymous caller\'s key is rather than letting it fall to "".',
+        },
+      },
+    },
+    500,
+  );
 }
 
 /** The error to return when no caller boundary can be established. */
@@ -2512,6 +2539,7 @@ export class McpApp {
                 c.req.raw,
                 ownerPrincipal,
               );
+              if (owner === null) return noOwnerKeyError(id);
               const task = this.taskStore!.spawn(
                 result,
                 owner,
@@ -2909,6 +2937,7 @@ export class McpApp {
             c.req.raw,
             callerBase,
           );
+          if (caller === null) return noOwnerKeyError(id);
 
           if (method === "tasks/get") {
             const task = store.get(taskId, caller);

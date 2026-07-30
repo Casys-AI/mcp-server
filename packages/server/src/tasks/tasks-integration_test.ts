@@ -762,3 +762,31 @@ Deno.test("round2 - taskOwnerKey scopes a task beyond the subject", async () => 
     await http.shutdown();
   }
 });
+
+Deno.test("probe - an empty taskOwnerKey is refused rather than shared", async () => {
+  // `""` is what the obvious implementation returns when a header is missing, and
+  // it would put every caller under one owner — undoing the isolation the hook
+  // exists to provide. Found by probing my own fix, not by a failing test.
+  const server = new McpApp({
+    name: "tasks-empty-key",
+    version: "1.0.0",
+    logger: () => {},
+    transport: "stateless",
+    extensions: { [TASKS_ID]: {} },
+    taskOwnerKey: () => "",
+  });
+  server.registerTool(
+    { name: "scan", description: "Scan", inputSchema: { type: "object" } },
+    () => createTask({}, () => new Promise(() => {})),
+  );
+
+  const { http, url } = await start(server);
+  try {
+    const res = await post(url, "tools/call", { name: "scan", arguments: {} });
+    const data = await res.json();
+    assertEquals(res.status, 500);
+    assertEquals(data.error.data.problem, "invalid_task_owner_key");
+  } finally {
+    await http.shutdown();
+  }
+});

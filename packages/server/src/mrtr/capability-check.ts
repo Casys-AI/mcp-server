@@ -90,6 +90,17 @@ export function checkInputRequestCapabilities(
     // declaring `sampling` does not grant tool-using sampling. Checking only the
     // top-level key let a server ask for a mode the client cannot service, which
     // strands the request exactly as an undeclared capability would.
+    // A non-object `params` is malformed, and silently reading it as `{}` meant
+    // the sub-capability checks below did not run at all. Refuse instead: a
+    // server-authoring bug should not resolve to "no extra capability needed".
+    if (entry.params !== undefined && !isRecord(entry.params)) {
+      return {
+        ok: false,
+        missingCapabilities: [
+          `<malformed inputRequest params for ${entry.method}>`,
+        ],
+      };
+    }
     const params = isRecord(entry.params) ? entry.params : {};
     if (entry.method === "elicitation/create" && params["mode"] === "url") {
       const elicitation = isRecord(clientCapabilities?.["elicitation"])

@@ -29,6 +29,16 @@ interface AjvValidateFunction {
 }
 
 /**
+ * Count with its noun, agreeing in number.
+ *
+ * A bound of 1 is a legitimate schema (`minItems: 1`), and "must have at least
+ * 1 items" reads as a bug in the server rather than a problem with the input.
+ */
+function plural(n: number, singular: string, plural = `${singular}s`): string {
+  return `${n} ${n === 1 ? singular : plural}`;
+}
+
+/**
  * Validation error with formatted message
  */
 export interface ValidationError {
@@ -203,6 +213,52 @@ export class SchemaValidator {
         case "pattern":
           message = `Property ${path} must match pattern: ${param.pattern}`;
           expected = param.pattern;
+          break;
+
+        // Collection bounds. ajv enforces these already — what was missing is a
+        // message shaped like the others, with a structured `expected`. Without
+        // it these fell through to `default` and surfaced ajv's bare prose
+        // ("must NOT have more than 8 items"), which states the limit but names
+        // neither the property nor an `expected` a caller can act on.
+        //
+        // `expected` says "items"/"properties" rather than "length": it is read
+        // on its own as a recovery hint, where "length <= 8" is indistinguishable
+        // from the character bound that minLength/maxLength above produce.
+        case "minItems":
+          message = `Property ${path} must have at least ${
+            plural(param.limit, "item")
+          }`;
+          expected = `items >= ${param.limit}`;
+          break;
+
+        case "maxItems":
+          message = `Property ${path} must have at most ${
+            plural(param.limit, "item")
+          }`;
+          expected = `items <= ${param.limit}`;
+          break;
+
+        case "uniqueItems":
+          // ajv reports the two colliding array indices, zero-based, and in
+          // either order depending on how it optimised the comparison. The
+          // indices are not what is equal — the items at them are.
+          message =
+            `Property ${path} must not contain duplicate items (items at indices ${param.j} and ${param.i} are equal)`;
+          expected = "unique items";
+          break;
+
+        case "minProperties":
+          message = `Property ${path} must have at least ${
+            plural(param.limit, "property", "properties")
+          }`;
+          expected = `properties >= ${param.limit}`;
+          break;
+
+        case "maxProperties":
+          message = `Property ${path} must have at most ${
+            plural(param.limit, "property", "properties")
+          }`;
+          expected = `properties <= ${param.limit}`;
           break;
 
         case "additionalProperties":

@@ -2,22 +2,65 @@
 
 All notable changes to `@casys/mcp-server` will be documented in this file.
 
-## [Unreleased]
+## [0.24.0] — 2026-07-30
+
+### Removed — BREAKING
+
+The stateful transport is gone. `transport` now accepts only `"stateless"`;
+consumers that passed `"stateful"` explicitly must drop it, and those that
+omitted the option are unaffected because omission already selected the only
+remaining behaviour.
+
+Removed with it: protocol-level sessions and `Mcp-Session-Id`, the `GET /mcp`
+SSE stream, `Last-Event-ID` resumption, `sendToSession`,
+`broadcastNotification`, `getSSEClientCount`, and the deprecated
+`SamplingBridge` — superseded by MRTR, which carries server→client interactions
+inside results instead of as separate requests.
+
+Also removed: tolerance for pre-2026 protocol revisions.
+`STATELESS_SUPPORTED_VERSIONS` is `["2026-07-28"]` alone; a request declaring
+`2025-06-18` or `2025-11-25` now receives `-32022` with `data.supported`. That
+tolerance never served a real client — pre-2026 revisions used `initialize` plus
+the `MCP-Protocol-Version` header, never the per-request `_meta` envelope this
+transport requires before dispatch. What it accepted was a hybrid that only our
+own tests constructed.
+
+### Fixed
+
+- A missing `MCP-Protocol-Version` header now returns `-32020`
+  (`HeaderMismatch`) rather than `-32602`. The spec lists a missing required
+  standard header as a header-validation failure; answering `-32602` pointed a
+  legacy client at the wrong fix — its body field — when the header was the
+  primary violation.
+- `DELETE /mcp` returns `405` rather than `404`, alongside `GET`. DELETE was the
+  session-termination verb in earlier revisions, and `404` reads to an older
+  client as "no MCP endpoint here", triggering a fallback to the deprecated
+  HTTP+SSE transport.
+
+### Changed
+
+- `minItems`, `maxItems`, `uniqueItems`, `minProperties` and `maxProperties`
+  validation errors now carry a formatted message and a structured `expected`,
+  like every other keyword. They were always enforced — ajv compiles the whole
+  schema — but fell through to the default branch with `expected` undefined,
+  which is the field an agent reads to build a recovery.
+- Internal: `src/http/{body,request-guards,wire}.ts` extracted from `mcp-app.ts`
+  (4640 → 3867 lines). None is re-exported; no public API change.
+
+## [0.23.0] — 2026-07-30
 
 MCP **2026-07-28 is Final** (shipped 2026-07-28). Tracks A–F were built against
 the May 2026 Release Candidate, which the final revision changed in ways that
-made part of 0.21.0 non-conformant. This entry covers **Track H** (result
-envelope + removals), the **Track F fix** (error-code renumbering) and **Track
-C** (request-metadata headers + cache fields).
-
-With Track C landed, the stateless transport implements the request/response
-core of `2026-07-28`. Still outstanding, and none of them core requirements:
-`subscriptions/listen` (Track G), Multi Round-Trip Requests (Track B) and the
-Tasks extension (Track I).
+made part of 0.21.0 non-conformant. This release covers **Track H** (result
+envelope + removals), the **Track F fix** (error-code renumbering), **Track C**
+(request-metadata headers + cache fields), **Track G** (`subscriptions/listen`),
+**Track B** (Multi Round-Trip Requests) and **Track I** (the Tasks extension).
 
 All changes are confined to peers that negotiate `2026-07-28`. The default
 **stateful** transport is byte-identical to 0.22.0, and a peer negotiating an
-earlier revision over the stateless transport also sees the 0.22.0 shape.
+earlier revision over the stateless transport also sees the 0.22.0 shape. (Both
+of those statements ceased to hold in 0.24.0, which removed the stateful
+transport and pre-2026 tolerance entirely.)
 
 ### Changed — BREAKING on the stateless transport
 

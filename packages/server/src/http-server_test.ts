@@ -187,7 +187,12 @@ Deno.test(
       // Valid 2026-07-28 body with capabilities but NO MCP-Protocol-Version header.
       const res = await fetch(`http://localhost:${port}/mcp`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          // Present so the request reaches the version gate this test targets;
+          // its absence is now a separate -32020 header failure.
+          "MCP-Protocol-Version": "2026-07-28",
+        },
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: 3,
@@ -279,7 +284,12 @@ Deno.test(
     try {
       const res = await fetch(`http://localhost:${port}/mcp`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          // Present so the request reaches the version gate this test targets;
+          // its absence is now a separate -32020 header failure.
+          "MCP-Protocol-Version": "2026-07-28",
+        },
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: 5,
@@ -602,7 +612,12 @@ Deno.test(
       // tools/list without protocolVersion key → must fail, not 200
       const res = await fetch(`http://localhost:${port}/mcp`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          // Present so the request reaches the version gate this test targets;
+          // its absence is now a separate -32020 header failure.
+          "MCP-Protocol-Version": "2026-07-28",
+        },
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: 1,
@@ -638,7 +653,12 @@ Deno.test(
       // _meta object present but the namespaced key is absent → must fail -32602
       const res = await fetch(`http://localhost:${port}/mcp`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          // Present so the request reaches the version gate this test targets;
+          // its absence is now a separate -32020 header failure.
+          "MCP-Protocol-Version": "2026-07-28",
+        },
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: 1,
@@ -674,7 +694,12 @@ Deno.test(
     try {
       const res = await fetch(`http://localhost:${port}/mcp`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          // Present so the request reaches the version gate this test targets;
+          // its absence is now a separate -32020 header failure.
+          "MCP-Protocol-Version": "2026-07-28",
+        },
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: 2,
@@ -763,7 +788,12 @@ Deno.test(
     try {
       const res = await fetch(`http://localhost:${port}/mcp`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          // Present so the request reaches the version gate this test targets;
+          // its absence is now a separate -32020 header failure.
+          "MCP-Protocol-Version": "2026-07-28",
+        },
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: 1,
@@ -798,7 +828,12 @@ Deno.test(
     try {
       const res = await fetch(`http://localhost:${port}/mcp`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          // Present so the request reaches the version gate this test targets;
+          // its absence is now a separate -32020 header failure.
+          "MCP-Protocol-Version": "2026-07-28",
+        },
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: 1,
@@ -832,7 +867,12 @@ Deno.test(
     try {
       const res = await fetch(`http://localhost:${port}/mcp`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          // Present so the request reaches the version gate this test targets;
+          // its absence is now a separate -32020 header failure.
+          "MCP-Protocol-Version": "2026-07-28",
+        },
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: 3,
@@ -984,7 +1024,12 @@ Deno.test(
       // Scenario B: without version key → -32602 (no bypass)
       const r2 = await fetch(`http://localhost:${port}/mcp`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          // Present so the request reaches the version gate this test targets;
+          // its absence is now a separate -32020 header failure.
+          "MCP-Protocol-Version": "2026-07-28",
+        },
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: 2,
@@ -1017,7 +1062,12 @@ Deno.test(
     try {
       const res = await fetch(`http://localhost:${port}/mcp`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          // Present so the request reaches the version gate this test targets;
+          // its absence is now a separate -32020 header failure.
+          "MCP-Protocol-Version": "2026-07-28",
+        },
         body: JSON.stringify({
           jsonrpc: "2.0",
           // no "id" — this is a notification
@@ -1051,7 +1101,12 @@ Deno.test(
     try {
       const res = await fetch(`http://localhost:${port}/mcp`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          // Present so the request reaches the version gate this test targets;
+          // its absence is now a separate -32020 header failure.
+          "MCP-Protocol-Version": "2026-07-28",
+        },
         body: JSON.stringify({
           jsonrpc: "2.0",
           method: "notifications/initialized",
@@ -1084,7 +1139,12 @@ Deno.test(
       // Batch body = array — params would be undefined → -32602
       const res = await fetch(`http://localhost:${port}/mcp`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          // Present so the request reaches the version gate this test targets;
+          // its absence is now a separate -32020 header failure.
+          "MCP-Protocol-Version": "2026-07-28",
+        },
         body: JSON.stringify([
           {
             jsonrpc: "2.0",
@@ -1225,7 +1285,12 @@ Deno.test(
     try {
       const res = await fetch(`http://localhost:${port}/mcp`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          // Present so the request reaches the version gate this test targets;
+          // its absence is now a separate -32020 header failure.
+          "MCP-Protocol-Version": "2026-07-28",
+        },
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: 100,
@@ -1330,7 +1395,12 @@ Deno.test("startHttp - enforces maxBodyBytes", async () => {
   try {
     const res = await fetch(`http://localhost:${port}/mcp`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        // Present so the request reaches the version gate this test targets;
+        // its absence is now a separate -32020 header failure.
+        "MCP-Protocol-Version": "2026-07-28",
+      },
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: 1,
@@ -1881,3 +1951,80 @@ Deno.test("startHttp - resources/read skips CSP injection for non-HTML resources
     await http.shutdown();
   }
 });
+
+Deno.test(
+  "transport stateless - a missing MCP-Protocol-Version header is -32020, not -32602",
+  async () => {
+    // Spec, Server Validation: "Validation failure conditions include: A
+    // required standard header (MCP-Protocol-Version, Mcp-Method, Mcp-Name) is
+    // missing", answered with 400 + -32020 (HeaderMismatch).
+    //
+    // This is the shape a legacy client sends — neither the header nor the
+    // `_meta` field. It previously got -32602 for the missing body field,
+    // because the version gate ran first, pointing the client at the wrong fix.
+    const server = new McpApp({
+      name: "stateless-missing-header-test",
+      version: "1.0.0",
+      logger: () => {},
+      transport: "stateless",
+    });
+
+    const listener = Deno.listen({ port: 0 });
+    const port = (listener.addr as Deno.NetAddr).port;
+    listener.close();
+    const http = await server.startHttp({ port, onListen: () => {} });
+
+    try {
+      const res = await fetch(`http://localhost:${port}/mcp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/list",
+          params: {},
+        }),
+      });
+
+      assertEquals(res.status, 400);
+      const data = await res.json();
+      assertEquals(data.error.code, -32020);
+      // The recovery has to name the header, or the client cannot act on it.
+      assertEquals(data.error.data?.problem, "missing_header");
+      assertEquals(data.error.data?.header, "MCP-Protocol-Version");
+    } finally {
+      await http.shutdown();
+    }
+  },
+);
+
+Deno.test(
+  "transport stateless - DELETE on the MCP endpoint returns 405",
+  async () => {
+    // Spec, Backward Compatibility: a server supporting only this revision
+    // "SHOULD" answer HTTP GET or DELETE to the MCP endpoint with 405. DELETE
+    // was the session-termination verb in 2025-03-26..2025-11-25; 404 would
+    // read to an older client as "no MCP endpoint here".
+    const server = new McpApp({
+      name: "stateless-delete-test",
+      version: "1.0.0",
+      logger: () => {},
+      transport: "stateless",
+    });
+
+    const listener = Deno.listen({ port: 0 });
+    const port = (listener.addr as Deno.NetAddr).port;
+    listener.close();
+    const http = await server.startHttp({ port, onListen: () => {} });
+
+    try {
+      const res = await fetch(`http://localhost:${port}/mcp`, {
+        method: "DELETE",
+      });
+      assertEquals(res.status, 405);
+      await res.text();
+    } finally {
+      await http.shutdown();
+    }
+  },
+);

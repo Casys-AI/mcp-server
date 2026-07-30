@@ -43,13 +43,18 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          if ! npm whoami --registry https://registry.npmjs.org >/dev/null 2>&1; then
-            echo "::error::NPM_TOKEN is invalid or lacks publish rights."
-            echo "npm returns 404 (not 401) on a scoped package with a bad token,"
-            echo "so a later publish failure would look like a missing package."
+          # One call, reused. Note this proves the token authenticates, not that
+          # it carries publish rights on this scope — npm has no cheap check for
+          # that. It still separates "nothing to publish" from "cannot publish",
+          # which the version check below cannot do.
+          if ! WHO=$(npm whoami --registry https://registry.npmjs.org 2>&1); then
+            echo "::error::NPM_TOKEN did not authenticate: ${WHO}"
+            echo "If this is a credential failure, note npm answers 404 (not 401)"
+            echo "on a scoped package, so a later publish would look like a"
+            echo "missing package rather than an auth problem."
             exit 1
           fi
-          echo "npm authenticated as $(npm whoami --registry https://registry.npmjs.org)"
+          echo "npm authenticated as ${WHO}"
       - name: Build and publish @casys/mcp-server to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -88,13 +93,18 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          if ! npm whoami --registry https://registry.npmjs.org >/dev/null 2>&1; then
-            echo "::error::NPM_TOKEN is invalid or lacks publish rights."
-            echo "npm returns 404 (not 401) on a scoped package with a bad token,"
-            echo "so a later publish failure would look like a missing package."
+          # One call, reused. Note this proves the token authenticates, not that
+          # it carries publish rights on this scope — npm has no cheap check for
+          # that. It still separates "nothing to publish" from "cannot publish",
+          # which the version check below cannot do.
+          if ! WHO=$(npm whoami --registry https://registry.npmjs.org 2>&1); then
+            echo "::error::NPM_TOKEN did not authenticate: ${WHO}"
+            echo "If this is a credential failure, note npm answers 404 (not 401)"
+            echo "on a scoped package, so a later publish would look like a"
+            echo "missing package rather than an auth problem."
             exit 1
           fi
-          echo "npm authenticated as $(npm whoami --registry https://registry.npmjs.org)"
+          echo "npm authenticated as ${WHO}"
       - name: Build and publish @casys/mcp-compose to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -131,13 +141,18 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          if ! npm whoami --registry https://registry.npmjs.org >/dev/null 2>&1; then
-            echo "::error::NPM_TOKEN is invalid or lacks publish rights."
-            echo "npm returns 404 (not 401) on a scoped package with a bad token,"
-            echo "so a later publish failure would look like a missing package."
+          # One call, reused. Note this proves the token authenticates, not that
+          # it carries publish rights on this scope — npm has no cheap check for
+          # that. It still separates "nothing to publish" from "cannot publish",
+          # which the version check below cannot do.
+          if ! WHO=$(npm whoami --registry https://registry.npmjs.org 2>&1); then
+            echo "::error::NPM_TOKEN did not authenticate: ${WHO}"
+            echo "If this is a credential failure, note npm answers 404 (not 401)"
+            echo "on a scoped package, so a later publish would look like a"
+            echo "missing package rather than an auth problem."
             exit 1
           fi
-          echo "npm authenticated as $(npm whoami --registry https://registry.npmjs.org)"
+          echo "npm authenticated as ${WHO}"
       - name: Build and publish @casys/mcp-bridge to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -174,13 +189,18 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          if ! npm whoami --registry https://registry.npmjs.org >/dev/null 2>&1; then
-            echo "::error::NPM_TOKEN is invalid or lacks publish rights."
-            echo "npm returns 404 (not 401) on a scoped package with a bad token,"
-            echo "so a later publish failure would look like a missing package."
+          # One call, reused. Note this proves the token authenticates, not that
+          # it carries publish rights on this scope — npm has no cheap check for
+          # that. It still separates "nothing to publish" from "cannot publish",
+          # which the version check below cannot do.
+          if ! WHO=$(npm whoami --registry https://registry.npmjs.org 2>&1); then
+            echo "::error::NPM_TOKEN did not authenticate: ${WHO}"
+            echo "If this is a credential failure, note npm answers 404 (not 401)"
+            echo "on a scoped package, so a later publish would look like a"
+            echo "missing package rather than an auth problem."
             exit 1
           fi
-          echo "npm authenticated as $(npm whoami --registry https://registry.npmjs.org)"
+          echo "npm authenticated as ${WHO}"
       - name: Build and publish @casys/mcp-view to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

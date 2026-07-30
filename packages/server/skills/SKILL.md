@@ -6,7 +6,7 @@ description: >
   configures auth (Google, Auth0, GitHub, OIDC), adds middleware, sets up HTTP or
   STDIO transport, embeds an MCP server in Hono/Fresh/Express, or works with MCP Apps
   (ui:// resources, SEP-1865). Also trigger for concurrency/backpressure tuning,
-  rate limiting, schema validation, sampling, or observability on MCP servers.
+  rate limiting, schema validation, or observability on MCP servers.
 ---
 
 # @casys/mcp-server
@@ -54,8 +54,6 @@ const app = new McpApp(options: McpAppOptions);
 | `backpressureSleepMs`  | `number`                         | `10`      | Sleep duration for `"sleep"` strategy                                  |
 | `rateLimit`            | `RateLimitOptions`               | —         | Per-client tool-call rate limiting                                     |
 | `validateSchema`       | `boolean`                        | `false`   | Validate args against `inputSchema` before execution                   |
-| `enableSampling`       | `boolean`                        | `false`   | Enable bidirectional LLM sampling                                      |
-| `samplingClient`       | `SamplingClient`                 | —         | Required if `enableSampling: true`                                     |
 | `instructions`         | `string`                         | —         | LLM instructions sent in initialize response                           |
 | `toolErrorMapper`      | `ToolErrorMapper`                | —         | Map thrown errors to `isError: true` results                           |
 | `auth`                 | `AuthOptions`                    | —         | OAuth2/Bearer auth (HTTP transport only)                               |
@@ -160,8 +158,9 @@ await http.shutdown();
 Built-in endpoints:
 
 - `POST /mcp` — MCP JSON-RPC
-- `GET /mcp` — SSE stream (Streamable HTTP)
-- `DELETE /mcp` — session termination
+- `GET /mcp`, `DELETE /mcp` — `405 Method Not Allowed`; both were legacy verbs
+  (SSE stream / session termination) removed in 0.24.0. Use
+  `subscriptions/listen` for server-initiated notifications.
 - `GET /health` — `{ status: "ok", server, version }`
 - `GET /metrics` — Prometheus text format
 - `GET /.well-known/oauth-protected-resource` — RFC 9728 metadata (when auth
@@ -203,7 +202,9 @@ app.use(async (ctx: MiddlewareContext, next) => {
 - `toolName: string`
 - `args: Record<string, unknown>`
 - `request?: Request` — only set for HTTP transport
-- `sessionId?: string` — only set for HTTP transport
+- `sessionId?: string` — **always `undefined` since 0.24.0**; protocol-level
+  sessions were removed with the stateful transport. Retained for source
+  compatibility only.
 - `[key: string]: unknown` — extensible (e.g., auth middleware adds `authInfo`)
 
 ---

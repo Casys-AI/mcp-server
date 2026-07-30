@@ -114,11 +114,7 @@ import {
   noPrincipalError,
   taskOwnerKeyFor,
 } from "./http/request-guards.ts";
-import {
-  isRecord,
-  jsonRpcResponse,
-  MRTR_NO_AUTH_PRINCIPAL,
-} from "./http/wire.ts";
+import { isRecord, jsonRpcResponse } from "./http/wire.ts";
 
 /**
  * Tool definition with handler
@@ -1638,11 +1634,18 @@ export class McpApp {
       }
     }
 
-    // MCP endpoint - GET is not applicable in stateless mode; use subscriptions/listen instead
+    // Legacy verbs from 2025-03-26..2025-11-25: GET opened a standalone SSE
+    // stream, DELETE terminated a session. Neither exists in this revision, and
+    // the spec says a server supporting only this revision SHOULD answer both
+    // with 405 — not 404, which an older client would read as "no MCP endpoint
+    // here" and use to fall back to the deprecated HTTP+SSE transport.
+    // Use subscriptions/listen for server-initiated notifications.
     // deno-lint-ignore no-explicit-any
-    app.get("/mcp", (c: any) => c.text("Method Not Allowed", 405));
-    // deno-lint-ignore no-explicit-any
-    app.get("/", (c: any) => c.text("Method Not Allowed", 405));
+    const methodNotAllowed = (c: any) => c.text("Method Not Allowed", 405);
+    app.get("/mcp", methodNotAllowed);
+    app.get("/", methodNotAllowed);
+    app.delete("/mcp", methodNotAllowed);
+    app.delete("/", methodNotAllowed);
 
     // MCP endpoint - POST handles JSON-RPC
     const handleMcpPost = async (
@@ -1731,6 +1734,43 @@ export class McpApp {
           const authResult = await verifyHttpAuth(c.req.raw);
           if ("denied" in authResult) return authResult.denied;
           httpAuthInfo = authResult.authInfo;
+        }
+
+        // The `MCP-Protocol-Version` header is REQUIRED on every POST, and its
+        // absence is a header-validation failure — not a malformed body. The
+        // spec is explicit: "Validation failure conditions include: A required
+        // standard header (MCP-Protocol-Version, Mcp-Method, Mcp-Name) is
+        // missing", answered with 400 + -32020 (HeaderMismatch).
+        //
+        // This has to run BEFORE the `_meta` version check below, because a
+        // legacy client sends neither and would otherwise get -32602 for a
+        // missing body field when the primary violation is the missing header.
+        // A client reading -32602 looks for the wrong fix.
+        //
+        // Notifications are exempt: the revision leaves header requirements for
+        // notification POSTs undefined, so demanding one there invents a rule.
+        if (
+          id !== undefined && c.req.header("MCP-Protocol-Version") === undefined
+        ) {
+          return jsonRpcResponse(
+            {
+              jsonrpc: "2.0",
+              id,
+              error: {
+                code: MCP_HEADER_MISMATCH,
+                message:
+                  "Missing required header 'MCP-Protocol-Version'. It must be present and match params._meta['io.modelcontextprotocol/protocolVersion'].",
+                data: {
+                  problem: "missing_header",
+                  header: "MCP-Protocol-Version",
+                  recovery:
+                    "Send MCP-Protocol-Version: 2026-07-28 and the matching _meta field.",
+                },
+              },
+            },
+            400,
+            { "MCP-Protocol-Version": SPEC_2026_07_28 },
+          );
         }
 
         // Per-request protocolVersion validation (spec 2026-07-28).

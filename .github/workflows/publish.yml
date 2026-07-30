@@ -33,6 +33,23 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
+      - name: Verify npm credentials
+        # Runs BEFORE the version check below, deliberately. That check exits 0
+        # when the version is already published — so on a run where nothing needs
+        # publishing, a dead NPM_TOKEN is never exercised and the job goes green.
+        # That is not hypothetical: the token was invalid for two weeks while
+        # every run passed, because no version happened to move.
+        # `npm whoami` fails on a bad token regardless of what is published.
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if ! npm whoami --registry https://registry.npmjs.org >/dev/null 2>&1; then
+            echo "::error::NPM_TOKEN is invalid or lacks publish rights."
+            echo "npm returns 404 (not 401) on a scoped package with a bad token,"
+            echo "so a later publish failure would look like a missing package."
+            exit 1
+          fi
+          echo "npm authenticated as $(npm whoami --registry https://registry.npmjs.org)"
       - name: Build and publish @casys/mcp-server to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -61,6 +78,23 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
+      - name: Verify npm credentials
+        # Runs BEFORE the version check below, deliberately. That check exits 0
+        # when the version is already published — so on a run where nothing needs
+        # publishing, a dead NPM_TOKEN is never exercised and the job goes green.
+        # That is not hypothetical: the token was invalid for two weeks while
+        # every run passed, because no version happened to move.
+        # `npm whoami` fails on a bad token regardless of what is published.
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if ! npm whoami --registry https://registry.npmjs.org >/dev/null 2>&1; then
+            echo "::error::NPM_TOKEN is invalid or lacks publish rights."
+            echo "npm returns 404 (not 401) on a scoped package with a bad token,"
+            echo "so a later publish failure would look like a missing package."
+            exit 1
+          fi
+          echo "npm authenticated as $(npm whoami --registry https://registry.npmjs.org)"
       - name: Build and publish @casys/mcp-compose to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -87,6 +121,23 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
+      - name: Verify npm credentials
+        # Runs BEFORE the version check below, deliberately. That check exits 0
+        # when the version is already published — so on a run where nothing needs
+        # publishing, a dead NPM_TOKEN is never exercised and the job goes green.
+        # That is not hypothetical: the token was invalid for two weeks while
+        # every run passed, because no version happened to move.
+        # `npm whoami` fails on a bad token regardless of what is published.
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if ! npm whoami --registry https://registry.npmjs.org >/dev/null 2>&1; then
+            echo "::error::NPM_TOKEN is invalid or lacks publish rights."
+            echo "npm returns 404 (not 401) on a scoped package with a bad token,"
+            echo "so a later publish failure would look like a missing package."
+            exit 1
+          fi
+          echo "npm authenticated as $(npm whoami --registry https://registry.npmjs.org)"
       - name: Build and publish @casys/mcp-bridge to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -113,6 +164,23 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
+      - name: Verify npm credentials
+        # Runs BEFORE the version check below, deliberately. That check exits 0
+        # when the version is already published — so on a run where nothing needs
+        # publishing, a dead NPM_TOKEN is never exercised and the job goes green.
+        # That is not hypothetical: the token was invalid for two weeks while
+        # every run passed, because no version happened to move.
+        # `npm whoami` fails on a bad token regardless of what is published.
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if ! npm whoami --registry https://registry.npmjs.org >/dev/null 2>&1; then
+            echo "::error::NPM_TOKEN is invalid or lacks publish rights."
+            echo "npm returns 404 (not 401) on a scoped package with a bad token,"
+            echo "so a later publish failure would look like a missing package."
+            exit 1
+          fi
+          echo "npm authenticated as $(npm whoami --registry https://registry.npmjs.org)"
       - name: Build and publish @casys/mcp-view to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

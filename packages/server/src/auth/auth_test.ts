@@ -390,11 +390,15 @@ Deno.test("HTTP + Auth - 401 without token", async () => {
   }
 });
 
+const PROTO_KEY = "io.modelcontextprotocol/protocolVersion";
+const CAPS_KEY = "io.modelcontextprotocol/clientCapabilities";
+
 Deno.test("HTTP + Auth - 200 with valid token", async () => {
   const server = new McpApp({
     name: "test-auth",
     version: "1.0.0",
     logger: () => {},
+    transport: "stateless",
     auth: {
       provider: new MockAuthProvider({ subject: "user-1", scopes: ["read"] }),
     },
@@ -416,13 +420,20 @@ Deno.test("HTTP + Auth - 200 with valid token", async () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "tools/call",
+        "Mcp-Name": "echo",
         Authorization: "Bearer valid-token",
       },
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: 1,
         method: "tools/call",
-        params: { name: "echo", arguments: { hello: "world" } },
+        params: {
+          _meta: { [PROTO_KEY]: "2026-07-28", [CAPS_KEY]: {} },
+          name: "echo",
+          arguments: { hello: "world" },
+        },
       }),
     });
 
@@ -447,6 +458,7 @@ Deno.test("HTTP + Auth - passes frozen authInfo to tool handler context", async 
     name: "test-auth-context",
     version: "1.0.0",
     logger: () => {},
+    transport: "stateless",
     auth: {
       provider: new MockAuthProvider({
         subject: "user-42",
@@ -483,13 +495,20 @@ Deno.test("HTTP + Auth - passes frozen authInfo to tool handler context", async 
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "tools/call",
+        "Mcp-Name": "context_echo",
         Authorization: "Bearer valid-token",
       },
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: 1,
         method: "tools/call",
-        params: { name: "context_echo", arguments: {} },
+        params: {
+          _meta: { [PROTO_KEY]: "2026-07-28", [CAPS_KEY]: {} },
+          name: "context_echo",
+          arguments: {},
+        },
       }),
     });
 
@@ -615,6 +634,7 @@ Deno.test("HTTP + Auth - no auth config means tools work without token", async (
     name: "test-no-auth",
     version: "1.0.0",
     logger: () => {},
+    transport: "stateless",
     // No auth configured
   });
 
@@ -632,12 +652,21 @@ Deno.test("HTTP + Auth - no auth config means tools work without token", async (
   try {
     const res = await fetch(`http://localhost:${port}/mcp`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "tools/call",
+        "Mcp-Name": "echo",
+      },
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: 1,
         method: "tools/call",
-        params: { name: "echo", arguments: { ok: true } },
+        params: {
+          _meta: { [PROTO_KEY]: "2026-07-28", [CAPS_KEY]: {} },
+          name: "echo",
+          arguments: { ok: true },
+        },
       }),
     });
 
@@ -657,6 +686,7 @@ Deno.test("HTTP + Auth - scope enforcement 403", async () => {
     name: "test-scopes",
     version: "1.0.0",
     logger: () => {},
+    transport: "stateless",
     auth: {
       provider: new MockAuthProvider({ subject: "user-1", scopes: ["read"] }), // only "read"
     },
@@ -683,13 +713,20 @@ Deno.test("HTTP + Auth - scope enforcement 403", async () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "tools/call",
+        "Mcp-Name": "admin_action",
         Authorization: "Bearer valid-token",
       },
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: 1,
         method: "tools/call",
-        params: { name: "admin_action", arguments: {} },
+        params: {
+          _meta: { [PROTO_KEY]: "2026-07-28", [CAPS_KEY]: {} },
+          name: "admin_action",
+          arguments: {},
+        },
       }),
     });
 
@@ -714,6 +751,7 @@ Deno.test("HTTP + Auth - tools/list requires token (no auth bypass)", async () =
     name: "test-auth-bypass",
     version: "1.0.0",
     logger: () => {},
+    transport: "stateless",
     auth: {
       provider: new MockAuthProvider({ subject: "user-1", scopes: ["read"] }),
     },
@@ -731,7 +769,7 @@ Deno.test("HTTP + Auth - tools/list requires token (no auth bypass)", async () =
   const http = await server.startHttp({ port, onListen: () => {} });
 
   try {
-    // tools/list WITHOUT token should be 401
+    // tools/list WITHOUT token should be 401 (auth check is before version check)
     const res = await fetch(`http://localhost:${port}/mcp`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -750,12 +788,15 @@ Deno.test("HTTP + Auth - tools/list requires token (no auth bypass)", async () =
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "tools/list",
         Authorization: "Bearer valid-token",
       },
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: 2,
         method: "tools/list",
+        params: { _meta: { [PROTO_KEY]: "2026-07-28", [CAPS_KEY]: {} } },
       }),
     });
 
@@ -768,8 +809,8 @@ Deno.test("HTTP + Auth - tools/list requires token (no auth bypass)", async () =
   }
 });
 
-Deno.test("HTTP + Auth - initialize requires token (MCP spec 2025-06-18)", async () => {
-  // MCP spec 2025-06-18 §4: when requireAuth is configured, the server MUST
+Deno.test("HTTP + Auth - initialize requires token", async () => {
+  // MCP 2026-07-28: when requireAuth is configured, the server MUST
   // return 401 on ALL unauthenticated requests — including initialize.
   // The 401 + WWW-Authenticate header is what triggers OAuth/DCR discovery
   // in clients (Claude.ai, Cursor). Returning 200 on initialize breaks the flow.
@@ -777,6 +818,7 @@ Deno.test("HTTP + Auth - initialize requires token (MCP spec 2025-06-18)", async
     name: "test-init-requires-auth",
     version: "1.0.0",
     logger: () => {},
+    transport: "stateless",
     auth: {
       provider: new MockAuthProvider({ subject: "user-1", scopes: [] }),
     },
@@ -812,12 +854,15 @@ Deno.test("HTTP + Auth - initialize requires token (MCP spec 2025-06-18)", async
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "initialize",
         "Authorization": "Bearer valid-token",
       },
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: 2,
         method: "initialize",
+        params: { _meta: { [PROTO_KEY]: "2026-07-28", [CAPS_KEY]: {} } },
       }),
     });
 
@@ -826,8 +871,8 @@ Deno.test("HTTP + Auth - initialize requires token (MCP spec 2025-06-18)", async
     assertEquals(data.result.serverInfo.name, "test-init-requires-auth");
     assertEquals(
       data.result.protocolVersion,
-      "2025-06-18",
-      "Protocol version must be 2025-06-18",
+      "2026-07-28",
+      "Protocol version must be 2026-07-28",
     );
   } finally {
     await http.shutdown();

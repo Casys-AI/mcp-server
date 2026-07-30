@@ -236,25 +236,6 @@ Deno.test("track C - a sentinel-encoded Mcp-Name is decoded before comparison", 
   }
 });
 
-Deno.test("track C - a legacy peer is not held to the 2026 header contract", async () => {
-  // The headers do not exist before 2026-07-28. Demanding them from a
-  // 2025-11-25 client would reject a conforming request.
-  const { http, url } = await start(buildServer());
-  try {
-    // Mcp-Method omitted: 2026-only, not demanded of a legacy peer.
-    // MCP-Protocol-Version present: it exists since 2025-06-18 and is required.
-    const res = await post(url, { "MCP-Protocol-Version": "2025-11-25" }, {
-      jsonrpc: "2.0",
-      id: 1,
-      method: "tools/list",
-      params: { _meta: { [PROTO_KEY]: "2025-11-25" } },
-    });
-    assertEquals(res.status, 200);
-  } finally {
-    await http.shutdown();
-  }
-});
-
 Deno.test("track C - notifications are exempt from the header contract", async () => {
   // The revision explicitly leaves header requirements for notification POSTs
   // undefined, so a missing Mcp-Method there is not a violation to invent.

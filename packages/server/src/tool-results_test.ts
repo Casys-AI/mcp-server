@@ -18,7 +18,10 @@ async function startTestHttp(server: McpApp) {
   return { http, port };
 }
 
-/** Helper to call tools/call via HTTP */
+const PROTO_KEY = "io.modelcontextprotocol/protocolVersion";
+const CAPS_KEY = "io.modelcontextprotocol/clientCapabilities";
+
+/** Helper to call tools/call via HTTP (stateless 2026-07-28 format) */
 async function callTool(
   port: number,
   toolName: string,
@@ -26,12 +29,21 @@ async function callTool(
 ) {
   const res = await fetch(`http://localhost:${port}/mcp`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "MCP-Protocol-Version": "2026-07-28",
+      "Mcp-Method": "tools/call",
+      "Mcp-Name": toolName,
+    },
     body: JSON.stringify({
       jsonrpc: "2.0",
       id: 1,
       method: "tools/call",
-      params: { name: toolName, arguments: args },
+      params: {
+        _meta: { [PROTO_KEY]: "2026-07-28", [CAPS_KEY]: {} },
+        name: toolName,
+        arguments: args,
+      },
     }),
   });
   return await res.json();
@@ -46,6 +58,7 @@ Deno.test("tools/call - StructuredToolResult produces content + structuredConten
     name: "test",
     version: "1.0.0",
     logger: () => {},
+    transport: "stateless",
   });
 
   server.registerTool(
@@ -73,6 +86,7 @@ Deno.test("tools/call - plain string return still works (backward compat)", asyn
     name: "test",
     version: "1.0.0",
     logger: () => {},
+    transport: "stateless",
   });
 
   server.registerTool(
@@ -95,6 +109,7 @@ Deno.test("tools/call - plain object return still works (backward compat)", asyn
     name: "test",
     version: "1.0.0",
     logger: () => {},
+    transport: "stateless",
   });
 
   server.registerTool(
@@ -118,6 +133,7 @@ Deno.test("tools/call - preformatted result passes through (backward compat)", a
     name: "test",
     version: "1.0.0",
     logger: () => {},
+    transport: "stateless",
   });
 
   server.registerTool(
@@ -144,6 +160,7 @@ Deno.test("tools/call - no toolErrorMapper: thrown error becomes JSON-RPC error"
     name: "test",
     version: "1.0.0",
     logger: () => {},
+    transport: "stateless",
   });
 
   server.registerTool(
@@ -169,6 +186,7 @@ Deno.test("tools/call - toolErrorMapper returns string: produces isError result"
     name: "test",
     version: "1.0.0",
     logger: () => {},
+    transport: "stateless",
     toolErrorMapper: (err) =>
       err instanceof Error ? `Business error: ${err.message}` : null,
   });
@@ -200,6 +218,7 @@ Deno.test("tools/call - toolErrorMapper returns null: error rethrown as JSON-RPC
     name: "test",
     version: "1.0.0",
     logger: () => {},
+    transport: "stateless",
     toolErrorMapper: () => null,
   });
 
@@ -232,6 +251,7 @@ Deno.test("tools/call - toolErrorMapper receives toolName and error", async () =
     name: "test",
     version: "1.0.0",
     logger: () => {},
+    transport: "stateless",
     toolErrorMapper: (err, toolName) => {
       capturedToolName = toolName;
       capturedError = err;

@@ -60,8 +60,6 @@ export interface ServerMetricsSnapshot {
     auth_success: number;
     auth_failed: number;
     auth_cache_hits: number;
-    sessions_created: number;
-    sessions_expired: number;
   };
   histograms: {
     tool_call_duration_ms: Histogram;
@@ -69,8 +67,6 @@ export interface ServerMetricsSnapshot {
   gauges: {
     active_requests: number;
     queued_requests: number;
-    active_sessions: number;
-    sse_clients: number;
     rate_limiter_keys: number;
   };
   collected_at: number;
@@ -109,8 +105,6 @@ export class ServerMetrics {
   private authSuccess = 0;
   private authFailed = 0;
   private authCacheHits = 0;
-  private sessionsCreated = 0;
-  private sessionsExpired = 0;
 
   // Histogram
   private toolCallDuration = createHistogram();
@@ -121,8 +115,6 @@ export class ServerMetrics {
   // Gauges (set externally via setGauge)
   private activeRequests = 0;
   private queuedRequests = 0;
-  private activeSessions = 0;
-  private sseClients = 0;
   private rateLimiterKeys = 0;
 
   /**
@@ -166,22 +158,12 @@ export class ServerMetrics {
     this.authCacheHits++;
   }
 
-  recordSessionCreated(): void {
-    this.sessionsCreated++;
-  }
-
-  recordSessionExpired(count: number): void {
-    this.sessionsExpired += count;
-  }
-
   /**
    * Update gauge values (called periodically or on-demand)
    */
   setGauges(gauges: {
     activeRequests?: number;
     queuedRequests?: number;
-    activeSessions?: number;
-    sseClients?: number;
     rateLimiterKeys?: number;
   }): void {
     if (gauges.activeRequests !== undefined) {
@@ -190,10 +172,6 @@ export class ServerMetrics {
     if (gauges.queuedRequests !== undefined) {
       this.queuedRequests = gauges.queuedRequests;
     }
-    if (gauges.activeSessions !== undefined) {
-      this.activeSessions = gauges.activeSessions;
-    }
-    if (gauges.sseClients !== undefined) this.sseClients = gauges.sseClients;
     if (gauges.rateLimiterKeys !== undefined) {
       this.rateLimiterKeys = gauges.rateLimiterKeys;
     }
@@ -213,8 +191,6 @@ export class ServerMetrics {
         auth_success: this.authSuccess,
         auth_failed: this.authFailed,
         auth_cache_hits: this.authCacheHits,
-        sessions_created: this.sessionsCreated,
-        sessions_expired: this.sessionsExpired,
       },
       histograms: {
         tool_call_duration_ms: { ...this.toolCallDuration },
@@ -222,8 +198,6 @@ export class ServerMetrics {
       gauges: {
         active_requests: this.activeRequests,
         queued_requests: this.queuedRequests,
-        active_sessions: this.activeSessions,
-        sse_clients: this.sseClients,
         rate_limiter_keys: this.rateLimiterKeys,
       },
       collected_at: Date.now(),
@@ -285,16 +259,6 @@ export class ServerMetrics {
       "Auth token cache hits",
       m.counters.auth_cache_hits,
     );
-    counter(
-      "sessions_created_total",
-      "Sessions created",
-      m.counters.sessions_created,
-    );
-    counter(
-      "sessions_expired_total",
-      "Sessions expired by cleanup",
-      m.counters.sessions_expired,
-    );
 
     // --- Per-tool counters ---
     lines.push(`# HELP ${prefix}_tool_calls_by_name Tool calls by tool name`);
@@ -340,8 +304,6 @@ export class ServerMetrics {
       "Requests waiting in queue",
       m.gauges.queued_requests,
     );
-    gauge("active_sessions", "Active HTTP sessions", m.gauges.active_sessions);
-    gauge("sse_clients", "Connected SSE clients", m.gauges.sse_clients);
     gauge(
       "rate_limiter_keys",
       "Tracked rate limiter keys",
@@ -364,14 +326,10 @@ export class ServerMetrics {
     this.authSuccess = 0;
     this.authFailed = 0;
     this.authCacheHits = 0;
-    this.sessionsCreated = 0;
-    this.sessionsExpired = 0;
     this.toolCallDuration = createHistogram();
     this.perTool.clear();
     this.activeRequests = 0;
     this.queuedRequests = 0;
-    this.activeSessions = 0;
-    this.sseClients = 0;
     this.rateLimiterKeys = 0;
     this.startTime = Date.now();
   }

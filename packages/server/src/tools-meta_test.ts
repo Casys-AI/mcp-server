@@ -16,12 +16,16 @@ import type { MCPTool } from "./types.ts";
 /**
  * Helper to create test server instance
  */
+const PROTO_KEY = "io.modelcontextprotocol/protocolVersion";
+const CAPS_KEY = "io.modelcontextprotocol/clientCapabilities";
+
 function createTestServer(): McpApp {
   return new McpApp({
     name: "test-server",
     version: "1.0.0",
     // Suppress logging during tests
     logger: () => {},
+    transport: "stateless",
   });
 }
 
@@ -140,16 +144,20 @@ async function startTestHttp(server: McpApp) {
   return { http, port };
 }
 
-/** Helper to call tools/list via HTTP */
+/** Helper to call tools/list via HTTP (stateless 2026-07-28 format) */
 async function fetchToolsList(port: number) {
   const res = await fetch(`http://localhost:${port}/mcp`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "MCP-Protocol-Version": "2026-07-28",
+      "Mcp-Method": "tools/list",
+    },
     body: JSON.stringify({
       jsonrpc: "2.0",
       id: 1,
       method: "tools/list",
-      params: {},
+      params: { _meta: { [PROTO_KEY]: "2026-07-28", [CAPS_KEY]: {} } },
     }),
   });
   return await res.json();

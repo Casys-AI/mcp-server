@@ -334,40 +334,6 @@ Deno.test("mrtr - without a signing key the handler is told the retry is unverif
   }
 });
 
-Deno.test("mrtr - a legacy peer never enters the MRTR path", async () => {
-  // MRTR replaces the server-initiated pattern that 2025-era revisions still
-  // use, so the fields are ignored there rather than half-honoured.
-  const { server } = buildServer({ signingKey: KEY });
-  const { http, url } = await start(server);
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "MCP-Protocol-Version": "2025-11-25",
-      },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "tools/call",
-        params: {
-          name: "ask",
-          arguments: {},
-          requestState: "ignored-here",
-          _meta: { [PROTO_KEY]: "2025-11-25" },
-        },
-      }),
-    });
-    const data = await res.json();
-    // The handler still runs; its signal is simply not turned into an MRTR
-    // result, and no envelope is applied for a legacy peer.
-    assertEquals(res.status, 200);
-    assertEquals(data.result.resultType, undefined);
-  } finally {
-    await http.shutdown();
-  }
-});
-
 // ── Findings from the final adversarial review ───────────────────────────────
 
 Deno.test("mrtr - inputResponses without a requestState is refused, not forwarded", async () => {

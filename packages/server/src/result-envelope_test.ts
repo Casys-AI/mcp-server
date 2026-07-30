@@ -241,57 +241,6 @@ Deno.test("envelope - a tool's own _meta survives stamping", async () => {
   }
 });
 
-Deno.test("envelope - a legacy version negotiated over the stateless transport gets no envelope", async () => {
-  // The gate is the negotiated version, NOT the transport. `stateless` also
-  // accepts 2025-06-18 and 2025-11-25 (STATELESS_SUPPORTED_VERSIONS), and a peer
-  // on one of those never asked for `resultType`. An earlier draft gated on the
-  // transport and stamped a 2026 envelope onto their responses.
-  const server = new McpApp({
-    name: "envelope-legacy-version-test",
-    version: "1.0.0",
-    logger: () => {},
-    transport: "stateless",
-  });
-
-  const { http, url } = await startOnFreePort(server);
-
-  try {
-    for (const version of ["2025-06-18", "2025-11-25"]) {
-      // No `Mcp-Method` on purpose: that header is 2026-only, so the server must
-      // not demand it of a legacy peer. `MCP-Protocol-Version` is different — it
-      // exists since 2025-06-18 and stays required.
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "MCP-Protocol-Version": version,
-        },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: 1,
-          method: "tools/list",
-          params: { _meta: { [PROTO_KEY]: version } },
-        }),
-      });
-      const data = await res.json();
-
-      assertEquals(res.status, 200);
-      assertEquals(
-        data.result.resultType,
-        undefined,
-        `${version} peer must not receive a 2026-07-28 envelope`,
-      );
-      assertEquals(data.result._meta, undefined);
-    }
-
-    // Same server, same transport — the 2026 peer does get it.
-    const modern = await (await rpc(url, "tools/list")).json();
-    assertEquals(modern.result.resultType, "complete");
-  } finally {
-    await http.shutdown();
-  }
-});
-
 Deno.test("envelope - any unimplemented stateless RPC returns 404 / -32601", async () => {
   // The spec requires 404 for an unimplemented method, and the status is
   // load-bearing: it is how a client tells a modern endpoint from a legacy
@@ -319,39 +268,6 @@ Deno.test("envelope - any unimplemented stateless RPC returns 404 / -32601", asy
       assertEquals(res.status, 404, `${method} should be 404`);
       assertEquals(data.error.code, -32601, `${method} should be -32601`);
     }
-  } finally {
-    await http.shutdown();
-  }
-});
-
-Deno.test("envelope - the stateful path stays on the legacy shape", async () => {
-  // The envelope is gated on the transport, not bolted on unconditionally: a
-  // 2025-11-25 peer never asked for these fields.
-  const server = new McpApp({
-    name: "envelope-stateful-test",
-    version: "1.0.0",
-    logger: () => {},
-    // default transport: "stateful"
-  });
-
-  const { http, url } = await startOnFreePort(server);
-
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "tools/list",
-        params: {},
-      }),
-    });
-    const data = await res.json();
-
-    assertEquals(res.status, 200);
-    assertEquals(data.result.resultType, undefined);
-    assertEquals(data.result._meta, undefined);
   } finally {
     await http.shutdown();
   }

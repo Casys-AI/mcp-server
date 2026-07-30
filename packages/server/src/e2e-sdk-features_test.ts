@@ -6,12 +6,16 @@
 import { assertEquals, assertExists } from "@std/assert";
 import { McpApp } from "./mcp-app.ts";
 
+const PROTO_KEY = "io.modelcontextprotocol/protocolVersion";
+const CAPS_KEY = "io.modelcontextprotocol/clientCapabilities";
+
 Deno.test("e2e - all SDK 1.27 features on one server", async () => {
   // Server with toolErrorMapper (Feature 5)
   const server = new McpApp({
     name: "e2e-sdk-features",
     version: "1.0.0",
     logger: () => {},
+    transport: "stateless",
     toolErrorMapper: (err, toolName) => {
       if (err instanceof Error && err.message.startsWith("BIZ:")) {
         return `[${toolName}] ${err.message.slice(4)}`;
@@ -115,10 +119,28 @@ Deno.test("e2e - all SDK 1.27 features on one server", async () => {
   const http = await server.startHttp({ port, onListen: () => {} });
 
   async function rpc(method: string, params: Record<string, unknown> = {}) {
+    const toolName = typeof params.name === "string" ? params.name : undefined;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "MCP-Protocol-Version": "2026-07-28",
+      "Mcp-Method": method,
+    };
+    if (toolName !== undefined) {
+      headers["Mcp-Name"] = toolName;
+    }
+    const body = {
+      jsonrpc: "2.0",
+      id: 1,
+      method,
+      params: {
+        _meta: { [PROTO_KEY]: "2026-07-28", [CAPS_KEY]: {} },
+        ...params,
+      },
+    };
     const res = await fetch(`http://localhost:${port}/mcp`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+      headers,
+      body: JSON.stringify(body),
     });
     return await res.json();
   }

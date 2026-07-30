@@ -64,9 +64,6 @@ export type {
   ValidationResult,
 } from "./src/validation/schema-validator.ts";
 
-// Sampling support
-export { SamplingBridge } from "./src/sampling/sampling-bridge.ts";
-
 // Type exports
 export type {
   HttpRateLimitContext,

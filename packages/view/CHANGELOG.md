@@ -7,11 +7,34 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-31
+
 ### Added
+
+- **`@casys/mcp-view/scaffold`** — executable vanilla `result-viewer` starter:
+  `deno run -A jsr:@casys/mcp-view@0.4.0/scaffold result-viewer <target>`. It emits an autonomous
+  browser view with a build path, focused parser/render test, loading/empty/error states, generic
+  metrics and URI-based artifacts, host-aware accessible CSS, and no product/domain branding.
+  The generated bootstrap configures `onToolResult` before `createMcpApp()` connects, preserving the
+  initial tool result through the MCP Apps handshake.
+
+- The scaffold refuses a non-empty target by default and offers `--force` for intentional replacement
+  of scaffold files without deleting unrelated target files. Its temporary-directory tests cover
+  generation, lifecycle source shape, host-aware CSS, refusal, and explicit force.
 
 - Add npm packaging for `@casys/mcp-view` via `scripts/build-npm.ts` and the repository publish
   workflow. The package now follows the same JSR + npm publishing path as the other workspace
   members.
+
+- **Host tool-notification lifecycle callbacks.** `AppConfig` now accepts `onToolInput`,
+  `onToolInputPartial`, and `onToolResult`. `createMcpApp` installs the ext-apps one-shot handlers
+  before `connect()`, buffers host notifications until the initial route and `AppHandle` exist, then
+  replays them in FIFO order. Async callbacks are serialized; a callback failure is logged without
+  preventing later notifications from being delivered.
+
+### Changed
+
+- Bump `@casys/mcp-view` to 0.4.0 and publish the `./scaffold` JSR subpath.
 
 ## [0.3.0] - 2026-05-09
 

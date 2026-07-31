@@ -17,6 +17,9 @@ import type {
   McpUiAppCapabilities,
   McpUiHostCapabilities,
   McpUiHostContext,
+  McpUiToolInputNotification,
+  McpUiToolInputPartialNotification,
+  McpUiToolResultNotification,
 } from "@modelcontextprotocol/ext-apps";
 import type { CallToolResult, Implementation } from "@modelcontextprotocol/sdk/types.js";
 
@@ -43,6 +46,55 @@ export type { InferToolArgs, ToolsHandle, ViewToolDef } from "./tools.ts";
  * are responsible for bridging their VDOM into one of these two forms.
  */
 export type ViewOutput = string | Node;
+
+// ---------------------------------------------------------------------------
+// Host notification lifecycle
+// ---------------------------------------------------------------------------
+
+/**
+ * Callback invoked when the host sends the complete arguments for the tool
+ * that opened or updates this App. It receives a fully initialized handle.
+ */
+export type ToolInputLifecycleCallback<S> = (
+  params: McpUiToolInputNotification["params"],
+  app: AppHandle<S>,
+) => void | Promise<void>;
+
+/**
+ * Callback invoked for streaming partial tool arguments. It receives a fully
+ * initialized handle, even when the host notification arrived during the
+ * `ui/initialize` handshake.
+ */
+export type ToolInputPartialLifecycleCallback<S> = (
+  params: McpUiToolInputPartialNotification["params"],
+  app: AppHandle<S>,
+) => void | Promise<void>;
+
+/**
+ * Callback invoked when the host sends a completed tool result. It receives a
+ * fully initialized handle, even when the host notification arrived during
+ * the `ui/initialize` handshake.
+ */
+export type ToolResultLifecycleCallback<S> = (
+  params: McpUiToolResultNotification["params"],
+  app: AppHandle<S>,
+) => void | Promise<void>;
+
+/**
+ * Optional lifecycle callbacks for the three common MCP Apps one-shot
+ * notifications. `createMcpApp` installs its ext-apps handlers before
+ * `connect()` and buffers events until the `AppHandle` is fully ready.
+ *
+ * Callbacks run in host arrival order across all three notification kinds.
+ * Async callbacks are serialized: a later callback waits for the previous one
+ * to settle. Errors are logged and do not prevent later notifications from
+ * being delivered.
+ */
+export interface AppLifecycleCallbacks<S> {
+  onToolInput?: ToolInputLifecycleCallback<S>;
+  onToolInputPartial?: ToolInputPartialLifecycleCallback<S>;
+  onToolResult?: ToolResultLifecycleCallback<S>;
+}
 
 /**
  * A view's render function. Pure: must depend only on `ctx` and `data`.
@@ -270,7 +322,7 @@ export type ViewMap<S> = Record<string, ViewDefinition<S, any, any>>;
  *
  * @typeParam S - User state shape. Defaults to an empty object.
  */
-export interface AppConfig<S = Record<string, never>> {
+export interface AppConfig<S = Record<string, never>> extends AppLifecycleCallbacks<S> {
   /**
    * App identity advertised to the host in `ui/initialize`.
    */

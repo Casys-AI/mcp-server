@@ -239,6 +239,59 @@ MCP_AUTH_AUDIENCE=https://prod.example.com ./my-server --http --port 3000
 
 Priority: `programmatic > env vars > YAML > no auth`
 
+### MRTR requestState replay protection
+
+When a tool returns `resultType: "input_required"`, configure a signing key so
+the framework can bind the continuation to the principal, method, arguments,
+expiry, and a random nonce:
+
+```typescript
+const server = new McpApp({
+  name: "my-api",
+  version: "1.0.0",
+  mrtr: {
+    signingKey: Deno.env.get("MCP_MRTR_SIGNING_KEY"),
+  },
+});
+```
+
+Each verified nonce is consumed before the handler runs. With no explicit
+`replayStore`, the built-in `MemoryMrtrReplayStore` rejects a second use within
+one continuously running process.
+
+Multi-instance or restart-safe deployments must inject one durable atomic store
+shared by every instance:
+
+```typescript
+import type { MrtrReplayStore } from "@casys/mcp-server";
+
+const replayStore: MrtrReplayStore = {
+  async consume(nonce, expiresAt) {
+    // Atomically reserve the nonce until its signed expiry.
+    // Redis equivalent: SET mrtr:<nonce> 1 NX EXAT <expiresAt>
+    return await reserveNonce(nonce, expiresAt);
+  },
+};
+
+const server = new McpApp({
+  name: "my-api",
+  version: "1.0.0",
+  mrtr: {
+    signingKey: Deno.env.get("MCP_MRTR_SIGNING_KEY"),
+    replayStore,
+  },
+});
+```
+
+`consume()` must return `true` only for the caller that wins the atomic
+reservation, `false` for a nonce already consumed, and throw when the store is
+unavailable. Store failures are fail-closed; the handler is not executed.
+
+This is at-most-once admission, not exactly-once completion. If business logic
+commits and the response is lost, replaying the same token is rejected.
+Returning the prior result safely requires a separate idempotency/result ledger,
+ideally paired with idempotency support in the downstream system.
+
 ### RFC 9728
 
 When auth is configured, the framework automatically exposes

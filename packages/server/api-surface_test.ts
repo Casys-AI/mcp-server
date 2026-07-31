@@ -18,7 +18,9 @@ import {
   exportStateKey,
   generateStateKey,
   McpApp,
+  MemoryMrtrReplayStore,
   type MrtrOptions,
+  type MrtrReplayStore,
   sealRequestState,
   type SubscriptionFilter,
   SubscriptionRegistry,
@@ -34,12 +36,30 @@ Deno.test("api surface - a consumer can configure all three 2026-07-28 features"
     logger: () => {},
     transport: "stateless",
     extensions: { "io.modelcontextprotocol/tasks": {} },
-    mrtr: { signingKey: "b".repeat(64) } satisfies MrtrOptions,
+    mrtr: {
+      signingKey: "b".repeat(64),
+      replayStore: new MemoryMrtrReplayStore(),
+    } satisfies MrtrOptions,
     cache: { ttlMs: 60_000, scope: "public" },
   });
 
   assertEquals(typeof app.registerTool, "function");
   assertEquals(typeof app.sendNotification, "function");
+});
+
+Deno.test("api surface - a consumer can provide a shared MRTR replay store", () => {
+  const replayStore: MrtrReplayStore = {
+    consume: (_nonce, _expiresAt) => true,
+  };
+  const app = new McpApp({
+    name: "api-surface-shared-replay",
+    version: "1.0.0",
+    logger: () => {},
+    transport: "stateless",
+    mrtr: { signingKey: "b".repeat(64), replayStore },
+  });
+
+  assertEquals(typeof app.registerTool, "function");
 });
 
 Deno.test("api surface - createTask is reachable and a tool can return it", () => {

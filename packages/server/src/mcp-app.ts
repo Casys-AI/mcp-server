@@ -88,6 +88,8 @@ import {
   importStateKey,
   type InputRequestEntry,
   type InputRequiredSignal,
+  MemoryMrtrReplayStore,
+  type MrtrReplayStore,
   paramsDigest,
   sealRequestState,
   verifyRequestState,
@@ -441,6 +443,14 @@ export class McpApp {
   private mrtrKeyPromise: Promise<CryptoKey | null> | null = null;
 
   /**
+   * Consumes a verified requestState nonce before the handler runs.
+   *
+   * A signed deployment always has a store: process-local by default, or the
+   * shared atomic implementation supplied by the consumer.
+   */
+  private readonly mrtrReplayStore: MrtrReplayStore | null;
+
+  /**
    * Validated `ttlMs`. The spec requires servers to provide a value `>= 0`, and
    * an integer — clients are told to ignore a negative one, which would make a
    * misconfiguration silently do nothing instead of failing.
@@ -510,6 +520,23 @@ export class McpApp {
         "[McpApp] mrtr.signingKey must be 64 lowercase hex characters (32 bytes). " +
           "Generate one with: crypto.getRandomValues(new Uint8Array(32)) rendered as hex, " +
           "or the exported generateStateKey() + exportStateKey() helpers.",
+      );
+    }
+    if (
+      options.mrtr?.replayStore !== undefined && mrtrKey === undefined
+    ) {
+      throw new Error(
+        "[McpApp] mrtr.replayStore requires mrtr.signingKey. " +
+          "Only a verified token exposes a trusted nonce to consume.",
+      );
+    }
+    this.mrtrReplayStore = mrtrKey === undefined
+      ? null
+      : options.mrtr?.replayStore ?? new MemoryMrtrReplayStore();
+    if (mrtrKey !== undefined && options.mrtr?.replayStore === undefined) {
+      (options.logger ?? console.error)(
+        "[McpApp] WARNING: MRTR replay protection is process-local. " +
+          "Load-balanced deployments must configure one shared atomic mrtr.replayStore.",
       );
     }
 
@@ -2119,6 +2146,77 @@ export class McpApp {
                     },
                   },
                   400,
+                );
+              }
+
+              const replayStore = this.mrtrReplayStore;
+              if (replayStore === null) {
+                return jsonRpcResponse(
+                  {
+                    jsonrpc: "2.0",
+                    id,
+                    error: {
+                      code: ErrorCode.InternalError,
+                      message: "MRTR replay protection is unavailable",
+                      data: {
+                        problem: "mrtr_replay_store_unavailable",
+                        recovery:
+                          "Configure mrtr.signingKey with a working replay store and retry the full interaction.",
+                      },
+                    },
+                  },
+                  500,
+                  { "MCP-Protocol-Version": statelessVersion },
+                );
+              }
+
+              let consumed: boolean;
+              try {
+                const storeResult = await replayStore.consume(
+                  verdict.payload.nonce,
+                  verdict.payload.exp,
+                );
+                if (storeResult !== true && storeResult !== false) {
+                  throw new Error(
+                    "mrtr.replayStore.consume() must return a boolean",
+                  );
+                }
+                consumed = storeResult;
+              } catch {
+                this.log(
+                  "[WARN] MRTR replay store unavailable; retry rejected before handler",
+                );
+                return jsonRpcResponse(
+                  {
+                    jsonrpc: "2.0",
+                    id,
+                    error: {
+                      code: ErrorCode.InternalError,
+                      message: "MRTR replay protection is unavailable",
+                      data: {
+                        problem: "mrtr_replay_store_unavailable",
+                        recovery:
+                          "Restore the shared replay store, then restart the interaction to obtain a fresh requestState.",
+                      },
+                    },
+                  },
+                  500,
+                  { "MCP-Protocol-Version": statelessVersion },
+                );
+              }
+              if (!consumed) {
+                return jsonRpcResponse(
+                  {
+                    jsonrpc: "2.0",
+                    id,
+                    error: {
+                      code: JSONRPC_INVALID_PARAMS,
+                      message: "Invalid requestState: replayed",
+                      data: { reason: "replayed" },
+                    },
+                  },
+                  400,
+                  { "MCP-Protocol-Version": statelessVersion },
                 );
               }
               retryVerified = true;

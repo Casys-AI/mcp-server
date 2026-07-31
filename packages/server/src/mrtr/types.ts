@@ -90,4 +90,18 @@ export interface MrtrOptions {
    * shared store on the first use).
    */
   defaultTtlSecs?: number;
+
+  /**
+   * Atomic store used to reject a second use of the same signed requestState.
+   *
+   * With a signing key and no explicit store, McpApp uses a process-local
+   * MemoryMrtrReplayStore. That protects one continuously running process only:
+   * a restart loses its reservations. Every instance in a load-balanced
+   * deployment MUST receive the same durable shared store implementation.
+   *
+   * The nonce is consumed before the handler runs. This provides at-most-once
+   * admission, not exactly-once completion: if the handler commits a mutation
+   * and its response is lost, the same token is still rejected on retry.
+   */
+  replayStore?: import("./replay-store.ts").MrtrReplayStore;
 }

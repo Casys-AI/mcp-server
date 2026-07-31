@@ -2,23 +2,32 @@
 
 ## Role
 
-Generate self-contained HTML from a composite UI descriptor.
+Generate self-contained dashboard HTML and a parent-side MCP Apps event bus from a composite
+descriptor.
 
 ## Inputs
 
-- `CompositeUiDescriptor` — layout, children (with resourceUri), resolved sync rules, sharedContext
+- `CompositeUiDescriptor`: layout, children, resolved sync rules, and shared context.
+- Optional `RenderCompositeOptions`: explicit slot URLs, expected origins, local proxy routes,
+  implemented capability flags, initial results, and sandbox policy.
 
 ## Outputs
 
-- HTML5 string — complete document with inline CSS, iframes, and event bus script
+- Complete HTML5 document with inline CSS, iframes, and event bus script.
+- Resolved serializable slot settings for tests and host integration.
 
 ## Invariants
 
-- Output is deterministic for a given descriptor (except workflow UUIDs).
-- Renderer escapes user-controlled content (tool names, resourceUri) before embedding.
-- Event bus handles malformed postMessage gracefully (console.warn, no crash).
+- Without options, static output remains compatible with the legacy renderer: no sandbox attribute,
+  no local proxy route, no `serverTools` or `serverResources` capability.
+- A configured interactive slot uses only its supplied local endpoint and expected origin. The
+  renderer does not derive server URLs from `ui://`.
+- A complete initial tool result is sent once and only after the App confirms initialization.
+- The event bus ignores malformed messages and rejects an incoming message whose `WindowProxy` or
+  configured origin does not match the slot.
+- User-controlled values and inline script data are safely encoded.
 
 ## Dependency constraints
 
-- Imports from `../types/` (descriptor, resources, layout) and local submodules (css/, js/).
-- No dependency on collector, sync, composer, sdk, or host.
+- Imports only core descriptor/types and local CSS/JS helpers.
+- Has no dependency on collector, runtime transport, deployment, or an MCP client.

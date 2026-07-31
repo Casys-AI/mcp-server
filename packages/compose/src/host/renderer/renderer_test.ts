@@ -215,9 +215,8 @@ Deno.test("renderComposite - event bus routes ui/compose/event via sync rules", 
 
   const html = renderComposite(descriptor);
 
-  // The cross-UI event routing is now the sole sync mechanism — no more
-  // legacy ui/update-model-context fallback, no more ui/notifications/tool-result
-  // forwarding (those were removed in the 0.4.0 cleanup).
+  // Cross-UI sync remains compose-event-only. Initial tool-result delivery is
+  // lifecycle hydration, not an alternative sync route.
   assertStringIncludes(html, "COMPOSE_METHOD");
   assertStringIncludes(html, "ui/compose/event");
   assertStringIncludes(html, "syncRules");
@@ -240,7 +239,7 @@ Deno.test("renderComposite - event bus handles broadcast to='*'", () => {
 
   assertStringIncludes(html, '"to":"*"');
   assertStringIncludes(html, "rule.to === '*'");
-  assertStringIncludes(html, "filter(([s]) => s !== sourceSlot)");
+  assertStringIncludes(html, "filter(([slot]) => slot !== sourceSlot)");
 });
 
 Deno.test("renderComposite - event bus warns on malformed + unknown messages", () => {
@@ -329,4 +328,101 @@ Deno.test("renderComposite - escapes HTML in source names", () => {
 
   assertEquals(html.includes('<script>alert("xss")</script>'), false);
   assertStringIncludes(html, "&lt;script&gt;");
+});
+
+// =============================================================================
+// Interactive Host Bridge Options
+// =============================================================================
+
+Deno.test("renderComposite - preserves legacy iframe output when no host bridge is configured", () => {
+  const descriptor = buildCompositeUi(
+    [{ source: "a", resourceUri: "ui://a", slot: 0 }],
+    { layout: "stack" },
+  );
+
+  const html = renderComposite(descriptor);
+
+  assertStringIncludes(html, 'src="ui://a"');
+  assertEquals(html.includes("sandbox="), false);
+  assertEquals(html.includes('"serverTools":true'), false);
+  assertEquals(html.includes('"serverResources":true'), false);
+});
+
+Deno.test("renderComposite - renders an opt-in local slot bridge with a safe sandbox", () => {
+  const descriptor = buildCompositeUi(
+    [{ source: "console_snapshot", resourceUri: "ui://console/snapshot", slot: 0 }],
+    { layout: "stack" },
+  );
+
+  const html = renderComposite(descriptor, {
+    slots: {
+      0: {
+        iframeSrc: "/ui/0",
+        expectedOrigin: "http://127.0.0.1:49152",
+        capabilities: { serverTools: true, serverResources: true },
+        initialToolResult: { structuredContent: { runId: "run-1" } },
+      },
+    },
+  });
+
+  assertStringIncludes(html, 'src="/ui/0"');
+  assertStringIncludes(html, 'sandbox="allow-scripts allow-same-origin"');
+  assertStringIncludes(html, 'expectedOrigin":"http://127.0.0.1:49152"');
+  assertStringIncludes(html, 'rpcEndpoint":"/api/slots/0/mcp"');
+  assertStringIncludes(html, '"serverTools":true');
+  assertStringIncludes(html, '"serverResources":true');
+  assertStringIncludes(html, '"hasInitialToolResult":true');
+});
+
+Deno.test("renderComposite - permits explicit sandbox overrides per host or slot", () => {
+  const descriptor = buildCompositeUi(
+    [{ source: "a", resourceUri: "ui://a", slot: 0 }],
+    { layout: "stack" },
+  );
+
+  const noSandbox = renderComposite(descriptor, {
+    iframeSandbox: false,
+    slots: { 0: { iframeSrc: "/ui/0" } },
+  });
+  const trustedSandbox = renderComposite(descriptor, {
+    slots: { 0: { iframeSrc: "/ui/0", sandbox: "allow-scripts allow-same-origin" } },
+  });
+
+  assertEquals(noSandbox.includes("sandbox="), false);
+  assertStringIncludes(trustedSandbox, 'sandbox="allow-scripts allow-same-origin"');
+});
+
+Deno.test("renderComposite - canonicalizes an expected child origin and rejects opaque origins", () => {
+  const descriptor = buildCompositeUi(
+    [{ source: "a", resourceUri: "ui://a", slot: 0 }],
+    { layout: "stack" },
+  );
+
+  const html = renderComposite(descriptor, {
+    slots: { 0: { expectedOrigin: "https://child.example.test/path?ignored=yes" } },
+  });
+  assertStringIncludes(html, 'expectedOrigin":"https://child.example.test"');
+
+  let error: unknown;
+  try {
+    renderComposite(descriptor, { slots: { 0: { expectedOrigin: "file:///tmp/app.html" } } });
+  } catch (cause) {
+    error = cause;
+  }
+  assertEquals(error instanceof TypeError, true);
+});
+
+Deno.test("renderComposite - escapes injected tool result JSON before embedding it in a script", () => {
+  const descriptor = buildCompositeUi(
+    [{ source: "a", resourceUri: "ui://a", slot: 0 }],
+    { layout: "stack" },
+  );
+  const payload = "</script><script>globalThis.pwned = true</script>";
+
+  const html = renderComposite(descriptor, {
+    slots: { 0: { initialToolResult: { content: [{ type: "text", text: payload }] } } },
+  });
+
+  assertEquals(html.includes(payload), false);
+  assertStringIncludes(html, "\\u003c/script\\u003e\\u003cscript\\u003e");
 });

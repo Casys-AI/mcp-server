@@ -12,6 +12,28 @@ explicit orchestration plus MCP tool results and renders a composite UI. It does
 end-user or no-code dashboard builder; intent-first authoring belongs in a higher product layer
 built on top of this library.
 
+## Static composition and interactive local hosting
+
+The core pipeline and `renderComposite()` remain deterministic, pure composition primitives. They
+can produce a static iframe layout without connecting a browser back to MCP.
+
+When an MCP App needs its initial tool result, `resources/read`, or an App-initiated tool call, use
+the explicit runtime host:
+
+```ts
+import { composeAndServeDashboard } from "@casys/mcp-compose/runtime";
+
+const dashboard = await composeAndServeDashboard({ manifests, template });
+console.log(dashboard.url);
+// dashboard.shutdown() closes the local listeners and MCP cluster.
+```
+
+It is a loopback-only host for one local dashboard, not a general MCP proxy. It resolves App
+resources with MCP `resources/read`; it never assumes an upstream server-specific `/ui` route. See
+the [runtime contract](./src/runtime/contract.md) and
+[ADR 0004](./docs/decision-records/0004-local-multi-app-host-runtime.md) for the security and
+deployment boundary.
+
 ## Why mcp-compose?
 
 MCP Apps (SEP-1865) let each MCP server expose its own UI via `_meta.ui.resourceUri`. But when an
@@ -220,7 +242,7 @@ events.on("filter.apply", (payload) => applyFilter(payload.data));
 events.destroy(); // cleanup
 ```
 
-## Runtime — Dashboard from Templates
+## Runtime — Dashboard from templates
 
 The runtime module starts MCP servers, calls tools, and feeds results through the core pipeline to
 produce complete dashboards:
@@ -236,6 +258,22 @@ const result = await composeDashboardFromFiles(
 await Deno.writeTextFile("dashboard.html", result.html);
 ```
 
+The API above keeps the historical static rendering path. For a live local MCP Apps dashboard, load
+the same template/manifests and call `composeAndServeDashboard()` instead:
+
+```ts
+import { composeAndServeDashboard, loadManifests, loadTemplate } from "@casys/mcp-compose/runtime";
+
+const manifests = await loadManifests("./manifests");
+const template = await loadTemplate("./dashboards/sales.yaml");
+const dashboard = await composeAndServeDashboard(
+  { manifests, template },
+  { open: true },
+);
+```
+
+The returned `ComposedDashboardHandle` owns its cluster until `dashboard.shutdown()` is called.
+
 ### Manifest
 
 Each MCP server has a JSON manifest describing its transport and tools. Generated at build time — no
@@ -244,15 +282,30 @@ server startup needed for discovery.
 ```json
 {
   "name": "mcp-einvoice",
-  "transport": { "type": "http", "url": "http://localhost:3015" },
+  "transport": {
+    "type": "http",
+    "url": "http://localhost:3015",
+    "protocol": "auto"
+  },
   "tools": [
-    { "name": "invoice_search", "emits": ["invoice.selected"], "accepts": ["filter.apply"] }
+    {
+      "name": "invoice_search",
+      "emits": ["invoice.selected"],
+      "accepts": ["filter.apply"],
+      "appCallable": true
+    }
   ]
 }
 ```
 
 Transport: `"stdio"` (cluster starts the process with `--http --port=0`) or `"http"` (connect to an
-existing server).
+existing server). HTTP `protocol` defaults to `"auto"`: stateless MCP `2026-07-28` is tried first,
+then Compose falls back only for a compatible legacy response to initialized Streamable HTTP. Pin
+`"streamable-http"` or `"stateless-2026-07-28"` when the endpoint is known.
+
+`appCallable` is deny-by-default. Set it only for an MCP App method that may be invoked through a
+local Compose panel. A panel can read only the original `ui://` resource that created it; it cannot
+select another server or resource.
 
 ### Template
 
@@ -285,9 +338,11 @@ orchestration:
 The rendered HTML includes a JavaScript event bus implementing:
 
 - **`ui/initialize`** -- Handshake with host capabilities (MCP Apps SEP-1865)
+- **`ui/notifications/initialized`** -- Gate before the full initial tool result is sent
 - **`ui/compose/event`** -- Dedicated cross-UI event routing (mcp-compose protocol)
-- **`ui/update-model-context`** -- Routes events per sync rules (legacy)
-- **`ui/notifications/tool-result`** -- Forwards data to target UIs
+- **`ui/notifications/tool-result`** -- Full initiating result delivered after initialization
+- **`tools/call` / `tools/list`** -- Only when the slot has a local route and manifest grant
+- **`resources/read` / `resources/list`** -- Only for the resource bound to that slot
 - **`ui/message`** -- Logging/debugging channel
 
 All messages use JSON-RPC 2.0 via `postMessage`.
@@ -307,15 +362,21 @@ All messages use JSON-RPC 2.0 via `postMessage`.
 
 **Runtime errors (`RuntimeErrorCode`):**
 
-| Code                   | Description                          |
-| ---------------------- | ------------------------------------ |
-| `MANIFEST_PARSE_ERROR` | Invalid manifest JSON or structure   |
-| `TEMPLATE_PARSE_ERROR` | Invalid template YAML or structure   |
-| `MANIFEST_NOT_FOUND`   | Template references unknown manifest |
-| `PROCESS_START_FAILED` | MCP server failed to start           |
-| `TOOL_CALL_FAILED`     | HTTP tool call returned an error     |
-| `TOOL_CALL_TIMEOUT`    | Tool call exceeded timeout           |
-| `PROCESS_DIED`         | Server process exited unexpectedly   |
+| Code                    | Description                               |
+| ----------------------- | ----------------------------------------- |
+| `MANIFEST_PARSE_ERROR`  | Invalid manifest JSON or structure        |
+| `TEMPLATE_PARSE_ERROR`  | Invalid template YAML or structure        |
+| `MANIFEST_NOT_FOUND`    | Template references unknown manifest      |
+| `PROCESS_START_FAILED`  | MCP server failed to start                |
+| `TOOL_CALL_FAILED`      | HTTP tool call returned an error          |
+| `TOOL_CALL_TIMEOUT`     | Tool call exceeded timeout                |
+| `TOOL_LIST_FAILED`      | MCP tools/list call returned an error     |
+| `TOOL_LIST_TIMEOUT`     | MCP tools/list call exceeded timeout      |
+| `RESOURCE_READ_FAILED`  | MCP resources/read call returned an error |
+| `RESOURCE_READ_TIMEOUT` | MCP resources/read call exceeded timeout  |
+| `RESOURCE_LIST_FAILED`  | MCP resources/list call returned an error |
+| `RESOURCE_LIST_TIMEOUT` | MCP resources/list call exceeded timeout  |
+| `PROCESS_DIED`          | Server process exited unexpectedly        |
 
 ## Development
 
@@ -334,8 +395,9 @@ for the product boundary.
 
 This library follows [AX (Agent Experience)](https://github.com/AXDesignPattern) principles:
 
-- **Zero dependencies** -- Deno standard library only
-- **Pure functions** -- No I/O, no network, no filesystem in core
+- **Pure core** -- No I/O, network, filesystem, or runtime client dependency in `core/`
+- **Narrow runtime dependency** -- The optional runtime uses the official MCP SDK for legacy
+  Streamable HTTP plus a small protocol-defined stateless adapter
 - **Deterministic** -- Same inputs produce same outputs (UUID isolated)
 - **Machine-readable errors** -- Structured `ErrorCode` + `ValidationIssue`, not string throws
 - **Fail-fast** -- Invalid sync rules rejected upfront, no silent fallbacks

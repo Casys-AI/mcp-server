@@ -62,6 +62,30 @@ Deno.test("validateManifest - valid http manifest passes", () => {
   assertEquals(result.valid, true);
 });
 
+Deno.test("validateManifest - accepts explicit stateless protocol and app-only tool", () => {
+  const result = validateManifest({
+    name: "dashboard",
+    transport: {
+      type: "http",
+      url: "http://localhost:3001/mcp",
+      protocol: "stateless-2026-07-28",
+    },
+    tools: [{ name: "refresh", appCallable: true }],
+  });
+  assertEquals(result.valid, true);
+});
+
+Deno.test("validateManifest - rejects invalid protocol and appCallable values", () => {
+  const result = validateManifest({
+    name: "dashboard",
+    transport: { type: "http", url: "http://localhost:3001", protocol: "websocket" },
+    tools: [{ name: "refresh", appCallable: "yes" }],
+  });
+  assertEquals(result.valid, false);
+  assertEquals(result.errors.some((error) => error.includes("transport.protocol")), true);
+  assertEquals(result.errors.some((error) => error.includes("appCallable")), true);
+});
+
 Deno.test("validateManifest - http missing url", () => {
   const result = validateManifest({
     name: "pg",

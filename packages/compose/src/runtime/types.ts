@@ -10,6 +10,8 @@
 import type { UiLayout } from "../core/types/layout.ts";
 import type { UiSyncRule } from "../core/types/sync-rules.ts";
 import type { CompositeUiDescriptor } from "../core/types/descriptor.ts";
+import type { ReadResourceResult } from "@modelcontextprotocol/sdk/types.js";
+import type { ComposedDashboardPanel } from "./host-dashboard-types.ts";
 
 // =============================================================================
 // Transport types
@@ -36,6 +38,8 @@ export interface StdioTransport {
   args?: string[];
   /** Environment variables for the process. */
   env?: Record<string, string>;
+  /** MCP HTTP protocol used after the process reports its listening URL. */
+  protocol?: McpHttpProtocol;
 }
 
 /**
@@ -53,7 +57,19 @@ export interface HttpTransport {
   type: "http";
   /** Base URL of the running MCP server. */
   url: string;
+  /**
+   * MCP HTTP protocol to use. `auto` probes the modern stateless protocol
+   * first, then falls back to the official Streamable HTTP SDK for legacy
+   * servers. Defaults to `auto`.
+   */
+  protocol?: McpHttpProtocol;
 }
+
+/** MCP HTTP protocol selection for a manifest transport. */
+export type McpHttpProtocol =
+  | "auto"
+  | "stateless-2026-07-28"
+  | "streamable-http";
 
 /** Transport configuration for connecting to an MCP server. */
 export type McpTransport = StdioTransport | HttpTransport;
@@ -88,6 +104,11 @@ export interface McpToolDeclaration {
   accepts?: string[];
   /** UI resource URI pattern. */
   resourceUri?: string;
+  /**
+   * Whether an embedded MCP App may invoke this tool through Compose's host
+   * bridge. Omitted means deny: interactive capabilities are opt-in per tool.
+   */
+  appCallable?: boolean;
 }
 
 /**
@@ -133,6 +154,43 @@ export interface McpManifest {
 // =============================================================================
 
 /**
+ * Complete result of an MCP `resources/read` request.
+ *
+ * This aliases the official SDK type so callers retain each resource's MIME
+ * type and metadata (including MCP Apps CSP metadata) instead of reducing a
+ * resource to HTML text.
+ */
+export type McpReadResourceResult = ReadResourceResult;
+
+/** A tool returned by MCP `tools/list`, preserving unrecognised fields. */
+export interface McpListedTool {
+  name: string;
+  [key: string]: unknown;
+}
+
+/** Complete result of an MCP `tools/list` request. */
+export interface McpListToolsResult {
+  tools: McpListedTool[];
+  nextCursor?: string;
+  _meta?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+/** A resource returned by MCP `resources/list`, preserving unrecognised fields. */
+export interface McpListedResource {
+  uri: string;
+  [key: string]: unknown;
+}
+
+/** Complete result of an MCP `resources/list` request. */
+export interface McpListResourcesResult {
+  resources: McpListedResource[];
+  nextCursor?: string;
+  _meta?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+/**
  * An active MCP server connection.
  *
  * For stdio: wraps the child process.
@@ -153,6 +211,12 @@ export interface McpConnection {
     toolName: string,
     args?: Record<string, unknown>,
   ): Promise<unknown>;
+  /** Read a resource through the server's active MCP transport. */
+  readResource(uri: string): Promise<McpReadResourceResult>;
+  /** List tools through this server's active MCP transport. */
+  listTools(cursor?: string): Promise<McpListToolsResult>;
+  /** List resources through this server's active MCP transport. */
+  listResources(cursor?: string): Promise<McpListResourcesResult>;
 }
 
 /**
@@ -167,6 +231,12 @@ export interface McpCluster {
     toolName: string,
     args?: Record<string, unknown>,
   ): Promise<unknown>;
+  /** Read a resource from a specific server's active MCP transport. */
+  readResource(serverName: string, uri: string): Promise<McpReadResourceResult>;
+  /** List tools exposed by a specific server. */
+  listTools(serverName: string, cursor?: string): Promise<McpListToolsResult>;
+  /** List resources exposed by a specific server. */
+  listResources(serverName: string, cursor?: string): Promise<McpListResourcesResult>;
   /** Get the uiBaseUrl for a server (for uri resolution). */
   getUiBaseUrl(serverName: string): string | undefined;
   /** Stop all servers. */
@@ -276,6 +346,16 @@ export interface ComposeResult {
   html: string;
   /** Warnings generated during composition. */
   warnings: string[];
+  /**
+   * Immutable runtime provenance for each collected MCP App panel.
+   *
+   * Unlike `descriptor.children`, this retains the source server, original
+   * `ui://` resource URI, initial CallToolResult, and manifest allow-list
+   * needed by a local interactive host. It is captured while the tool call is
+   * still associated with its template source; it must never be reconstructed
+   * from a URI authority later.
+   */
+  panels: readonly ComposedDashboardPanel[];
   /** Cluster handle (only present if keepAlive was true). Call stopAll() when done. */
   cluster?: McpCluster;
 }
@@ -292,6 +372,12 @@ export enum RuntimeErrorCode {
   PROCESS_START_FAILED = "PROCESS_START_FAILED",
   TOOL_CALL_FAILED = "TOOL_CALL_FAILED",
   TOOL_CALL_TIMEOUT = "TOOL_CALL_TIMEOUT",
+  TOOL_LIST_FAILED = "TOOL_LIST_FAILED",
+  TOOL_LIST_TIMEOUT = "TOOL_LIST_TIMEOUT",
+  RESOURCE_READ_FAILED = "RESOURCE_READ_FAILED",
+  RESOURCE_READ_TIMEOUT = "RESOURCE_READ_TIMEOUT",
+  RESOURCE_LIST_FAILED = "RESOURCE_LIST_FAILED",
+  RESOURCE_LIST_TIMEOUT = "RESOURCE_LIST_TIMEOUT",
   PROCESS_DIED = "PROCESS_DIED",
 }
 

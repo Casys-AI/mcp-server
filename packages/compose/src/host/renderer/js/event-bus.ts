@@ -3,18 +3,10 @@
  *
  * Generates JavaScript that implements:
  * - JSON-RPC 2.0 message handling via postMessage
- * - `ui/initialize` handshake (MCP Apps protocol)
- * - `ui/message` logging channel (MCP Apps protocol)
- * - `ui/compose/event` dedicated cross-UI event routing (compose extension)
+ * - `ui/initialize` / `ui/notifications/initialized` MCP Apps lifecycle
+ * - opt-in slot-local tools/resources proxying
+ * - `ui/compose/event` dedicated cross-UI event routing
  * - Broadcast support via `to: "*"` on sync rules
- *
- * Compose acts as a lightweight host for embedded MCP Apps, implementing
- * a small subset of the host side of the ext-apps spec. The
- * `ui/compose/event` extension fills the View↔View gap the spec doesn't
- * cover (embedded apps inside a composite dashboard talking to each
- * other via sync rules). Other spec messages (open-link, download-file,
- * request-display-mode, size-changed, host-context-changed) are not yet
- * implemented — planned for a future release.
  *
  * @module renderer/js/event-bus
  */
@@ -22,20 +14,29 @@
 import type { CompositeUiDescriptor } from "../../../core/types/descriptor.ts";
 import { COMPOSE_EVENT_METHOD } from "../../../sdk/compose-events.ts";
 import { COMPOSE_VERSION, MCP_APPS_PROTOCOL_VERSION } from "../../../version.ts";
+import type { ResolvedRendererSlotOptions } from "../options.ts";
 
 /**
  * Generate the event bus JavaScript for a composite UI.
  *
+ * `slots` is deliberately a renderer-only value. It lets any serving runtime
+ * map a child iframe to a local resource URL and local MCP proxy without the
+ * browser code importing runtime types or knowing about server transports.
+ *
  * @param descriptor - Composite UI descriptor with sync rules
+ * @param slots - Fully-resolved browser host settings, keyed by slot
  * @returns JavaScript code string for inline `<script>` tag
  *
  * @example
  * ```typescript
- * const js = generateEventBusScript(descriptor);
- * // js contains postMessage handler with sync rule routing
+ * const js = generateEventBusScript(descriptor, slots);
+ * // js contains the MCP Apps lifecycle, local proxy, and sync routing
  * ```
  */
-export function generateEventBusScript(descriptor: CompositeUiDescriptor): string {
+export function generateEventBusScript(
+  descriptor: CompositeUiDescriptor,
+  slots: ReadonlyMap<number, ResolvedRendererSlotOptions> = new Map(),
+): string {
   const tabSwitchingCode = descriptor.layout === "tabs"
     ? `
     // Tab switching logic
@@ -55,124 +56,340 @@ export function generateEventBusScript(descriptor: CompositeUiDescriptor): strin
   `
     : "";
 
-  return `
-    // mcp-compose Event Bus - MCP Apps Protocol compliant
-    const COMPOSE_METHOD = '${COMPOSE_EVENT_METHOD}';
-    const syncRules = ${JSON.stringify(descriptor.sync)};
-    const sharedContext = ${JSON.stringify(descriptor.sharedContext ?? {})};
+  const serialisedSlots = Object.fromEntries(slots.entries());
 
-    // Build slot -> iframe map + reverse lookup
+  return `
+    // mcp-compose Event Bus - MCP Apps Protocol host
+    const COMPOSE_METHOD = '${COMPOSE_EVENT_METHOD}';
+    const syncRules = ${serializeForInlineScript(descriptor.sync)};
+    const sharedContext = ${serializeForInlineScript(descriptor.sharedContext ?? {})};
+    const slotConfigs = ${serializeForInlineScript(serialisedSlots)};
+    const initialResultsDelivered = new Set();
+    const initializationResponded = new Set();
+
+    // Build slot -> iframe map + reverse lookup. The fallback lookup matters
+    // when the iframe's WindowProxy becomes available after this script runs.
     const iframes = new Map();
     const windowToSlot = new Map();
     document.querySelectorAll('iframe[data-slot]').forEach((iframe) => {
       const slot = parseInt(iframe.dataset.slot, 10);
+      if (!Number.isInteger(slot)) return;
       iframes.set(slot, iframe);
       if (iframe.contentWindow) windowToSlot.set(iframe.contentWindow, slot);
     });
 
     function getSlotBySource(source) {
-      return windowToSlot.get(source) ?? -1;
+      const knownSlot = windowToSlot.get(source);
+      if (knownSlot !== undefined) return knownSlot;
+
+      for (const [slot, iframe] of iframes.entries()) {
+        if (iframe.contentWindow === source) {
+          windowToSlot.set(source, slot);
+          return slot;
+        }
+      }
+
+      return -1;
     }
 
-    // Acknowledge a JSON-RPC message
-    function ack(source, id) {
-      source.postMessage({ jsonrpc: '2.0', id, result: {} }, '*');
+    function hasRequestId(message) {
+      return Object.prototype.hasOwnProperty.call(message, 'id');
     }
 
-    // Route an event through sync rules, calling deliver(rule, targetIframe) for each match
+    function targetOriginForSlot(slot) {
+      const expectedOrigin = getSlotConfig(slot)?.expectedOrigin;
+      return typeof expectedOrigin === 'string' ? expectedOrigin : '*';
+    }
+
+    function post(source, message, targetOrigin = '*') {
+      if (!source || typeof source.postMessage !== 'function') return;
+      source.postMessage(message, targetOrigin);
+    }
+
+    function respond(source, id, result, targetOrigin = '*') {
+      post(source, { jsonrpc: '2.0', id, result }, targetOrigin);
+    }
+
+    function respondError(source, id, code, message, targetOrigin = '*') {
+      post(source, {
+        jsonrpc: '2.0',
+        id,
+        error: { code, message }
+      }, targetOrigin);
+    }
+
+    function ackIfRequested(source, message, targetOrigin = '*') {
+      if (hasRequestId(message)) respond(source, message.id, {}, targetOrigin);
+    }
+
+    function getSlotConfig(slot) {
+      return slotConfigs[String(slot)];
+    }
+
+    function getHostCapabilities(slot) {
+      const config = getSlotConfig(slot);
+      const capabilities = {
+        logging: {},
+        message: { text: {} }
+      };
+
+      // Do not over-advertise: only capability-gated requests with a local
+      // endpoint are sent to the serving runtime.
+      if (config?.serverTools && config.rpcEndpoint) {
+        capabilities.serverTools = { listChanged: false };
+      }
+      if (config?.serverResources && config.rpcEndpoint) {
+        capabilities.serverResources = { listChanged: false };
+      }
+
+      return capabilities;
+    }
+
+    // Route an event through sync rules, calling
+    // deliver(rule, targetSlot, targetIframe) for each matching target.
     function routeEvent(sourceSlot, eventType, deliver) {
       for (const rule of syncRules) {
         if (rule.from !== sourceSlot) continue;
         if (rule.event !== '*' && rule.event !== eventType) continue;
 
         const targets = rule.to === '*'
-          ? [...iframes.entries()].filter(([s]) => s !== sourceSlot).map(([, iframe]) => iframe)
-          : [iframes.get(rule.to)].filter(Boolean);
+          ? [...iframes.entries()].filter(([slot]) => slot !== sourceSlot)
+          : (() => {
+            const iframe = iframes.get(rule.to);
+            return iframe ? [[rule.to, iframe]] : [];
+          })();
 
-        for (const target of targets) {
-          deliver(rule, target);
+        for (const [targetSlot, target] of targets) {
+          deliver(rule, targetSlot, target);
         }
       }
     }
 
-    // Send a compose event to an iframe (mcp-compose protocol)
-    function sendComposeEvent(iframe, action, data, sourceSlot) {
+    // Send a compose event to an iframe (mcp-compose protocol).
+    function sendComposeEvent(iframe, targetSlot, action, data, sourceSlot) {
       iframe.contentWindow?.postMessage({
         jsonrpc: '2.0',
         method: COMPOSE_METHOD,
         params: { action, data, sourceSlot, sharedContext }
-      }, '*');
+      }, targetOriginForSlot(targetSlot));
     }
 
-    // Listen for messages from child UIs
-    window.addEventListener('message', (e) => {
-      const msg = e.data;
+    function sendInitialToolResult(slot, source) {
+      const config = getSlotConfig(slot);
+      if (!config?.hasInitialToolResult || initialResultsDelivered.has(slot)) return;
+
+      initialResultsDelivered.add(slot);
+      post(source, {
+        jsonrpc: '2.0',
+        method: 'ui/notifications/tool-result',
+        params: config.initialToolResult
+      }, targetOriginForSlot(slot));
+    }
+
+    function allowsMcpMethod(config, method) {
+      return ((method === 'tools/call' || method === 'tools/list') &&
+          config?.serverTools === true) ||
+        ((method === 'resources/read' || method === 'resources/list') &&
+          config?.serverResources === true);
+    }
+
+    async function relayMcpRequest(source, slot, message) {
+      const config = getSlotConfig(slot);
+      const targetOrigin = targetOriginForSlot(slot);
+      if (!allowsMcpMethod(config, message.method) || !config?.rpcEndpoint) {
+        respondError(
+          source,
+          message.id,
+          -32601,
+          '[mcp-compose] ' + message.method + ' is not available for slot ' + slot,
+          targetOrigin,
+        );
+        return;
+      }
+
+      try {
+        const response = await fetch(config.rpcEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: message.id,
+            method: message.method,
+            params: message.params
+          })
+        });
+
+        let payload;
+        try {
+          payload = await response.json();
+        } catch {
+          throw new Error('local MCP proxy returned a non-JSON response');
+        }
+
+        if (!response.ok) {
+          const detail = payload?.error?.message || 'HTTP ' + response.status;
+          throw new Error('local MCP proxy failed: ' + detail);
+        }
+
+        if (!payload || payload.jsonrpc !== '2.0' ||
+          (!Object.prototype.hasOwnProperty.call(payload, 'result') &&
+            !Object.prototype.hasOwnProperty.call(payload, 'error'))) {
+          throw new Error('local MCP proxy returned an invalid JSON-RPC response');
+        }
+
+        // The browser keeps the original request id authoritative, even if a
+        // faulty proxy echoes another id. It prevents one slot from resolving
+        // an unrelated pending App request.
+        if (Object.prototype.hasOwnProperty.call(payload, 'error')) {
+          post(source, { jsonrpc: '2.0', id: message.id, error: payload.error }, targetOrigin);
+        } else {
+          post(source, { jsonrpc: '2.0', id: message.id, result: payload.result }, targetOrigin);
+        }
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        respondError(source, message.id, -32603, '[mcp-compose] ' + detail, targetOrigin);
+      }
+    }
+
+    // Listen for messages from child UIs. Every supported method is bound to
+    // an iframe WindowProxy first; messages from arbitrary windows never get
+    // host capabilities or local MCP access.
+    window.addEventListener('message', (event) => {
+      const message = event.data;
 
       // Skip non-object messages silently (browser extensions, etc.)
-      if (!msg || typeof msg !== 'object') return;
+      if (!message || typeof message !== 'object') return;
 
-      // Warn about malformed JSON-RPC messages
-      if (msg.jsonrpc !== '2.0') {
-        if (msg.method || msg.id) {
-          console.warn('[mcp-compose] Malformed JSON-RPC message (missing jsonrpc: "2.0"):', msg);
+      if (message.jsonrpc !== '2.0') {
+        if (message.method || hasRequestId(message)) {
+          console.warn('[mcp-compose] Malformed JSON-RPC message (missing jsonrpc: "2.0"):', message);
         }
         return;
       }
 
-      // Handle ui/initialize - respond with host capabilities (no slot lookup needed)
-      if (msg.method === 'ui/initialize') {
-        e.source.postMessage({
-          jsonrpc: '2.0',
-          id: msg.id,
-          result: {
-            protocolVersion: '${MCP_APPS_PROTOCOL_VERSION}',
-            hostInfo: { name: 'mcp-compose', version: '${COMPOSE_VERSION}' },
-            hostCapabilities: {
-              logging: {},
-              message: { text: {} }
-            },
-            hostContext: {
-              theme: document.body.classList.contains('dark') ? 'dark' : 'light',
-              displayMode: 'inline'
-            }
-          }
-        }, '*');
+      const sourceSlot = getSlotBySource(event.source);
+      if (sourceSlot < 0) {
+        if (message.method || hasRequestId(message)) {
+          console.warn('[mcp-compose] Ignoring message from an unknown iframe:', message.method);
+        }
         return;
       }
 
-      // Handle ui/message - logging/debugging (no slot routing needed)
-      if (msg.method === 'ui/message') {
-        const slot = getSlotBySource(e.source);
-        console.log('[mcp-compose] UI message from slot', slot, ':', msg.params);
-        ack(e.source, msg.id);
+      // A WindowProxy persists across iframe navigations. Bind it to the
+      // configured child origin as well, otherwise a navigated document could
+      // inherit this slot's local proxy and initial result capability.
+      const sourceConfig = getSlotConfig(sourceSlot);
+      if (sourceConfig?.expectedOrigin && event.origin !== sourceConfig.expectedOrigin) {
+        console.warn('[mcp-compose] Ignoring message with an unexpected iframe origin:', event.origin);
         return;
       }
 
-      // Methods below require source slot resolution
-      const sourceSlot = getSlotBySource(e.source);
+      const targetOrigin = targetOriginForSlot(sourceSlot);
 
-      // Handle ui/compose/event - dedicated cross-UI event routing
-      if (msg.method === COMPOSE_METHOD) {
-        const eventType = msg.params?.event;
-
-        if (!eventType || typeof eventType !== 'string') {
-          console.warn('[mcp-compose] ui/compose/event missing or invalid event name:', msg);
+      if (message.method === 'ui/initialize') {
+        if (!hasRequestId(message)) {
+          console.warn('[mcp-compose] ui/initialize must be a JSON-RPC request');
           return;
         }
 
-        routeEvent(sourceSlot, eventType, (rule, target) => {
-          sendComposeEvent(target, rule.action, msg.params.data, sourceSlot);
-        });
-
-        ack(e.source, msg.id);
+        respond(event.source, message.id, {
+          protocolVersion: '${MCP_APPS_PROTOCOL_VERSION}',
+          hostInfo: { name: 'mcp-compose', version: '${COMPOSE_VERSION}' },
+          hostCapabilities: getHostCapabilities(sourceSlot),
+          hostContext: {
+            theme: document.body.classList.contains('dark') ? 'dark' : 'light',
+            displayMode: 'inline'
+          }
+        }, targetOrigin);
+        initializationResponded.add(sourceSlot);
         return;
       }
 
-      // Warn about unknown methods
-      if (msg.method) {
-        console.warn('[mcp-compose] Unknown method:', msg.method);
+      if (message.method === 'ui/notifications/initialized') {
+        // The MCP Apps SDK emits this only after its initialize response was
+        // accepted. Sending the initial tool result any earlier races its
+        // event-handler registration.
+        if (!initializationResponded.has(sourceSlot)) {
+          console.warn('[mcp-compose] Ignoring initialized notification before ui/initialize');
+          return;
+        }
+        sendInitialToolResult(sourceSlot, event.source);
+        ackIfRequested(event.source, message, targetOrigin);
+        return;
+      }
+
+      if (message.method === 'ui/message') {
+        console.log('[mcp-compose] UI message from slot', sourceSlot, ':', message.params);
+        ackIfRequested(event.source, message, targetOrigin);
+        return;
+      }
+
+      if (message.method === 'ui/request-display-mode') {
+        // Composite panels remain inline. We acknowledge the request rather
+        // than advertising a richer display-mode host capability we do not
+        // implement.
+        if (hasRequestId(message)) {
+          respond(event.source, message.id, { mode: 'inline' }, targetOrigin);
+        }
+        return;
+      }
+
+      if (message.method === 'ui/notifications/size-changed') {
+        // Layout CSS owns the panel dimensions. Accept the notification (and
+        // tolerate an id from non-conforming clients) without making a size
+        // capability claim.
+        console.debug('[mcp-compose] UI size changed for slot', sourceSlot, message.params);
+        ackIfRequested(event.source, message, targetOrigin);
+        return;
+      }
+
+      if (
+        message.method === 'tools/call' || message.method === 'tools/list' ||
+        message.method === 'resources/read' || message.method === 'resources/list'
+      ) {
+        if (!hasRequestId(message)) {
+          console.warn('[mcp-compose] ' + message.method + ' must be a JSON-RPC request');
+          return;
+        }
+        void relayMcpRequest(event.source, sourceSlot, message);
+        return;
+      }
+
+      if (message.method === COMPOSE_METHOD) {
+        const eventType = message.params?.event;
+
+        if (!eventType || typeof eventType !== 'string') {
+          console.warn('[mcp-compose] ui/compose/event missing or invalid event name:', message);
+          return;
+        }
+
+        routeEvent(sourceSlot, eventType, (rule, targetSlot, target) => {
+          sendComposeEvent(target, targetSlot, rule.action, message.params.data, sourceSlot);
+        });
+
+        ackIfRequested(event.source, message, targetOrigin);
+        return;
+      }
+
+      if (message.method) {
+        console.warn('[mcp-compose] Unknown method:', message.method);
       }
     });
     ${tabSwitchingCode}
   `;
+}
+
+/**
+ * Serialize data for an inline script without allowing a value such as
+ * `</script>` to terminate the script element. MCP results are JSON values;
+ * this guard preserves those values while making their HTML embedding safe.
+ */
+function serializeForInlineScript(value: unknown): string {
+  const json = JSON.stringify(value) ?? "null";
+  return json
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
 }

@@ -10,19 +10,22 @@ other."
 
 ## What This Is
 
-A standalone, dependency-free library that:
+A layered library whose composition core is dependency-free and deterministic:
 
 1. **Collects** UI resources from MCP tool responses (`_meta.ui.resourceUri`)
 2. **Composes** them into layouts (split, tabs, grid, stack)
 3. **Synchronizes** cross-UI events via declarative sync rules
 4. **Generates** self-contained HTML dashboards with an event bus
+5. **Optionally hosts** a local interactive dashboard through an explicit runtime adapter with
+   reviewed per-panel MCP capabilities
 
 ## What This Is NOT
 
-- Not a gateway or proxy
+- Not a general gateway or arbitrary MCP proxy
 - Not a tracing/observability system
 - Not an auth layer
-- Not an MCP client (bring your own)
+- Not a general-purpose MCP client. The optional runtime owns only the narrow connections needed to
+  compose and locally host an explicit dashboard.
 - Not PML (no procedural memory, no learning, no capability loading)
 
 ## Product Boundary
@@ -79,10 +82,16 @@ This layer stays deterministic, side-effect free, and dependency-free.
 
 `sdk` does not own composition semantics or rendering logic.
 
-### 3. `host/` — Host integration contracts
+### 3. `host/` — Pure host integration contracts
 
-`host` defines the host-facing contracts for embedding composite UIs. It stays intentionally thin
-and type-oriented.
+`host` owns the pure renderer, event bus, and static HTML server. It never opens an MCP connection
+or derives an upstream UI route.
+
+### 4. `runtime/` — Live composition and local host
+
+`runtime` owns manifest/template loading, MCP connections, and the explicit loopback local host. It
+resolves MCP App documents through `resources/read`, not a server-specific `/ui` URL. A browser slot
+is bound to its source server, original resource URI, and manifest-owned `appCallable` tools.
 
 ## AX (Agent Experience) Design Principles
 
@@ -119,7 +128,7 @@ lib/mcp-compose/
 │   │   ├── ui-meta-builder.ts
 │   │   ├── composition-validator.ts
 │   │   └── compose-events.ts
-│   ├── host/              # Host contracts + renderer
+│   ├── host/              # Pure host contracts + renderer
 │   │   ├── types.ts
 │   │   └── renderer/
 │   ├── runtime/           # Dashboard composition from manifests + templates
@@ -127,7 +136,8 @@ lib/mcp-compose/
 │   │   ├── manifest.ts
 │   │   ├── template.ts
 │   │   ├── cluster.ts
-│   │   └── compose.ts
+│   │   ├── compose.ts
+│   │   └── host-dashboard.ts
 │   ├── architecture_test.ts
 │   ├── edge-cases_test.ts
 │   ├── full-pipeline_test.ts
@@ -139,17 +149,20 @@ lib/mcp-compose/
 
 ## Dependencies
 
-**Zero runtime dependencies.** Deno standard library only where needed. No npm packages, no external
-frameworks.
+`core/` has no runtime dependencies. The optional runtime uses the official MCP SDK for legacy
+initialized Streamable HTTP and a narrow wire adapter for the stateless `2026-07-28` protocol. It
+does not introduce a generic proxy or browser-accessible server client.
 
 ## MCP Apps Protocol Compliance
 
 The event bus implements:
 
 - `ui/initialize` — handshake with host capabilities
+- `ui/notifications/initialized` — gate for initial result delivery
 - `ui/compose/event` — dedicated cross-UI event routing (mcp-compose protocol)
-- `ui/update-model-context` — context sharing between UIs (legacy)
-- `ui/notifications/tool-result` — forwarding results to target UIs
+- `ui/notifications/tool-result` — complete initiating result after initialization
+- `tools/call` / `tools/list` — slot-local manifest-granted App tools only
+- `resources/read` / `resources/list` — the slot's original App resource only
 - `ui/message` — logging/debugging channel
 
 All messages follow JSON-RPC 2.0.
@@ -163,8 +176,10 @@ Implemented today:
 - `composeEvents()` SDK with dedicated `ui/compose/event` protocol
 - `uiMeta()` builder for declaring emits/accepts
 - runtime: manifest parsing, template YAML, cluster management, HTTP transport
+- stateless-first / legacy-compatible MCP HTTP connections
 - MCP SDK adaptation helpers
-- host contracts + renderer
+- host contracts + renderer, including an explicit local multi-App host
+- strict resource-only MCP App fixture for the `/ui`-free resource path
 - test suite with cross-slice pipeline coverage (200+ tests)
 - JSR sync/publish automation
 
@@ -172,13 +187,13 @@ Future work remains possible, but it should stay within the primitive/product bo
 
 ## Roadmap
 
-### Next — Enable first real dashboard
+### Next — Expand real dashboards
 
 - [ ] Add `emits`/`accepts` to mcp-einvoice tools (via `uiMeta()`)
 - [ ] Add `composeEvents()` to mcp-einvoice UIs (invoice-viewer, doclist-viewer)
 - [ ] Generate manifest for mcp-einvoice (with `requiredEnv` + `transport`)
-- [ ] Runtime integration tests with a mock MCP server (HTTP transport)
-- [ ] End-to-end test: manifest + template + cluster → rendered dashboard
+- [ ] Add further real multi-server panels and declared Compose events
+- [ ] Validate each new source through a resource-only fixture as well as its real MCP endpoint
 
 ### Short-term — CLI and user experience
 

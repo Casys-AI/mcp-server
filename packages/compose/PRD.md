@@ -26,7 +26,9 @@ layout and event routing.
 - the library consumes tool results plus orchestration and produces a composite UI
 - `core` owns composition semantics
 - `sdk` provides optional convenience helpers
-- `host` defines embedding contracts
+- `host` defines pure embedding and renderer contracts
+- `runtime` can explicitly create a loopback MCP Apps host for a composed dashboard, with a per-slot
+  source/resource/tool allowlist
 
 ## Target UX (Later)
 
@@ -63,6 +65,7 @@ ambiguity into this library.
 - descriptor construction
 - rendered composite HTML
 - host-facing contracts for embedding
+- the narrow local lifecycle needed to render an explicit MCP Apps dashboard
 
 Upstream product or agent layers own:
 
@@ -73,17 +76,18 @@ Upstream product or agent layers own:
 
 ## Success Criteria
 
-- the repo exposes one obvious architecture: `core / sdk / host`
+- the repo exposes one obvious architecture: `core / sdk / host / runtime`
 - composition semantics have a single source of truth
 - docs do not imply end users hand-author orchestration in this library
 - hosts and agents can compose dashboards without writing low-level transport glue
+- an interactive panel cannot turn its local host into an arbitrary MCP proxy
 - server-side packages depend only on the narrow shared contract they need
 
 ## Non-Goals
 
 - building a no-code dashboard product here
 - inferring orchestration from natural language inside `src/`
-- becoming an MCP client, gateway, or auth layer
+- becoming a general-purpose MCP client, gateway, or auth layer
 - owning long-term workflow state or persistence
 
 See `docs/decision-records/0001-orchestration-authoring-boundary.md` for the authoring-boundary

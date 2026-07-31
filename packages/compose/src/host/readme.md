@@ -1,30 +1,37 @@
 # host
 
-Host integration layer — rendering dashboards and serving them to users.
+Host integration layer for rendering composite dashboards.
 
 ## API
 
-- `renderComposite(descriptor)` — generate a self-contained HTML5 document from a composite
-  descriptor
-- `serveDashboard(html, options)` — serve composed HTML on localhost with auto-open browser
-- `CompositeUiHost` — interface for custom host implementations (mount/unmount)
-- `HostConfig` — configuration options (sandbox, allowed origins, limits)
+- `renderComposite(descriptor, options?)` — pure HTML5 renderer. With no options it preserves the
+  historical static iframe layout.
+- `serveDashboard(html, options)` — minimal loopback server for already-built static HTML.
+- `CompositeUiHost` / `HostConfig` — contracts for a custom embedding host.
+
+The live local MCP Apps host is deliberately exported from `runtime`, not from this layer:
+
+- `composeAndServeDashboard(request, options?)`
+- `serveComposedDashboard(result, options?)`
+
+Those APIs require an active MCP cluster and resource reads, whereas `host/` must remain independent
+of runtime connections.
 
 ## Submodules
 
-- `renderer/` — HTML/CSS/JS generation with event bus (supports preset + areas layouts)
-- `serve.ts` — local dashboard server (`Deno.serve` wrapper)
+- `renderer/` — HTML/CSS/JS generation with event bus, preset and areas layouts, and optional
+  slot-local bridge configuration.
+- `serve.ts` — static loopback HTML server.
 
 ## Design decisions
 
-- **Renderer in host/, not core/**: The renderer generates HTML/CSS/JS — that's presentation, not
-  composition semantics. MCP servers that import `core/` for types should not pull in HTML
-  generation code. Moving the renderer here keeps `core/` pure and import-light.
-
-- **Areas layout for agents**: Simple presets (split/grid/tabs/stack) are limiting. The areas grid
-  (`areas: [["sidebar", "main"]]` + proportional columns/rows) lets an agent describe spatial
-  layouts without CSS knowledge. Semantic gap tokens (compact/normal/spacious) replace pixel values.
-
-- **No iframe sandbox**: MCP UIs run on different ports than the dashboard host.
-  `sandbox="allow-same-origin"` breaks cross-origin postMessage between them. Since UIs come from
-  trusted MCPs (our own catalog), sandboxing is unnecessary.
+- **Renderer in `host/`, not `core/`**: HTML/CSS/JS is presentation, not composition semantics.
+  `core/` users do not pull rendering code.
+- **Areas layout for agents**: simple presets can be replaced with named areas plus proportional
+  columns/rows and semantic gaps.
+- **Static versus interactive is explicit**: a renderer option does not make a network proxy. Only
+  the runtime host installs a concrete slot-local route and advertises its matching capability.
+- **Sandboxed children can retain a verifiable origin**: the interactive runtime gives every child a
+  distinct loopback origin, then uses a script-capable sandbox with `allow-same-origin`. This does
+  not make a child same-origin with the parent or another panel; it lets the parent reject a message
+  from a navigated child origin.

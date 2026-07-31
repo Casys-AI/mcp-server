@@ -11,8 +11,19 @@ const {
   CallbackServer,
   FileTokenStore,
   McpApp,
+  MemoryMrtrReplayStore,
   MemoryTokenStore,
 } = await import(distEntry);
+
+const replayStore = new MemoryMrtrReplayStore();
+const smokeNonce = "a".repeat(32);
+const smokeExpiry = Math.floor(Date.now() / 1000) + 60;
+if (
+  replayStore.consume(smokeNonce, smokeExpiry) !== true ||
+  replayStore.consume(smokeNonce, smokeExpiry) !== false
+) {
+  throw new Error("MemoryMrtrReplayStore did not reject a replay");
+}
 
 const document = buildClientIdMetadataDocument({
   clientName: "Node Smoke Client",

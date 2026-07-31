@@ -275,11 +275,14 @@ export type {
   InputRequestEntry,
   InputRequestMethod,
   InputRequiredSignal,
+  MemoryMrtrReplayStoreOptions,
   MrtrOptions,
+  MrtrReplayStore,
 } from "./src/mrtr/mod.ts";
 export {
   exportStateKey,
   generateStateKey,
+  MemoryMrtrReplayStore,
   sealRequestState,
   verifyRequestState,
 } from "./src/mrtr/mod.ts";

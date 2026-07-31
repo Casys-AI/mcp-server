@@ -15,6 +15,13 @@ export type {
   MrtrOptions,
 } from "./types.ts";
 
+// Atomic single-use enforcement for verified requestState nonces.
+export type {
+  MemoryMrtrReplayStoreOptions,
+  MrtrReplayStore,
+} from "./replay-store.ts";
+export { MemoryMrtrReplayStore } from "./replay-store.ts";
+
 // requestState seal/verify (HMAC-SHA256 integrity protection)
 export type {
   RequestStatePayload,

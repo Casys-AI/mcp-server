@@ -9,9 +9,15 @@
  * @module lib/server/mrtr/mrtr-integration_test
  */
 
-import { assertEquals, assertExists, assertStringIncludes } from "@std/assert";
+import {
+  assertEquals,
+  assertExists,
+  assertStringIncludes,
+  assertThrows,
+} from "@std/assert";
 import { McpApp } from "../mcp-app.ts";
 import type { ToolHandler } from "../types.ts";
+import { MemoryMrtrReplayStore, type MrtrReplayStore } from "./replay-store.ts";
 
 const PROTO_KEY = "io.modelcontextprotocol/protocolVersion";
 const CAPS_KEY = "io.modelcontextprotocol/clientCapabilities";
@@ -24,11 +30,17 @@ const KEY = "a".repeat(64);
 const WITH_ELICITATION = { elicitation: {} };
 
 interface Seen {
+  calls?: number;
   inputResponses?: Record<string, unknown>;
   retryVerified?: boolean;
 }
 
-function buildServer(opts: { signingKey?: string } = {}) {
+function buildServer(
+  opts: {
+    signingKey?: string;
+    replayStore?: MrtrReplayStore;
+  } = {},
+) {
   const seen: Seen = {};
   const server = new McpApp({
     name: "mrtr-integration",
@@ -36,11 +48,19 @@ function buildServer(opts: { signingKey?: string } = {}) {
     logger: () => {},
     transport: "stateless",
     ...(opts.signingKey !== undefined
-      ? { mrtr: { signingKey: opts.signingKey } }
+      ? {
+        mrtr: {
+          signingKey: opts.signingKey,
+          ...(opts.replayStore !== undefined
+            ? { replayStore: opts.replayStore }
+            : {}),
+        },
+      }
       : {}),
   });
 
   const askThenAnswer: ToolHandler = (_args, ctx) => {
+    seen.calls = (seen.calls ?? 0) + 1;
     seen.inputResponses = ctx?.inputResponses;
     seen.retryVerified = ctx?.retryVerified;
 
@@ -198,6 +218,198 @@ Deno.test("mrtr - the retry round-trips and reaches the handler", async () => {
   } finally {
     await http.shutdown();
   }
+});
+
+Deno.test("mrtr - a signed requestState is single-use within one process by default", async () => {
+  const { server, seen } = buildServer({ signingKey: KEY });
+  const { http, url } = await start(server);
+  try {
+    const first = await (await call(url, "ask")).json();
+    const requestState = first.result.requestState as string;
+    const retryFields = {
+      requestState,
+      inputResponses: {
+        github_login: { action: "accept", content: { name: "octocat" } },
+      },
+    };
+
+    const accepted = await call(
+      url,
+      "ask",
+      retryFields,
+      WITH_ELICITATION,
+      2,
+    );
+    assertEquals(accepted.status, 200);
+
+    const replay = await call(
+      url,
+      "ask",
+      retryFields,
+      WITH_ELICITATION,
+      3,
+    );
+    const replayData = await replay.json();
+    assertEquals(replay.status, 400);
+    assertEquals(replayData.error.code, -32602);
+    assertEquals(replayData.error.data.reason, "replayed");
+    assertEquals(replay.headers.get("mcp-protocol-version"), V);
+    assertEquals(seen.calls, 2);
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("mrtr - one shared store admits one concurrent retry across instances", async () => {
+  const sharedStore = new MemoryMrtrReplayStore();
+  const firstServer = buildServer({
+    signingKey: KEY,
+    replayStore: sharedStore,
+  });
+  const secondServer = buildServer({
+    signingKey: KEY,
+    replayStore: sharedStore,
+  });
+  const firstHttp = await start(firstServer.server);
+  const secondHttp = await start(secondServer.server);
+  try {
+    const first = await (await call(firstHttp.url, "ask")).json();
+    const requestState = first.result.requestState as string;
+    const retryFields = {
+      requestState,
+      inputResponses: {
+        github_login: { action: "accept", content: { name: "octocat" } },
+      },
+    };
+
+    const responses = await Promise.all([
+      call(firstHttp.url, "ask", retryFields, WITH_ELICITATION, 2),
+      call(secondHttp.url, "ask", retryFields, WITH_ELICITATION, 3),
+    ]);
+    assertEquals(responses.map((response) => response.status).sort(), [
+      200,
+      400,
+    ]);
+
+    const payloads = await Promise.all(
+      responses.map((response) => response.json()),
+    );
+    assertEquals(
+      payloads.filter((payload) => payload.result?.resultType === "complete")
+        .length,
+      1,
+    );
+    assertEquals(
+      payloads.filter((payload) => payload.error?.data?.reason === "replayed")
+        .length,
+      1,
+    );
+    assertEquals(
+      (firstServer.seen.calls ?? 0) + (secondServer.seen.calls ?? 0),
+      2,
+    );
+  } finally {
+    await Promise.all([
+      firstHttp.http.shutdown(),
+      secondHttp.http.shutdown(),
+    ]);
+  }
+});
+
+Deno.test("mrtr - replay store failure is fail-closed before the handler", async () => {
+  const replayStore: MrtrReplayStore = {
+    consume: () => {
+      throw new Error("redis unavailable");
+    },
+  };
+  const { server, seen } = buildServer({ signingKey: KEY, replayStore });
+  const { http, url } = await start(server);
+  try {
+    const first = await (await call(url, "ask")).json();
+    const requestState = first.result.requestState as string;
+
+    const retry = await call(
+      url,
+      "ask",
+      {
+        requestState,
+        inputResponses: {
+          github_login: { action: "accept", content: { name: "octocat" } },
+        },
+      },
+      WITH_ELICITATION,
+      2,
+    );
+    const retryData = await retry.json();
+
+    assertEquals(retry.status, 500);
+    assertEquals(retryData.error.code, -32603);
+    assertEquals(
+      retryData.error.data.problem,
+      "mrtr_replay_store_unavailable",
+    );
+    assertEquals(retryData.error.data.detail, undefined);
+    assertEquals(retry.headers.get("mcp-protocol-version"), V);
+    assertEquals(seen.calls, 1);
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("mrtr - a forged token never reaches the replay store", async () => {
+  let consumeCalls = 0;
+  const replayStore: MrtrReplayStore = {
+    consume: () => {
+      consumeCalls++;
+      return true;
+    },
+  };
+  const { server, seen } = buildServer({ signingKey: KEY, replayStore });
+  const { http, url } = await start(server);
+  try {
+    const first = await (await call(url, "ask")).json();
+    const token = first.result.requestState as string;
+    const [payload, mac] = token.split(".");
+    const tampered = `${payload.slice(0, -1)}${
+      payload.at(-1) === "A" ? "B" : "A"
+    }.${mac}`;
+
+    const response = await call(
+      url,
+      "ask",
+      {
+        requestState: tampered,
+        inputResponses: {
+          github_login: { action: "accept", content: { name: "mallory" } },
+        },
+      },
+      WITH_ELICITATION,
+      2,
+    );
+    const data = await response.json();
+
+    assertEquals(response.status, 400);
+    assertEquals(data.error.data.reason, "tampered");
+    assertEquals(consumeCalls, 0);
+    assertEquals(seen.calls, 1);
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("mrtr - a replay store without a signing key is rejected at boot", () => {
+  assertThrows(
+    () =>
+      new McpApp({
+        name: "invalid-replay-store",
+        version: "1.0.0",
+        logger: () => {},
+        transport: "stateless",
+        mrtr: { replayStore: new MemoryMrtrReplayStore() },
+      }),
+    Error,
+    "requires mrtr.signingKey",
+  );
 });
 
 Deno.test("mrtr - a tampered requestState is refused before the handler runs", async () => {

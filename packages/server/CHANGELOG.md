@@ -2,6 +2,23 @@
 
 All notable changes to `@casys/mcp-server` will be documented in this file.
 
+## [0.24.1] — 2026-07-31
+
+### Fixed
+
+- Signed MRTR `requestState` tokens are now consumed before handler dispatch, so
+  a second use of the same nonce is rejected with `reason: "replayed"` without
+  re-running business logic. The default `MemoryMrtrReplayStore` protects one
+  continuously running process and fails closed at bounded capacity.
+- `MrtrOptions.replayStore` accepts an atomic shared implementation for
+  load-balanced and restart-safe deployments. Store errors fail closed with
+  `mrtr_replay_store_unavailable`; they never degrade silently to an unverified
+  retry.
+
+This is at-most-once admission, not exactly-once completion. A deployment that
+must return the outcome after a lost response still needs an idempotency/result
+ledger coordinated with its downstream mutation.
+
 ## [0.24.0] — 2026-07-30
 
 ### Removed — BREAKING

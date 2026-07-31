@@ -92,6 +92,8 @@ The serving API binds only to `127.0.0.1`; it intentionally has no hostname over
 exposure, authentication, and tunnels belong to a separate deployment adapter.
 The dashboard document denies framing by default. `frameAncestors` accepts validated HTTP(S)
 origins only and exists for explicit local product shells, not broad wildcard embedding.
+The reviewed origins are also propagated to each child App response because CSP evaluates every
+ancestor in a nested iframe chain, not only the immediate dashboard parent.
 
 ## Design decisions
 

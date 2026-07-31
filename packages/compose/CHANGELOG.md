@@ -4,6 +4,14 @@ All notable changes to `@casys/mcp-compose` will be documented in this file.
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-07-31
+
+### Fixed
+
+- **Nested App framing.** Reviewed `frameAncestors` now propagate to every child MCP App
+  response as well as the parent dashboard, so an embedded dashboard works through the complete
+  product-shell iframe chain. Invalid CSP sources remain excluded.
+
 ## [0.7.0] - 2026-07-31
 
 ### Added

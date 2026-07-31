@@ -146,12 +146,21 @@ export async function serveComposedDashboard(
       return new Response("Not found", { status: 404 });
     }, options?.port ?? 0);
     const dashboardServer = mainServer;
+    const embeddingAncestors = options?.frameAncestors === undefined
+      ? []
+      : validateCspDomains(options.frameAncestors);
 
     // A distinct loopback origin per child makes postMessage origin checks
     // durable across iframe navigation. A WindowProxy alone is insufficient:
     // it survives navigation to another document.
     for (const panel of result.panels) {
-      hostedPanels.push(await servePanelResource(cluster, panel, dashboardServer.origin));
+      hostedPanels.push(
+        await servePanelResource(
+          cluster,
+          panel,
+          [dashboardServer.origin, ...embeddingAncestors],
+        ),
+      );
     }
 
     const routes = new Map<string, HostedPanelRoute>();
@@ -174,7 +183,7 @@ export async function serveComposedDashboard(
     const html = renderComposite(result.descriptor, { slots: rendererSlots });
     mainState = {
       html,
-      parentCsp: dashboardCsp(hostedPanels, options?.frameAncestors),
+      parentCsp: dashboardCsp(hostedPanels, embeddingAncestors),
       routes,
       panelCount: hostedPanels.length,
     };
@@ -229,7 +238,7 @@ function assertInteractivePanelBinding(result: ComposeResult): void {
 async function servePanelResource(
   cluster: McpCluster,
   panel: ComposedDashboardPanel,
-  parentOrigin: string,
+  ancestorOrigins: readonly string[],
 ): Promise<HostedPanel> {
   const listener = await serveLoopback(async (request) => {
     const url = new URL(request.url);
@@ -245,7 +254,7 @@ async function servePanelResource(
           "Content-Type": htmlContentType(document.mimeType),
           "Cache-Control": "no-store",
           "Content-Security-Policy": childCsp(
-            parentOrigin,
+            ancestorOrigins,
             intersectCsp(panel.resourceCsp, document.resourceCsp),
           ),
           "Permissions-Policy": "camera=(), microphone=(), geolocation=(), clipboard-write=()",
@@ -260,7 +269,7 @@ async function servePanelResource(
         headers: {
           "Content-Type": "text/html; charset=utf-8",
           "Cache-Control": "no-store",
-          "Content-Security-Policy": childCsp(parentOrigin),
+          "Content-Security-Policy": childCsp(ancestorOrigins),
           "Permissions-Policy": "camera=(), microphone=(), geolocation=(), clipboard-write=()",
           "Referrer-Policy": "no-referrer",
           "X-Content-Type-Options": "nosniff",
@@ -612,7 +621,10 @@ function intersectDomains(
   return left.filter((domain) => allowed.has(domain));
 }
 
-function childCsp(parentOrigin: string, csp: ValidatedCsp = {}): string {
+function childCsp(
+  ancestorOrigins: readonly string[],
+  csp: ValidatedCsp = {},
+): string {
   const resourceDomains = csp.resourceDomains ?? [];
   const connectDomains = csp.connectDomains ?? [];
   const frameDomains = csp.frameDomains ?? [];
@@ -629,7 +641,7 @@ function childCsp(parentOrigin: string, csp: ValidatedCsp = {}): string {
     `base-uri 'self'${cspSources(baseUriDomains)}`,
     "object-src 'none'",
     "form-action 'none'",
-    `frame-ancestors ${parentOrigin}`,
+    `frame-ancestors ${ancestorOrigins.join(" ")}`,
   ].join("; ");
 }
 

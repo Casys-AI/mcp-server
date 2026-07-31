@@ -320,6 +320,17 @@ Deno.test({
       const csp = response.headers.get("content-security-policy") ?? "";
       assertStringIncludes(csp, `frame-ancestors ${embeddingOrigin}`);
       assertEquals(csp.includes("not-a-csp-origin"), false);
+
+      const html = await response.text();
+      const iframeMatch = html.match(/src="(http:\/\/127\.0\.0\.1:\d+\/ui)"/);
+      assertExists(iframeMatch);
+      const appResource = await fetch(iframeMatch[1]);
+      const childCsp = appResource.headers.get("content-security-policy") ?? "";
+      assertStringIncludes(
+        childCsp,
+        `frame-ancestors ${handle.url} ${embeddingOrigin}`,
+      );
+      assertEquals(childCsp.includes("not-a-csp-origin"), false);
     } finally {
       await handle.shutdown();
     }

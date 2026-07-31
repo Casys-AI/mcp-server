@@ -1,0 +1,10 @@
+name: Strict MCP Resource Dashboard
+sources:
+  - id: strict-resource
+    manifest: strict-resource
+    calls:
+      - tool: render_strict_dashboard
+        args:
+          scenario: "{{scenario}}"
+orchestration:
+  layout: stack

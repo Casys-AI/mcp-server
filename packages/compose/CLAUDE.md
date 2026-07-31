@@ -20,7 +20,8 @@ scratch following the SPEC.md architecture.
 
 ## Constraints
 
-1. **Zero dependencies.** No npm packages. Deno standard library only (`@std/assert`, `@std/yaml`).
+1. **Pure core.** No I/O, network, filesystem, or MCP-client dependency in `core/`. The optional
+   runtime may use the official SDK for legacy Streamable HTTP and a narrow stateless adapter.
 2. **Pure functions in core.** No I/O, no network, no filesystem in `core/` modules. The `sdk/`
    layer may adapt external result shapes. The `runtime/` layer handles all I/O.
 3. **Test-first.** Write tests before implementation for each module.
@@ -54,7 +55,7 @@ src/
     ui-meta-builder.ts — uiMeta() helper for declaring emits/accepts
     composition-validator.ts — semantic validation (emits/accepts matching)
     compose-events.ts  — UI-side cross-UI event channel (ui/compose/event)
-  host/           — Host contracts + renderer
+  host/           — Pure host contracts + renderer
     types.ts      — CompositeUiHost, HostConfig interfaces
     renderer/     — HTML/CSS/JS generation with event bus
   runtime/        — Dashboard composition from manifests + templates (I/O layer)
@@ -63,6 +64,7 @@ src/
     template.ts   — Parse YAML templates, validate, inject {{args}}
     cluster.ts    — Start/connect MCP servers, tool calls via HTTP
     compose.ts    — composeDashboard() orchestrator
+    host-dashboard.ts — loopback multi-App host and slot allowlists
   deploy/         — Cloud deployment (Deno Deploy API, relay, tunnel)
     types.ts      — DeployTransport, DeployRequest, DeployResult, TunnelConnection
 ```
@@ -87,14 +89,15 @@ The rendered HTML includes a JavaScript event bus that implements:
   the MCP Apps spec does not cover)
 - Broadcast support via `to: "*"` on sync rules
 
-Compose advertises `hostCapabilities: { logging, message }` on initialize. Other MCP Apps host
-capabilities (`openLinks`, `downloadFile`, `updateModelContext`, `serverTools`, `serverResources`)
-are NOT advertised because compose does not implement their handlers. Future releases may add
-`openLinks`, `size-changed`, `request-display-mode`, and `host-context-changed`; those will be
-advertised only when their handlers land.
+Compose advertises `hostCapabilities: { logging, message }` on initialize. In an interactive local
+slot it additionally advertises `serverTools` and/or `serverResources` only if the runtime supplied
+a concrete local route. `serverTools` is restricted to manifest tools marked `appCallable` and
+`serverResources` to the collected resource URI. The parent verifies a child window and its unique
+loopback origin before relaying either capability.
 
 The legacy `ui/update-model-context` sync routing path was removed in v0.4.0. Cross-UI sync must go
-through `ui/compose/event` exclusively.
+through `ui/compose/event` exclusively. Initial tool results must be delivered only after
+`ui/notifications/initialized`, never immediately after `ui/initialize`.
 
 ## Quality Bar
 

@@ -1,0 +1,28 @@
+{
+  "name": "strict-resource",
+  "description": "Conformant MCP App fixture with no /ui HTTP shortcut",
+  "transport": {
+    "type": "stdio",
+    "protocol": "stateless-2026-07-28",
+    "command": "deno",
+    "args": [
+      "run",
+      "--allow-net",
+      "--allow-read",
+      "--allow-env",
+      "stubs/strict-resource/server.ts"
+    ]
+  },
+  "tools": [
+    {
+      "name": "render_strict_dashboard",
+      "description": "Render the strict MCP App fixture",
+      "resourceUri": "ui://strict-resource/dashboard"
+    },
+    {
+      "name": "strict_refresh_dashboard",
+      "description": "Refresh the strict MCP App fixture through serverTools",
+      "appCallable": true
+    }
+  ]
+}

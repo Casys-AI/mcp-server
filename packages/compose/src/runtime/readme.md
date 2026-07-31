@@ -1,58 +1,106 @@
 # runtime
 
-Dashboard composition from manifests, templates, and live MCP servers.
-
-This is the only layer with I/O — process management, file reads, HTTP calls. All composition logic
-is delegated to `core/`.
+Dashboard composition from manifests, templates, and live MCP servers. This is the only
+`mcp-compose` layer with I/O: it starts or connects servers, calls tools, reads MCP resources, and
+can serve a local interactive MCP Apps host. The composition semantics remain in `core/`.
 
 ## API
 
-- `composeDashboard(request)` — full pipeline: validate → start → call → compose → render → stop
-- `composeDashboardFromFiles(manifestDir, templatePath, args)` — convenience file loader
-- `createCluster(manifests, serverNames)` — manage MCP server connections
-- `startServer(manifest)` — start a child process, detect HTTP port, connect
-- `connectHttp(manifest)` — connect to an already-running server
-- `parseManifest(json)` / `loadManifests(dir)` — manifest parsing
-- `parseTemplate(yaml)` / `loadTemplate(path)` — template parsing
-- `injectArgs(calls, args)` — `{{placeholder}}` replacement
-- `validateTemplate(template, manifests)` — cross-reference validation
+- `composeDashboard(request)` — validate → start/connect → call → collect → compose → render. It is
+  compatible with the historical static renderer.
+- `composeDashboardFromFiles(manifestDir, templatePath, args)` — file-loading convenience wrapper
+  for the static composition path.
+- `composeAndServeDashboard(request, options?)` — preferred interactive path: composes, keeps the
+  cluster alive, and returns a loopback host handle.
+- `serveComposedDashboard(result, options?)` — serve a result previously made with
+  `composeDashboard({ keepAlive: true })`.
+- `createCluster`, `startServer`, and `connectHttp` — connection lifecycle.
+- `parseManifest` / `loadManifests`, `parseTemplate` / `loadTemplate`, `injectArgs`, and
+  `validateTemplate` — file and contract helpers.
 
-## Transport
+Use `composeAndServeDashboard()` when an App must receive its initial tool result or call back to
+its MCP server. `renderComposite()` and the HTML on a plain `ComposeResult` remain useful for a
+static layout, but do not create an MCP resource bridge.
 
-Two modes, both using HTTP for tool calls:
+```ts
+import { composeAndServeDashboard, loadManifests, loadTemplate } from "@casys/mcp-compose/runtime";
 
-| Mode      | Process management                                | Tool calls | UI serving    |
-| --------- | ------------------------------------------------- | ---------- | ------------- |
-| **stdio** | Cluster starts the process with `--http --port=0` | HTTP fetch | Same HTTP URL |
-| **http**  | Already running (no-op)                           | HTTP fetch | Same HTTP URL |
+const manifests = await loadManifests("./manifests");
+const template = await loadTemplate("./dashboards/operations.yaml");
+const dashboard = await composeAndServeDashboard(
+  { manifests, template },
+  { open: true },
+);
+
+console.log(dashboard.url);
+// Call dashboard.shutdown() when the local dashboard is no longer needed.
+```
+
+## Transport compatibility
+
+`http` and started `stdio` manifests use an MCP HTTP endpoint. The default `transport.protocol` is
+`"auto"`: Compose first probes the stateless `2026-07-28` protocol, then falls back only for an
+unsupported-version or method-not-found response to the official initialized Streamable HTTP client.
+
+Set a protocol explicitly when it is known:
+
+```json
+{
+  "transport": {
+    "type": "http",
+    "url": "http://127.0.0.1:3020",
+    "protocol": "streamable-http"
+  }
+}
+```
+
+The stateless adapter carries the required version, client metadata, and request-mirroring headers
+for every request. The legacy path remains an MCP client session, not a guessed HTTP shortcut.
+
+## Interactive host contract
+
+The local host never assumes that an MCP server exposes `/ui`. For each collected `ui://` URI it
+calls `resources/read`, serves the returned HTML on a dedicated loopback child origin, and gives the
+parent dashboard a separate loopback origin. The parent event bus verifies both the iframe window
+and its origin before forwarding requests.
+
+The child may use only these capability-gated MCP methods:
+
+- `tools/call` and `tools/list` for tools explicitly marked `appCallable` in that source manifest;
+- `resources/read` and `resources/list` for the exact `ui://` resource that created the slot.
+
+`appCallable` is deny-by-default. It is a browser-capability grant, not a claim that a tool is safe
+for every client:
+
+```json
+{
+  "name": "console_refresh",
+  "description": "Refresh read-only observations.",
+  "appCallable": true
+}
+```
+
+The complete initiating `CallToolResult` is delivered exactly once after the App sends
+`ui/notifications/initialized`; this preserves `content`, `structuredContent`, `isError`, and
+`_meta`.
+
+The serving API binds only to `127.0.0.1`; it intentionally has no hostname override. Remote
+exposure, authentication, and tunnels belong to a separate deployment adapter.
 
 ## Design decisions
 
-- **HTTP only for tool calls**: The MCP protocol defines JSON-RPC over stdio with Content-Length
-  framing. Implementing this from scratch is complex and error-prone. Since our MCP servers already
-  support HTTP (via Hono/startHttp), we use stdio only for process management and HTTP for all
-  communication. Zero custom protocol code.
+- **Static manifests** describe the reviewed source/tool surface without relying on unrestricted
+  browser discovery.
+- **Templates are YAML** because agents can generate and humans can review layouts and
+  `{{placeholder}}` arguments.
+- **Parallel source startup, sequential calls per source** preserve possible intra-source
+  dependencies while avoiding unrelated startup latency.
+- **No implicit retry** keeps retry policy with the caller.
 
-- **Manifests are static JSON**: Discovering emits/accepts requires starting the MCP and calling
-  `tools/list`. This needs credentials and infrastructure. Static manifests (generated at build
-  time) enable discovery without running anything — the agent can browse capabilities from metadata
-  alone.
+## AX design
 
-- **Templates are YAML (agent output)**: Templates are typically generated by an LLM, not written by
-  hand. YAML is readable enough for human review but structured enough for machine generation.
-  `{{placeholder}}` injection keeps templates reusable across different runtime contexts.
-
-- **Parallel startup, sequential tool calls per source**: Servers start in parallel (independent).
-  Tool calls within one source are sequential (may have data dependencies). Tool calls across
-  sources are parallel.
-
-## AX Design
-
-- **Structured errors**: Every failure produces a `RuntimeError` with a machine-readable
-  `RuntimeErrorCode`.
-- **Guaranteed cleanup**: `stopAll()` runs in `finally` — leaked processes are prevented.
-- **Non-fatal warnings**: Tool calls that fail or return no UI are collected as warnings, not
-  thrown.
-- **URI resolution**: `ui://server/path` is resolved to `${uiBaseUrl}/ui?uri=...` automatically.
-- **No retry**: The runtime does not retry. Callers (agents) decide retry policy.
-- **Timeout-aware**: Server startup and tool calls have configurable timeouts.
+- Every transport failure has a machine-readable `RuntimeErrorCode`.
+- A non-interactive composition always stops its cluster in `finally`; an interactive handle stops
+  it in `shutdown()`.
+- Tool calls without a UI and failed optional calls become explicit warnings.
+- The static renderer remains deterministic; interactive hosting is explicit.

@@ -29,8 +29,9 @@
     "jsr:@std/yaml@1": "1.0.12",
     "jsr:@ts-morph/bootstrap@0.24": "0.24.0",
     "jsr:@ts-morph/common@0.24": "0.24.0",
-    "npm:@modelcontextprotocol/ext-apps@^1.7.4": "1.7.4_@modelcontextprotocol+sdk@1.29.0__zod@4.4.3_zod@4.4.3",
-    "npm:@modelcontextprotocol/sdk@^1.29.0": "1.29.0_zod@4.4.3",
+    "npm:@modelcontextprotocol/ext-apps@^1.7.4": "1.7.4_@modelcontextprotocol+sdk@1.30.0__zod@4.4.3_zod@4.4.3",
+    "npm:@modelcontextprotocol/sdk@1.30.0": "1.30.0_zod@4.4.3",
+    "npm:@modelcontextprotocol/sdk@^1.29.0": "1.30.0_zod@4.4.3",
     "npm:@opentelemetry/api@^1.9.0": "1.9.0",
     "npm:ajv@^8.17.1": "8.18.0",
     "npm:esbuild@0.24": "0.24.2",
@@ -297,16 +298,16 @@
         "hono"
       ]
     },
-    "@modelcontextprotocol/ext-apps@1.7.4_@modelcontextprotocol+sdk@1.29.0__zod@4.4.3_zod@4.4.3": {
+    "@modelcontextprotocol/ext-apps@1.7.4_@modelcontextprotocol+sdk@1.30.0__zod@4.4.3_zod@4.4.3": {
       "integrity": "sha512-QQqysE549cf/Y0VabBmAACXhj92EhB3t8yVct2BHbkWiPTFA1S91EqTVjYXXcZEefXU0pmHcdObhsNMcomJIOQ==",
       "dependencies": [
-        "@modelcontextprotocol/sdk",
+        "@modelcontextprotocol/sdk@1.30.0_zod@4.4.3",
         "@standard-schema/spec",
         "zod"
       ]
     },
-    "@modelcontextprotocol/sdk@1.29.0_zod@4.4.3": {
-      "integrity": "sha512-zo37mZA9hJWpULgkRpowewez1y6ML5GsXJPY8FI0tBBCd77HEvza4jDqRKOXgHNn867PVGCyTdzqpz0izu5ZjQ==",
+    "@modelcontextprotocol/sdk@1.30.0_zod@4.4.3": {
+      "integrity": "sha512-xKd8OIzlqNzcqcNumGAa6g+PW2kjD5vrpcKOnfldAUPP3j7lnqMPwlTXQm8gF+UwH72z0lqaRbjr9hqGz0eITA==",
       "dependencies": [
         "@hono/node-server",
         "ajv",

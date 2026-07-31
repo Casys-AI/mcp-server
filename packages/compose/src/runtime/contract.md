@@ -2,23 +2,42 @@
 
 ## Inputs
 
-- `McpManifest` JSON files (server metadata with transport config and tool declarations)
-- `DashboardTemplate` YAML files (sources, orchestration, `{{placeholder}}` args)
-- `ComposeRequest` (template + manifests + runtime args)
+- `McpManifest` JSON files: transport metadata, reviewed tool declarations, and optional per-tool
+  `appCallable` grants.
+- `DashboardTemplate` YAML files: sources, tool calls, orchestration, and `{{placeholder}}`
+  arguments.
+- `ComposeRequest`: parsed template, manifest map, arguments, and optional `keepAlive` for a later
+  interactive host.
 
 ## Outputs
 
-- `ComposeResult` (composite descriptor + rendered HTML + warnings)
-- `McpCluster` (connection manager with callTool/startAll/stopAll)
-- `McpConnection` (single server connection with callTool/close/uiBaseUrl)
+- `ComposeResult`: descriptor, static HTML, warnings, and immutable panel provenance. When
+  `keepAlive` is set it also owns a live `McpCluster`.
+- `ComposedDashboardHandle`: loopback URL, originating result, and idempotent `shutdown()` from
+  `composeAndServeDashboard()` or `serveComposedDashboard()`.
+- `McpCluster` / `McpConnection`: `callTool`, `readResource`, `listTools`, `listResources`,
+  lifecycle, and UI-base compatibility helpers.
 
 ## Invariants
 
-- Runtime is the only layer with I/O (process management, fetch, file reads).
-- All composition logic is delegated to core (collector → composer → renderer).
-- Server processes started by the cluster are always killed in `stopAll()`.
-- Tool call failures are non-fatal: collected as warnings, not thrown.
-- `ui://` URIs are resolved to HTTP URLs before passing to the renderer.
-- HTTP transport uses `fetch()` exclusively — no custom protocol implementation.
-- Manifests and templates are validated before any process is started.
-- Depends on core + host (renderer). No circular deps to sdk.
+- Runtime is the only layer with I/O: file reads, process lifecycle, MCP connections, and the local
+  HTTP host.
+- Core remains the source of composition semantics; runtime only captures the source provenance
+  needed to host a collected slot.
+- `auto` HTTP transport is stateless-first (`2026-07-28`) and falls back to legacy initialized
+  Streamable HTTP only for compatible fallback responses.
+- An interactive resource is obtained through MCP `resources/read`; no path derives or assumes a
+  source-server `/ui` endpoint.
+- A panel is permanently bound to its source server, original `ui://` URI, initial complete tool
+  result, and manifest-owned App tool allowlist.
+- Omitted `appCallable` means deny. The local proxy never forwards arbitrary tools, methods,
+  resources, source servers, or pagination cursors.
+- Every host listener is loopback-only. The parent and each child iframe have distinct loopback
+  origins so a `WindowProxy` cannot survive navigation into a different origin with the same
+  capability.
+- The initial result is delivered only after the App initialization notification, and keeps the full
+  MCP result shape.
+- A non-interactive composition stops its cluster in `finally`; an interactive dashboard closes
+  every listener and cluster connection in `shutdown()`.
+- Manifests and templates are validated before a cluster starts. Failed tool calls are warnings
+  unless the lifecycle itself cannot be established.

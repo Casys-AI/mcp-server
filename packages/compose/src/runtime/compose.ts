@@ -21,6 +21,7 @@
  */
 
 import type { ComposeRequest, ComposeResult } from "./types.ts";
+import type { ComposedDashboardCsp, ComposedDashboardPanel } from "./host-dashboard-types.ts";
 import { loadManifests } from "./manifest.ts";
 import { injectArgs, loadTemplate, validateTemplate } from "./template.ts";
 import { createCluster } from "./cluster.ts";
@@ -73,15 +74,35 @@ export async function composeDashboard(
   const serverNames = template.sources.map((s) => s.manifest);
   const cluster = createCluster(manifests, serverNames);
   await cluster.startAll();
+  let completed = false;
 
   try {
     // 3. Call tools and collect UI resources
     const collector = createCollector();
+    const panels: ComposedDashboardPanel[] = [];
 
     // Call tools in parallel across sources, sequential within each source
     await Promise.all(
       template.sources.map(async (source) => {
         const resolvedCalls = injectArgs(source.calls, args ?? {});
+        const manifest = manifests.get(source.manifest);
+        // Validation above guarantees this, but retaining the guard keeps the
+        // provenance boundary explicit if callers supply a malformed Map.
+        if (!manifest) {
+          throw {
+            code: RuntimeErrorCode.MANIFEST_NOT_FOUND,
+            message: `Manifest "${source.manifest}" not found`,
+            server: source.manifest,
+          } satisfies RuntimeError;
+        }
+        const allowedTools = manifest.tools
+          .filter((tool) => tool.appCallable === true)
+          .map((tool) => ({
+            name: tool.name,
+            ...(tool.description === undefined ? {} : { description: tool.description }),
+            ...(tool.inputSchema === undefined ? {} : { inputSchema: tool.inputSchema }),
+          }));
+        const allowedToolNames = allowedTools.map((tool) => tool.name);
 
         for (const call of resolvedCalls) {
           const qualifiedName = `${source.manifest}:${call.tool}`;
@@ -97,6 +118,21 @@ export async function composeDashboard(
               warnings.push(
                 `Tool "${qualifiedName}" did not return UI metadata (_meta.ui.resourceUri)`,
               );
+            } else {
+              // Capture the actual tool-call provenance before any historical
+              // ui:// → HTTP projection. The interactive host binds this exact
+              // slot to this exact server/resource/tool allow-list.
+              const resourceCsp = extractResourceCsp(result);
+              panels.push({
+                slot: collected.slot,
+                serverName: source.manifest,
+                toolName: call.tool,
+                resourceUri: collected.resourceUri,
+                initialToolResult: result,
+                allowedToolNames,
+                allowedTools,
+                ...(resourceCsp === undefined ? {} : { resourceCsp }),
+              });
             }
           } catch (e) {
             const err = e as RuntimeError;
@@ -140,15 +176,20 @@ export async function composeDashboard(
     }
     const html = renderComposite(descriptor);
 
-    return {
+    const composed: ComposeResult = {
       descriptor,
       html,
       warnings,
+      panels: panels.sort((a, b) => a.slot - b.slot),
       cluster: keepAlive ? cluster : undefined,
     };
+    completed = true;
+    return composed;
   } finally {
-    // Stop cluster unless keepAlive was requested
-    if (!keepAlive) {
+    // A kept-alive cluster belongs to the returned result only. If anything
+    // fails before that return, this function is its sole owner and must still
+    // release spawned processes and Streamable HTTP sessions.
+    if (!keepAlive || !completed) {
       await cluster.stopAll();
     }
   }
@@ -209,4 +250,44 @@ function resolveResourceUri(
   if (!baseUrl) return uri; // can't resolve, pass through
 
   return `${baseUrl}/ui?uri=${encodeURIComponent(uri)}`;
+}
+
+/**
+ * Retain only the domain lists from MCP Apps UI metadata. The serving host
+ * validates every source expression before translating this declaration into
+ * a response CSP header; unknown metadata never becomes a browser grant.
+ */
+function extractResourceCsp(result: unknown): ComposedDashboardCsp | undefined {
+  if (!isRecord(result) || !isRecord(result._meta) || !isRecord(result._meta.ui)) {
+    return undefined;
+  }
+  const csp = result._meta.ui.csp;
+  if (!isRecord(csp)) return undefined;
+
+  const policy: ComposedDashboardCsp = {
+    ...(stringArray(csp.connectDomains) === undefined
+      ? {}
+      : { connectDomains: stringArray(csp.connectDomains) }),
+    ...(stringArray(csp.resourceDomains) === undefined
+      ? {}
+      : { resourceDomains: stringArray(csp.resourceDomains) }),
+    ...(stringArray(csp.frameDomains) === undefined
+      ? {}
+      : { frameDomains: stringArray(csp.frameDomains) }),
+    ...(stringArray(csp.baseUriDomains) === undefined
+      ? {}
+      : { baseUriDomains: stringArray(csp.baseUriDomains) }),
+  };
+
+  return Object.keys(policy).length === 0 ? undefined : policy;
+}
+
+function stringArray(value: unknown): string[] | undefined {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string")
+    ? value
+    : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

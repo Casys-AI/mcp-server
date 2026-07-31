@@ -6,10 +6,14 @@ Layered architecture for MCP Apps UI composition.
 
 - `core/` — pure composition primitives (types, collector, sync, composer, renderer)
 - `sdk/` — MCP SDK adapters (convenience wrappers for external SDK shapes)
-- `host/` — host integration types (contracts for embedding composite UIs)
+- `host/` — pure host integration contracts, renderer, and static server
+- `runtime/` — manifest/template execution, MCP connections, and the optional local interactive MCP
+  Apps host
 
 `src/` is the execution and composition pipeline only. It is not the product-facing authoring layer
-for intent-first or end-user dashboard creation.
+for intent-first or end-user dashboard creation. `core/` is deterministic and I/O-free; the optional
+runtime host has the separate responsibility of connecting live MCP servers and enforcing browser
+slot grants.
 
 ## Tests
 

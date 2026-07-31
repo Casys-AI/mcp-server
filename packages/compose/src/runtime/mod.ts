@@ -15,7 +15,13 @@ export type {
   HttpTransport,
   McpCluster,
   McpConnection,
+  McpHttpProtocol,
+  McpListedResource,
+  McpListedTool,
+  McpListResourcesResult,
+  McpListToolsResult,
   McpManifest,
+  McpReadResourceResult,
   McpToolDeclaration,
   McpTransport,
   RuntimeError,
@@ -23,6 +29,13 @@ export type {
   TemplateSource,
   TemplateToolCall,
 } from "./types.ts";
+export type {
+  ComposedDashboardCsp,
+  ComposedDashboardHandle,
+  ComposedDashboardPanel,
+  ComposedDashboardTool,
+  ServeComposedDashboardOptions,
+} from "./host-dashboard-types.ts";
 export { RuntimeErrorCode } from "./types.ts";
 
 // Manifest
@@ -36,3 +49,6 @@ export { connectHttp, createCluster, startServer } from "./cluster.ts";
 
 // Compose (main entry points)
 export { composeDashboard, composeDashboardFromFiles } from "./compose.ts";
+
+// Interactive local MCP Apps host
+export { composeAndServeDashboard, serveComposedDashboard } from "./host-dashboard.ts";

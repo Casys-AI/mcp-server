@@ -39,6 +39,16 @@ export function validateManifest(
     errors.push("Manifest must have a 'transport' object");
   } else {
     const transport = obj.transport as Record<string, unknown>;
+    if (
+      transport.protocol !== undefined &&
+      transport.protocol !== "auto" &&
+      transport.protocol !== "stateless-2026-07-28" &&
+      transport.protocol !== "streamable-http"
+    ) {
+      errors.push(
+        'transport.protocol must be "auto", "stateless-2026-07-28", or "streamable-http" if provided',
+      );
+    }
     if (transport.type === "stdio") {
       if (typeof transport.command !== "string" || transport.command.trim() === "") {
         errors.push("transport.command must be a non-empty string for stdio transport");
@@ -72,6 +82,8 @@ export function validateManifest(
         errors.push(`tools[${i}] must be an object`);
       } else if (typeof tool.name !== "string" || tool.name.trim() === "") {
         errors.push(`tools[${i}] must have a non-empty 'name' string`);
+      } else if (tool.appCallable !== undefined && typeof tool.appCallable !== "boolean") {
+        errors.push(`tools[${i}].appCallable must be a boolean if provided`);
       }
     }
   }

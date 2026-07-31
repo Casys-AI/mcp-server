@@ -4,6 +4,18 @@ All notable changes to `@casys/mcp-compose` will be documented in this file.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-31
+
+### Added
+
+- **Local MCP Apps dashboard host.** `composeAndServeDashboard()` resolves each declared App through
+  MCP `resources/read`, serves panels on distinct loopback origins, completes the Apps handshake,
+  and delivers the initiating tool result.
+- **Capability-bounded panel proxy.** Each panel may call only the tools explicitly marked
+  `appCallable` in its manifest. Resource URIs and child CSP metadata are narrowed before rendering.
+- **Stateless 2026-07-28 transport support.** HTTP manifests can opt into the stateless wire
+  contract without initialize, session identifiers, SSE, or guessed `/ui` routes.
+
 ## [0.5.2] - 2026-05-09
 
 Maintenance release: align with upstream `@modelcontextprotocol/ext-apps` 1.7.x.

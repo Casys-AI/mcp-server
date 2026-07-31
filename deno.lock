@@ -23,6 +23,7 @@
     "jsr:@std/path@1": "1.1.4",
     "jsr:@std/path@1.0.0-rc.1": "1.0.0-rc.1",
     "jsr:@std/path@^1.0.6": "1.1.4",
+    "jsr:@std/path@^1.1.0": "1.1.4",
     "jsr:@std/path@^1.1.4": "1.1.4",
     "jsr:@std/path@~0.225.2": "0.225.2",
     "jsr:@std/yaml@1": "1.0.12",
@@ -885,6 +886,7 @@
         "dependencies": [
           "jsr:@deno/dnt@0.41",
           "jsr:@std/assert@1",
+          "jsr:@std/path@^1.1.0",
           "npm:@modelcontextprotocol/ext-apps@^1.7.4",
           "npm:@modelcontextprotocol/sdk@^1.29.0"
         ]

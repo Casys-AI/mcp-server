@@ -40,3 +40,26 @@ are buffered, then replayed in host arrival order once the `AppHandle` exists. A
 serialized; an error is logged and does not stop later notifications.
 
 For an executable two-view bundle, see [`examples/basic`](./examples/basic/README.md).
+
+## Scaffold a vanilla result viewer
+
+`mcp-view` also ships one narrow generator for the repeated MCP Apps pattern: receive an initiating
+structured result and render a readable evidence-style view. It is deliberately a starting point,
+not a component framework or a server generator.
+
+```sh
+deno run -A jsr:@casys/mcp-view@0.4.0/scaffold result-viewer ./result-viewer
+cd ./result-viewer
+deno task test
+deno task build
+```
+
+The generated project is standalone and vanilla: `index.html`, `main.ts`, a generic
+model/parser, renderer, host-aware accessible styles, build script, and parser/render test. Its
+`onToolResult` callback is declared in `createMcpApp` configuration, so mcp-view registers it
+before `connect()` and preserves the initiating result during the Apps handshake. It renders
+loading, empty, error, metrics, scalar details, and URI-based artifacts without assuming an ERP,
+CAD, or other domain schema.
+
+The generator refuses a non-empty target directory. Pass `--force` only when overwriting its named
+scaffold files is intentional; unrelated files are not removed.

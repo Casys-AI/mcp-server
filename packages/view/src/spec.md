@@ -157,3 +157,26 @@ Explicitly **out of scope** for v0.1.0; may ship later:
 
 The type surface is designed so each of the above can be added without breaking existing `AppConfig`
 / `ViewDefinition` / `AppContext` shapes (all extension points are optional fields).
+
+## Result-viewer scaffold
+
+`@casys/mcp-view/scaffold` is an executable subpath, not part of the iframe runtime API:
+
+```sh
+deno run -A jsr:@casys/mcp-view@0.4.0/scaffold result-viewer <target> [--force]
+```
+
+It emits a small vanilla project with an inline-HTML bundling script and no domain brand or remote
+asset. The generated viewer uses `createMcpApp` with `onToolInput` and `onToolResult` supplied in
+the initial configuration. The callback registration and buffering guarantee documented above are
+therefore the mechanism that preserves the initiating tool result; the scaffold does not install a
+late `app.ontoolresult` handler or invent a polling layer.
+
+Its parser accepts a generic `structuredContent` object. `metrics` may be a record or a list of
+named values, `artifacts` is an optional list of URI-bearing objects, and remaining scalar fields
+become Details. Invalid payloads render an actionable error; an otherwise empty object renders an
+empty state. It deliberately does not claim to validate any domain envelope.
+
+The CLI refuses a non-empty target without `--force`, and `--force` overwrites only emitted files;
+it never deletes unrelated files. This keeps the tool safe to use in an existing repository while
+making replacement an explicit choice.

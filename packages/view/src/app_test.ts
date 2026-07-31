@@ -31,6 +31,30 @@ Deno.test("AppConfig accepts strict, allowUnsafeEval, autoResize options (compil
   assertEquals(cfg.autoResize, true);
 });
 
+Deno.test("AppConfig exposes typed one-shot tool notification callbacks", () => {
+  const cfg: AppConfig<Record<string, never>> = {
+    info: minimalInfo,
+    root: {} as unknown as HTMLElement,
+    views: { home: { render: () => "" } },
+    initialView: "home",
+    onToolInput: (params, app) => {
+      assertEquals(params.arguments?.id, "input");
+      assertEquals(app.currentView, "home");
+    },
+    onToolInputPartial: (params, app) => {
+      assertEquals(params.arguments?.id, "partial");
+      assertEquals(app.currentView, "home");
+    },
+    onToolResult: (params, app) => {
+      assertEquals(params.content, []);
+      assertEquals(app.currentView, "home");
+    },
+  };
+  assertEquals(typeof cfg.onToolInput, "function");
+  assertEquals(typeof cfg.onToolInputPartial, "function");
+  assertEquals(typeof cfg.onToolResult, "function");
+});
+
 Deno.test("createMcpApp rejects when initialView is not a registered view", async () => {
   const cfg = {
     info: minimalInfo,

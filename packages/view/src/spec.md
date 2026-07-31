@@ -58,6 +58,11 @@ const detailView = defineView<State, { id: string }, Invoice>({
 - `autoTheme?` — auto-apply host theme/CSS/fonts on handshake and context updates. Default `true`.
   Set to `false` if the App ships its own complete stylesheet. `ctx.hostContext` remains live
   regardless.
+- `onToolInput?`, `onToolInputPartial?`, `onToolResult?` — optional callbacks for the three one-shot
+  host tool notifications. Each receives `(params, appHandle)` after the initial view has mounted.
+  They are registered on ext-apps **before** `connect()`; notifications received during setup are
+  buffered and replayed in host arrival order. Async callbacks are serialized. A callback error is
+  logged and does not block later notifications.
 
 ### `AppContext<S>` (passed to every view hook)
 
@@ -74,12 +79,15 @@ const detailView = defineView<State, { id: string }, Invoice>({
 ```
 createMcpApp(config)
   └─ new App(info, capabilities)
+  └─ install one-shot tool notification handlers
   └─ app.connect(PostMessageTransport)        ← ui/initialize
+       └─ host tool notifications buffer here, if any
   └─ snapshot hostCapabilities
   └─ router.goto(initialView, undefined)
        └─ onEnter(ctx, args) → data
        └─ render(ctx, data) → string|Node
        └─ mount into config.root
+  └─ create AppHandle; replay buffered notifications FIFO
 
 ctx.navigate("detail", { id })
   └─ current.onLeave?(ctx)

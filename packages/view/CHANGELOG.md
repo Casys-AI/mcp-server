@@ -13,6 +13,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   workflow. The package now follows the same JSR + npm publishing path as the other workspace
   members.
 
+- **Host tool-notification lifecycle callbacks.** `AppConfig` now accepts `onToolInput`,
+  `onToolInputPartial`, and `onToolResult`. `createMcpApp` installs the ext-apps one-shot handlers
+  before `connect()`, buffers host notifications until the initial route and `AppHandle` exist, then
+  replays them in FIFO order. Async callbacks are serialized; a callback failure is logged without
+  preventing later notifications from being delivered.
+
 ## [0.3.0] - 2026-05-09
 
 Wraps the four interesting additions of `@modelcontextprotocol/ext-apps` 1.7.0 as first-class

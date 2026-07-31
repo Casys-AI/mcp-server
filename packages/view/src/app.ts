@@ -22,6 +22,7 @@ import type { AppConfig, AppContext, AppHandle, ToolResult, ViewDefinition } fro
 import { Router } from "./router.ts";
 import { callServerToolGated } from "./capabilities.ts";
 import { MCPViewError } from "./errors.ts";
+import { wireLifecycleCallbacks } from "./lifecycle.ts";
 import { sampleGated } from "./sample.ts";
 import { ToolRegistry, viewsDeclareTools } from "./tools.ts";
 
@@ -40,10 +41,12 @@ export function defineView<S, A = void, D = void>(
  *
  * Steps (see `spec.md` §Lifecycle):
  * 1. Instantiate `App` with app info + capabilities.
- * 2. `connect()` with `PostMessageTransport(window.parent, window.parent)`.
- * 3. Snapshot `hostCapabilities` returned by the handshake.
- * 4. Build the `AppContext` and hand it to the router.
- * 5. `router.goto(initialView, initialArgs)`.
+ * 2. Register configured one-shot tool notification handlers.
+ * 3. `connect()` with `PostMessageTransport(window.parent, window.parent)`.
+ * 4. Snapshot `hostCapabilities` returned by the handshake.
+ * 5. Build the `AppContext` and hand it to the router.
+ * 6. `router.goto(initialView, initialArgs)`, create the handle, then replay
+ *    any notification buffered during bootstrap.
  *
  * Throws if `window.parent` is unavailable (must run inside an iframe),
  * if `initialView` is not a registered view, or if the handshake fails.
@@ -70,6 +73,12 @@ export async function createMcpApp<S = Record<string, never>>(
   const app = appOptions
     ? new App(config.info, finalCaps, appOptions)
     : new App(config.info, finalCaps);
+
+  // ext-apps treats these as one-shot notifications and warns (or throws in
+  // strict mode) if their handlers are first installed after connect(). The
+  // dispatcher buffers anything the host sends while the handshake and the
+  // initial route are still creating the AppHandle.
+  const lifecycle = wireLifecycleCallbacks(app, config);
 
   const parent = getParentWindow();
   const transport = new PostMessageTransport(parent, parent);
@@ -167,6 +176,10 @@ export async function createMcpApp<S = Record<string, never>>(
         }
       },
     };
+
+    // The handle is now complete (including the initial route), so replay
+    // early host notifications and serialise any arrivals during that replay.
+    await lifecycle.activate(handle);
   } catch (err) {
     app.removeEventListener("hostcontextchanged", onHostContextChanged);
     await transport.close().catch(() => {}); // best-effort, rethrowing

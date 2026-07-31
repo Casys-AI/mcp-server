@@ -35,20 +35,32 @@ Deno.test("result-viewer scaffold creates a standalone vanilla project in a temp
 
     const configPath = join(target, "deno.json");
     const generatedConfig = await Deno.readTextFile(configPath);
-    assertStringIncludes(generatedConfig, '"@casys/mcp-view": "jsr:@casys/mcp-view@0.4.0"');
+    assertStringIncludes(generatedConfig, '"@casys/mcp-view": "jsr:@casys/mcp-view@0.4.1"');
+    assertStringIncludes(generatedConfig, '"minimumDependencyAge"');
+    assertStringIncludes(generatedConfig, '"exclude": ["jsr:@casys/mcp-view"]');
     await Deno.writeTextFile(
       configPath,
       generatedConfig.replace(
-        "jsr:@casys/mcp-view@0.4.0",
+        "jsr:@casys/mcp-view@0.4.1",
         new URL("./mod.ts", import.meta.url).href,
       ),
+    );
+
+    await Deno.writeTextFile(
+      join(target, "src", "main.ts"),
+      '\n(globalThis as Record<string, unknown>).__mcpViewBundleReplacementProbe = "$& $` $\' $$";\n',
+      { append: true },
     );
 
     const environment = { MCP_VIEW_MODULE: new URL("./mod.ts", import.meta.url).href };
     await runGeneratedTask(target, "test", environment);
     await runGeneratedTask(target, "check", environment);
     await runGeneratedTask(target, "build", environment);
-    assert((await Deno.stat(join(target, "dist", "result-viewer", "index.html"))).isFile);
+    const generatedHtml = await Deno.readTextFile(
+      join(target, "dist", "result-viewer", "index.html"),
+    );
+    assertStringIncludes(generatedHtml, "__mcpViewBundleReplacementProbe");
+    assertInlineScriptsParse(generatedHtml);
   } finally {
     await Deno.remove(directory, { recursive: true });
   }
@@ -113,4 +125,14 @@ async function runGeneratedTask(
   throw new Error(
     `Generated result-viewer task ${task} failed:\n${new TextDecoder().decode(result.stderr)}`,
   );
+}
+
+function assertInlineScriptsParse(html: string): void {
+  const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)].map((match) =>
+    match[1]
+  );
+  assert(scripts.length > 0, "expected generated viewer HTML to include an inline script");
+  for (const script of scripts) {
+    new Function(script);
+  }
 }

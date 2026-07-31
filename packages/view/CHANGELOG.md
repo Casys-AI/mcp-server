@@ -7,6 +7,19 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-07-31
+
+### Fixed
+
+- Preserve literal JavaScript and CSS replacement tokens while producing an inline viewer bundle.
+  Both the `result-viewer` scaffold and the basic example now use replacement callbacks, so valid
+  source containing the dollar-ampersand, dollar-backtick, or dollar-apostrophe replacement tokens
+  cannot be interpreted as `String.prototype.replace()` replacement syntax and corrupt the generated
+  HTML.
+- Generated scaffold projects explicitly exempt their own freshly-published `@casys/mcp-view`
+  dependency from Deno's minimum dependency age, while retaining the one-day protection for every
+  other dependency.
+
 ## [0.4.0] - 2026-07-31
 
 ### Added
@@ -14,13 +27,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`@casys/mcp-view/scaffold`** — executable vanilla `result-viewer` starter:
   `deno run -A jsr:@casys/mcp-view@0.4.0/scaffold result-viewer <target>`. It emits an autonomous
   browser view with a build path, focused parser/render test, loading/empty/error states, generic
-  metrics and URI-based artifacts, host-aware accessible CSS, and no product/domain branding.
-  The generated bootstrap configures `onToolResult` before `createMcpApp()` connects, preserving the
+  metrics and URI-based artifacts, host-aware accessible CSS, and no product/domain branding. The
+  generated bootstrap configures `onToolResult` before `createMcpApp()` connects, preserving the
   initial tool result through the MCP Apps handshake.
 
-- The scaffold refuses a non-empty target by default and offers `--force` for intentional replacement
-  of scaffold files without deleting unrelated target files. Its temporary-directory tests cover
-  generation, lifecycle source shape, host-aware CSS, refusal, and explicit force.
+- The scaffold refuses a non-empty target by default and offers `--force` for intentional
+  replacement of scaffold files without deleting unrelated target files. Its temporary-directory
+  tests cover generation, lifecycle source shape, host-aware CSS, refusal, and explicit force.
 
 - Add npm packaging for `@casys/mcp-view` via `scripts/build-npm.ts` and the repository publish
   workflow. The package now follows the same JSR + npm publishing path as the other workspace

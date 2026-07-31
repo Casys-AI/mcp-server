@@ -66,8 +66,8 @@ const css = await Deno.readTextFile(styles);
 const tpl = await Deno.readTextFile(template);
 
 const html = tpl
-  .replace("/* STYLES_PLACEHOLDER */", css)
-  .replace("/* BUNDLE_PLACEHOLDER */", js);
+  .replace("/* STYLES_PLACEHOLDER */", () => css)
+  .replace("/* BUNDLE_PLACEHOLDER */", () => js);
 
 await Deno.mkdir(outDir, { recursive: true });
 await Deno.writeTextFile(outHtml, html);

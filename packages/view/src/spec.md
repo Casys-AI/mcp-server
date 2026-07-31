@@ -163,7 +163,7 @@ The type surface is designed so each of the above can be added without breaking 
 `@casys/mcp-view/scaffold` is an executable subpath, not part of the iframe runtime API:
 
 ```sh
-deno run -A jsr:@casys/mcp-view@0.4.0/scaffold result-viewer <target> [--force]
+deno run -A jsr:@casys/mcp-view@0.4.1/scaffold result-viewer <target> [--force]
 ```
 
 It emits a small vanilla project with an inline-HTML bundling script and no domain brand or remote

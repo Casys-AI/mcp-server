@@ -4,6 +4,15 @@ All notable changes to `@casys/mcp-compose` will be documented in this file.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-31
+
+### Added
+
+- **Reviewed dashboard embedding.** `composeAndServeDashboard()` and
+  `serveComposedDashboard()` accept `frameAncestors` when a local product shell needs to mount the
+  live dashboard in-place. Values are restricted to validated HTTP(S) origins; the default remains
+  `frame-ancestors 'none'` so standalone dashboards are not embeddable accidentally.
+
 ## [0.6.0] - 2026-07-31
 
 ### Added

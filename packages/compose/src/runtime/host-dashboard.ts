@@ -174,7 +174,7 @@ export async function serveComposedDashboard(
     const html = renderComposite(result.descriptor, { slots: rendererSlots });
     mainState = {
       html,
-      parentCsp: dashboardCsp(hostedPanels),
+      parentCsp: dashboardCsp(hostedPanels, options?.frameAncestors),
       routes,
       panelCount: hostedPanels.length,
     };
@@ -646,10 +646,14 @@ function panelLoadErrorHtml(): string {
     "<p>The MCP App resource could not be loaded. Check the local Compose host logs.</p>";
 }
 
-function dashboardCsp(panels: readonly HostedPanel[]): string {
+function dashboardCsp(
+  panels: readonly HostedPanel[],
+  frameAncestors: readonly string[] | undefined,
+): string {
   const frameSources = panels.length === 0
     ? "'none'"
     : panels.map((panel) => panel.origin).join(" ");
+  const embeddingSources = frameAncestors === undefined ? [] : validateCspDomains(frameAncestors);
   return [
     "default-src 'none'",
     "script-src 'unsafe-inline'",
@@ -661,7 +665,9 @@ function dashboardCsp(panels: readonly HostedPanel[]): string {
     "base-uri 'none'",
     "object-src 'none'",
     "form-action 'none'",
-    "frame-ancestors 'none'",
+    embeddingSources.length === 0
+      ? "frame-ancestors 'none'"
+      : `frame-ancestors ${embeddingSources.join(" ")}`,
   ].join("; ");
 }
 

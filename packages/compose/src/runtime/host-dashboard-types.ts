@@ -62,6 +62,12 @@ export interface ServeComposedDashboardOptions {
   readonly port?: number;
   /** Open the served dashboard in the default browser. Defaults to `true`. */
   readonly open?: boolean;
+  /**
+   * Reviewed HTTP(S) origins allowed to embed the dashboard document.
+   * Defaults to none, keeping the standalone host non-embeddable. Invalid
+   * CSP sources are ignored instead of becoming raw policy text.
+   */
+  readonly frameAncestors?: readonly string[];
 }
 
 /** A running local MCP Apps dashboard host. */

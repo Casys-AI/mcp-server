@@ -29,7 +29,11 @@ const manifests = await loadManifests("./manifests");
 const template = await loadTemplate("./dashboards/operations.yaml");
 const dashboard = await composeAndServeDashboard(
   { manifests, template },
-  { open: true },
+  {
+    open: true,
+    // Optional: allow one reviewed local shell to embed this dashboard.
+    frameAncestors: ["http://127.0.0.1:60060"],
+  },
 );
 
 console.log(dashboard.url);
@@ -86,6 +90,8 @@ The complete initiating `CallToolResult` is delivered exactly once after the App
 
 The serving API binds only to `127.0.0.1`; it intentionally has no hostname override. Remote
 exposure, authentication, and tunnels belong to a separate deployment adapter.
+The dashboard document denies framing by default. `frameAncestors` accepts validated HTTP(S)
+origins only and exists for explicit local product shells, not broad wildcard embedding.
 
 ## Design decisions
 

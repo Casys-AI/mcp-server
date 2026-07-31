@@ -78,6 +78,10 @@ Deno.test({
         dashboard.headers.get("content-security-policy") ?? "",
         "frame-src http://127.0.0.1:",
       );
+      assertStringIncludes(
+        dashboard.headers.get("content-security-policy") ?? "",
+        "frame-ancestors 'none'",
+      );
       const html = await dashboard.text();
       assertStringIncludes(html, 'sandbox="allow-scripts allow-same-origin"');
 
@@ -287,6 +291,35 @@ Deno.test({
       for (const origin of origins) {
         assertMatch(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
       }
+    } finally {
+      await handle.shutdown();
+    }
+  },
+});
+
+Deno.test({
+  name: "composeAndServeDashboard permits one reviewed embedding origin",
+  ...TEST_OPTS,
+  fn: async () => {
+    const manifest = await strictManifest();
+    const template = await strictTemplate();
+    const embeddingOrigin = "http://127.0.0.1:60060";
+    const embeddedOptions = {
+      open: false,
+      frameAncestors: [embeddingOrigin, "not-a-csp-origin"],
+    };
+    const handle = await composeAndServeDashboard({
+      template,
+      manifests: new Map([[manifest.name, manifest]]),
+      args: { scenario: "embedded-workbench" },
+    }, embeddedOptions);
+
+    try {
+      const response = await fetch(handle.url);
+      assertEquals(response.status, 200);
+      const csp = response.headers.get("content-security-policy") ?? "";
+      assertStringIncludes(csp, `frame-ancestors ${embeddingOrigin}`);
+      assertEquals(csp.includes("not-a-csp-origin"), false);
     } finally {
       await handle.shutdown();
     }

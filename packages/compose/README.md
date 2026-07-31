@@ -273,6 +273,17 @@ const dashboard = await composeAndServeDashboard(
 ```
 
 The returned `ComposedDashboardHandle` owns its cluster until `dashboard.shutdown()` is called.
+Standalone dashboards deny embedding by default. A trusted local product shell can opt in with an
+exact reviewed origin:
+
+```ts
+const dashboard = await composeAndServeDashboard(
+  { manifests, template },
+  { open: false, frameAncestors: ["http://127.0.0.1:60060"] },
+);
+```
+
+Only valid HTTP(S) origins are admitted to the generated `frame-ancestors` policy.
 
 ### Manifest
 

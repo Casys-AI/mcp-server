@@ -28,6 +28,7 @@ await build({
   entryPoints: [
     "./mod.ts",
     { name: "./preact", path: "./preact.ts" },
+    { name: "./preact/components", path: "./preact-components.ts" },
     { name: "./react", path: "./react.ts" },
   ],
   outDir: "./dist-node",
@@ -79,6 +80,11 @@ pkg.exports = {
     types: "./esm/preact.d.ts",
     import: "./esm/preact.js",
     require: "./script/preact.js",
+  },
+  "./preact/components": {
+    types: "./esm/preact-components.d.ts",
+    import: "./esm/preact-components.js",
+    require: "./script/preact-components.js",
   },
 };
 
@@ -167,6 +173,16 @@ async function smokeTestPackageImport(): Promise<void> {
           "}",
           "if (typeof preact.Card !== 'function' || typeof preact.DataTable !== 'function') {",
           "  throw new Error('Preact presentation kit exports missing');",
+          "}",
+          "const components = await import('@casys/mcp-view/preact/components');",
+          "if (typeof components.Card !== 'function' || typeof components.DataTable !== 'function') {",
+          "  throw new Error('Preact components-only exports missing');",
+          "}",
+          "if (typeof components.installMcpViewTheme !== 'function') {",
+          "  throw new Error('Preact presentation theme export missing');",
+          "}",
+          "if ('startPreactSurfaceApp' in components || 'createMcpApp' in components) {",
+          "  throw new Error('Preact components-only entry leaks MCP Apps runtime exports');",
           "}",
         ].join("\n"),
       ],

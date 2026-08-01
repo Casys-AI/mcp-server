@@ -11,7 +11,7 @@ export {
   MetricGrid,
   StateMessage,
   Toolbar,
-} from "./components.tsx";
+} from "../../preact-components.ts";
 export type {
   PreactComponentRenderer,
   PreactSurfaceAppOptions,
@@ -34,4 +34,4 @@ export type {
   PresentationTone,
   StateMessageProps,
   ToolbarProps,
-} from "./components.tsx";
+} from "../../preact-components.ts";

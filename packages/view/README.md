@@ -143,6 +143,19 @@ function SolveMetrics({ data }: PreactSurfaceComponentProps<StaticSolveResult>) 
 }
 ```
 
+Native Preact applications that do not run inside an MCP Apps iframe should use the
+presentation-only entry point. It includes the same components and theme, but no lifecycle, surface
+registry, `ext-apps`, `window`, or postMessage bridge:
+
+```tsx
+import { Card, installMcpViewTheme, MetricGrid } from "@casys/mcp-view/preact/components";
+
+installMcpViewTheme();
+```
+
+`@casys/mcp-view/preact` remains backwards-compatible and continues to export both this presentation
+kit and the MCP Apps surface runtime.
+
 This is deliberately closer to an imported design-system core than copied application CSS. A future
 `mcp-view add` workflow may provide source-owned domain recipes, but the foundational presentation
 components stay versioned here so every MCP receives the same fixes.

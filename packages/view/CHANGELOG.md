@@ -7,6 +7,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-08-01
+
+### Added
+
+- Add `@casys/mcp-view/preact/components`, a presentation-only Preact entry point for native
+  applications. It exports the shared component kit and theme without importing the MCP Apps
+  lifecycle, iframe transport, surface registry, or postMessage bridge. The existing
+  `@casys/mcp-view/preact` entry remains compatible.
+
 ## [0.7.0] - 2026-08-01
 
 ### Added

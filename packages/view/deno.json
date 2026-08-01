@@ -1,10 +1,11 @@
 {
   "name": "@casys/mcp-view",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "license": "MIT",
   "exports": {
     ".": "./mod.ts",
     "./preact": "./preact.ts",
+    "./preact/components": "./preact-components.ts",
     "./react": "./react.ts",
     "./scaffold": "./scaffold.ts"
   },
@@ -12,6 +13,7 @@
     "include": [
       "mod.ts",
       "preact.ts",
+      "preact-components.ts",
       "react.ts",
       "scaffold.ts",
       "src/**/*.ts",
@@ -26,8 +28,8 @@
   },
   "tasks": {
     "build:npm": "deno run -A scripts/build-npm.ts",
-    "test": "deno test --allow-read --allow-write --allow-run --allow-env src/ scaffold_test.ts",
-    "check": "deno check mod.ts preact.ts react.ts scaffold.ts",
+    "test": "deno test --allow-read --allow-write --allow-run --allow-env src/ scaffold_test.ts preact_components_test.ts",
+    "check": "deno check mod.ts preact.ts preact-components.ts react.ts scaffold.ts",
     "lint": "deno lint",
     "fmt": "deno fmt",
     "publish:check": "deno publish --dry-run --allow-dirty",

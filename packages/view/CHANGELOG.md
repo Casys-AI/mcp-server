@@ -7,6 +7,31 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-01
+
+### Added
+
+- Add a real shared Preact presentation kit under `@casys/mcp-view/preact`: `Card`, `Badge`,
+  `MetricGrid`, `KeyValueList`, `DataTable`, `Button`, `Toolbar`, `EmptyState`, and `StateMessage`.
+  Domain Apps now import the same accessible components instead of maintaining parallel card,
+  metric, table, and state implementations.
+- Publish the Preact entry point, component sources, and linked guidance in the JSR artifact;
+  exercise npm subpath exports in the package smoke test and ship README, license, and changelog in
+  the npm tarball together with the documentation linked from that README.
+- Gate releases on Deno's real publish dry-run so missing entry points and slow public types fail
+  locally before the JSR workflow runs.
+
+### Changed
+
+- Generalize `definePreactComponent()` over the owning App context. Existing result-driven Preact
+  Apps keep their inferred context, while established MCP viewers can adopt the presentation kit
+  without replacing their navigation, tool calls, or domain state.
+- Restrict table hover and pointer behavior to explicitly interactive rows, and add semantic badge
+  tones, keyboard-safe and nested-control-safe table selection, visible focus treatment, compact
+  toolbars, and responsive provenance facts.
+
+## [0.6.0] - 2026-08-01
+
 ### Added
 
 - Add renderer-neutral structured-result helpers, deterministic teardown, pre-connect tool-result

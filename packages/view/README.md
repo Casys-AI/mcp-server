@@ -121,6 +121,32 @@ const registry = defineComponentRegistry({
 await startPreactSurfaceApp({ root, info, registry });
 ```
 
+Domain components should import the shared presentation kit instead of recreating its cards and
+tables:
+
+```tsx
+import {
+  Badge,
+  Card,
+  DataTable,
+  KeyValueList,
+  MetricGrid,
+  type PreactSurfaceComponentProps,
+} from "@casys/mcp-view/preact";
+
+function SolveMetrics({ data }: PreactSurfaceComponentProps<StaticSolveResult>) {
+  return (
+    <Card title="Static solve" actions={<Badge tone="success">Solved</Badge>}>
+      <MetricGrid items={toMetricItems(data)} />
+    </Card>
+  );
+}
+```
+
+This is deliberately closer to an imported design-system core than copied application CSS. A future
+`mcp-view add` workflow may provide source-owned domain recipes, but the foundational presentation
+components stay versioned here so every MCP receives the same fixes.
+
 The theme is the compact, container-friendly language first proven by the ERPNext BOM components. It
 provides tokens and stable classes for cards, uppercase section titles, metric grids, badges, dense
 tables, selected rows, cross-view state, empty states, stacks, and rows. Import
@@ -166,7 +192,7 @@ structured result and render a readable evidence-style view. It is a starting po
 componentized viewer, not a server generator.
 
 ```sh
-deno run -A jsr:@casys/mcp-view@0.6.0/scaffold result-viewer ./result-viewer
+deno run -A jsr:@casys/mcp-view@0.7.0/scaffold result-viewer ./result-viewer
 cd ./result-viewer
 deno task test
 deno task build

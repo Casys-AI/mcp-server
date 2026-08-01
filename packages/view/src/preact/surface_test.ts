@@ -12,13 +12,15 @@ interface Data {
   title: string;
 }
 
+type TestAppContext = AppContext<PreactSurfaceAppState<Data>>;
+
 Deno.test("definePreactComponent forwards component surface context and cleans up", async () => {
   const events: string[] = [];
-  let receivedProps: PreactSurfaceComponentProps<Data> | undefined;
+  let receivedProps: PreactSurfaceComponentProps<Data, TestAppContext> | undefined;
   const renderer: PreactComponentRenderer = {
     mount(_component, props, target) {
       events.push("mount");
-      receivedProps = props as PreactSurfaceComponentProps<Data>;
+      receivedProps = props as PreactSurfaceComponentProps<Data, TestAppContext>;
       assertStrictEquals(target, targetNode);
     },
     unmount(target) {
@@ -27,10 +29,10 @@ Deno.test("definePreactComponent forwards component surface context and cleans u
     },
   };
   const targetNode = {} as HTMLElement;
-  const appContext = {} as AppContext<PreactSurfaceAppState<Data>>;
+  const appContext = {} as TestAppContext;
   const data = { title: "Boiler" };
-  const Component = (_props: PreactSurfaceComponentProps<Data>) => null;
-  const definition = definePreactComponent<Data>(
+  const Component = (_props: PreactSurfaceComponentProps<Data, TestAppContext>) => null;
+  const definition = definePreactComponent<Data, TestAppContext>(
     { title: "Identity" },
     Component,
     renderer,

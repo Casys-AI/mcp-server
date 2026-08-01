@@ -53,8 +53,9 @@ const detailView = defineView<State, { id: string }, Invoice>({
 `@casys/mcp-view/react` exports `defineReactView()`. It returns a normal `ViewDefinition`, mounts
 with ReactDOM, and guarantees that the active root is unmounted on route leave or App teardown.
 React, ReactDOM, and their types are optional npm peers; importing the main package does not load a
-renderer. `@casys/mcp-view/preact` exports `definePreactComponent()` and `startPreactSurfaceApp()`
-for result-driven component surfaces. Preact is also an optional peer.
+renderer. `@casys/mcp-view/preact` exports `definePreactComponent()`, `startPreactSurfaceApp()`, and
+the shared `Card`, `Badge`, `MetricGrid`, `KeyValueList`, `DataTable`, `Button`, `Toolbar`,
+`EmptyState`, and `StateMessage` presentation components. Preact is also an optional peer.
 
 ### Structured results, component surfaces, and Compose events
 
@@ -190,7 +191,7 @@ Explicitly **out of scope** for v0.1.0; may ship later:
   authors call `ctx.app.<method>` directly.
 - URL-based routing / history API integration.
 - State persistence across teardown.
-- Vue, Svelte, and Preact adapters without a demonstrated consumer need.
+- Vue and Svelte adapters without a demonstrated consumer need.
 - Data-loader caching, suspense, optimistic updates.
 - Route guards, nested views, layout components.
 - Dashboard layout, domain schemas, and a universal JSON renderer.
@@ -203,7 +204,7 @@ The type surface is designed so each of the above can be added without breaking 
 `@casys/mcp-view/scaffold` is an executable subpath, not part of the iframe runtime API:
 
 ```sh
-deno run -A jsr:@casys/mcp-view@0.6.0/scaffold result-viewer <target> [--force]
+deno run -A jsr:@casys/mcp-view@0.7.0/scaffold result-viewer <target> [--force]
 ```
 
 It emits a small vanilla project with an inline-HTML bundling script and no domain brand or remote

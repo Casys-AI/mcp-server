@@ -9,6 +9,7 @@ import {
   defineViewComponent,
   mountComponentSurface,
   type MountedComponentSurface,
+  type ViewComponentDefinition,
   type ViewComponentDescriptor,
   type ViewComponentRegistry,
 } from "../components.ts";
@@ -25,9 +26,12 @@ export type PreactSurfaceContext<TData> = AppContext<
   PreactSurfaceAppState<TData>
 >;
 
-export interface PreactSurfaceComponentProps<TData> {
+export interface PreactSurfaceComponentProps<
+  TData,
+  TAppContext = PreactSurfaceContext<TData>,
+> {
   readonly data: TData;
-  readonly context: PreactSurfaceContext<TData>;
+  readonly context: TAppContext;
   readonly instanceId: string;
   readonly props: Readonly<Record<string, JsonValue>>;
 }
@@ -52,12 +56,17 @@ export const preactSurfaceRenderer: PreactComponentRenderer = {
 };
 
 /** Turn one Preact component into a renderer-neutral mcp-view component. */
-export function definePreactComponent<TData>(
+export function definePreactComponent<
+  TData,
+  TAppContext = PreactSurfaceContext<TData>,
+>(
   descriptor: ViewComponentDescriptor,
-  component: FunctionComponent<PreactSurfaceComponentProps<TData>>,
+  component: FunctionComponent<
+    PreactSurfaceComponentProps<TData, TAppContext>
+  >,
   renderer: PreactComponentRenderer = preactSurfaceRenderer,
-) {
-  return defineViewComponent<TData, PreactSurfaceContext<TData>>({
+): ViewComponentDefinition<TData, TAppContext> {
+  return defineViewComponent<TData, TAppContext>({
     descriptor,
     mount(target, context) {
       renderer.mount(component, {

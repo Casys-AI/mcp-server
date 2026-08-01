@@ -7,7 +7,7 @@ export const MCP_VIEW_THEME_STYLE_ID = "mcp-view-theme";
  * viewer. Domain components keep their own semantics while sharing tokens,
  * cards, metrics, tables, badges and system states.
  */
-export const MCP_VIEW_THEME_CSS = String.raw`
+export const MCP_VIEW_THEME_CSS: string = String.raw`
 :root {
   color-scheme: light dark;
   --mcp-view-text: var(--color-text-primary, #f4efe7);
@@ -57,6 +57,35 @@ export const MCP_VIEW_THEME_CSS = String.raw`
   text-transform: uppercase;
 }
 
+.mcp-view-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.72rem;
+}
+
+.mcp-view-card-heading { min-width: 0; }
+
+.mcp-view-card-header .mcp-view-card-title { margin: 0; }
+
+.mcp-view-card-eyebrow {
+  margin: 0 0 0.18rem;
+  color: var(--mcp-view-accent);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.mcp-view-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  margin-left: auto;
+}
+
 .mcp-view-message,
 .mcp-view-empty {
   color: var(--mcp-view-muted);
@@ -97,6 +126,11 @@ export const MCP_VIEW_THEME_CSS = String.raw`
   font-size: 1.1rem;
 }
 
+.mcp-view-metric[data-tone="info"] .mcp-view-metric-value { color: var(--mcp-view-accent); }
+.mcp-view-metric[data-tone="success"] .mcp-view-metric-value { color: var(--mcp-view-success); }
+.mcp-view-metric[data-tone="warning"] .mcp-view-metric-value { color: var(--mcp-view-warning); }
+.mcp-view-metric[data-tone="danger"] .mcp-view-metric-value { color: var(--mcp-view-danger); }
+
 .mcp-view-badges {
   display: flex;
   flex-wrap: wrap;
@@ -106,10 +140,35 @@ export const MCP_VIEW_THEME_CSS = String.raw`
 .mcp-view-badge {
   padding: 0.2rem 0.45rem;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--mcp-view-success) 15%, transparent);
-  color: var(--mcp-view-success);
+  background: color-mix(in srgb, var(--mcp-view-muted) 12%, transparent);
+  color: var(--mcp-view-muted);
   font-size: 0.68rem;
   font-weight: 700;
+}
+
+.mcp-view-badge[data-tone="info"] {
+  background: color-mix(in srgb, var(--mcp-view-accent) 15%, transparent);
+  color: var(--mcp-view-accent);
+}
+
+.mcp-view-badge:not([data-tone]) {
+  background: color-mix(in srgb, var(--mcp-view-success) 15%, transparent);
+  color: var(--mcp-view-success);
+}
+
+.mcp-view-badge[data-tone="success"] {
+  background: color-mix(in srgb, var(--mcp-view-success) 15%, transparent);
+  color: var(--mcp-view-success);
+}
+
+.mcp-view-badge[data-tone="warning"] {
+  background: color-mix(in srgb, var(--mcp-view-warning) 15%, transparent);
+  color: var(--mcp-view-warning);
+}
+
+.mcp-view-badge[data-tone="danger"] {
+  background: color-mix(in srgb, var(--mcp-view-danger) 15%, transparent);
+  color: var(--mcp-view-danger);
 }
 
 .mcp-view-table-wrap {
@@ -128,15 +187,20 @@ export const MCP_VIEW_THEME_CSS = String.raw`
 .mcp-view-table td {
   padding: 0.48rem 0.42rem;
   border-bottom: 1px solid color-mix(in srgb, var(--mcp-view-border) 67%, transparent);
-  text-align: right;
+  text-align: left;
   white-space: nowrap;
 }
 
-.mcp-view-table th:first-child,
-.mcp-view-table td:first-child { text-align: left; }
+.mcp-view-table [data-align="right"] { text-align: right; }
 
-.mcp-view-table tbody tr { cursor: pointer; }
-.mcp-view-table tbody tr:hover { background: color-mix(in srgb, var(--mcp-view-accent) 8%, transparent); }
+.mcp-view-table tbody tr[data-interactive="true"] { cursor: pointer; }
+.mcp-view-table tbody tr[data-interactive="true"]:hover {
+  background: color-mix(in srgb, var(--mcp-view-accent) 8%, transparent);
+}
+.mcp-view-table tbody tr[data-interactive="true"]:focus-visible {
+  outline: 2px solid var(--mcp-view-accent);
+  outline-offset: -2px;
+}
 
 .mcp-view-selected {
   background: color-mix(in srgb, var(--mcp-view-accent) 18%, transparent);
@@ -175,9 +239,97 @@ export const MCP_VIEW_THEME_CSS = String.raw`
   background: var(--mcp-view-subtle);
 }
 
+.mcp-view-key-values {
+  display: grid;
+  gap: 0.42rem;
+  margin: 0;
+}
+
+.mcp-view-key-value {
+  display: grid;
+  grid-template-columns: minmax(7rem, auto) minmax(0, 1fr);
+  gap: 0.75rem;
+  padding: 0.58rem;
+  border-radius: 0.5rem;
+  background: var(--mcp-view-subtle);
+}
+
+.mcp-view-key-value dt {
+  color: var(--mcp-view-muted);
+  font-size: 0.7rem;
+}
+
+.mcp-view-key-value dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.mcp-view-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.mcp-view-button {
+  min-height: 1.9rem;
+  padding: 0.35rem 0.58rem;
+  border: 1px solid var(--mcp-view-border);
+  border-radius: 0.5rem;
+  background: var(--mcp-view-subtle);
+  color: var(--mcp-view-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.mcp-view-button:not(:disabled):hover,
+.mcp-view-button[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--mcp-view-accent) 58%, var(--mcp-view-border));
+  color: var(--mcp-view-accent);
+}
+
+.mcp-view-button:focus-visible {
+  border-color: var(--mcp-view-accent);
+  color: var(--mcp-view-accent);
+  outline: 2px solid var(--mcp-view-accent);
+  outline-offset: 2px;
+}
+
+.mcp-view-button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--mcp-view-accent) 13%, transparent);
+}
+
+.mcp-view-button:disabled { cursor: not-allowed; opacity: 0.5; }
+
+.mcp-view-state {
+  display: grid;
+  gap: 0.3rem;
+  min-height: 4rem;
+  place-content: center;
+  padding: 1rem;
+  border: 1px dashed var(--mcp-view-border);
+  border-radius: var(--mcp-view-radius);
+  color: var(--mcp-view-muted);
+  text-align: center;
+}
+
+.mcp-view-state[data-tone="success"] strong { color: var(--mcp-view-success); }
+.mcp-view-state[data-tone="warning"] strong { color: var(--mcp-view-warning); }
+.mcp-view-state[data-tone="danger"] strong { color: var(--mcp-view-danger); }
+.mcp-view-state[data-tone="info"] strong { color: var(--mcp-view-accent); }
+
+.mcp-view-state-detail { max-width: 48ch; }
+
 @container (max-width: 440px) {
   .mcp-view-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .mcp-view-row-responsive { align-items: flex-start; flex-direction: column; }
+  .mcp-view-card-header { align-items: stretch; flex-direction: column; }
+  .mcp-view-card-actions { justify-content: flex-start; }
+  .mcp-view-key-value { grid-template-columns: 1fr; gap: 0.2rem; }
+  .mcp-view-key-value dd { text-align: left; }
 }
 `;
 

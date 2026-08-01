@@ -6,7 +6,7 @@ export const resultViewerTemplates: Readonly<Record<string, string>> = {
     "lib": ["deno.ns", "deno.window", "dom", "dom.iterable", "dom.asynciterable", "esnext"]
   },
   "imports": {
-    "@casys/mcp-view": "jsr:@casys/mcp-view@0.6.0"
+    "@casys/mcp-view": "jsr:@casys/mcp-view@0.7.0"
   },
   "minimumDependencyAge": {
     "age": "P1D",
@@ -41,7 +41,7 @@ export const resultViewerTemplates: Readonly<Record<string, string>> = {
   "build.ts": `import { dirname, fromFileUrl, join } from "jsr:@std/path@^1.1.0";
 
 const here = dirname(fromFileUrl(import.meta.url));
-const mcpViewModule = Deno.env.get("MCP_VIEW_MODULE") ?? "jsr:@casys/mcp-view@0.6.0";
+const mcpViewModule = Deno.env.get("MCP_VIEW_MODULE") ?? "jsr:@casys/mcp-view@0.7.0";
 const temporaryDirectory = await Deno.makeTempDir({ prefix: "mcp-view-result-viewer-" });
 const importMap = join(temporaryDirectory, "import-map.json");
 const bundlePath = join(temporaryDirectory, "result-viewer.js");

@@ -112,6 +112,19 @@ pkg.peerDependencies.preact = preactVersion;
 pkg.peerDependenciesMeta.preact = { optional: true };
 await Deno.writeTextFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
 
+for (const asset of ["README.md", "LICENSE", "CHANGELOG.md"] as const) {
+  await Deno.copyFile(asset, `dist-node/${asset}`);
+}
+await Deno.mkdir("dist-node/docs/decision-records", { recursive: true });
+await Deno.copyFile("docs/adoption.md", "dist-node/docs/adoption.md");
+for await (const entry of Deno.readDir("docs/decision-records")) {
+  if (!entry.isFile || !entry.name.endsWith(".md")) continue;
+  await Deno.copyFile(
+    `docs/decision-records/${entry.name}`,
+    `dist-node/docs/decision-records/${entry.name}`,
+  );
+}
+
 await smokeTestPackageImport();
 
 console.log("\n[build-npm] Done. Output in ./dist-node/");
@@ -151,6 +164,9 @@ async function smokeTestPackageImport(): Promise<void> {
           "const preact = await import('@casys/mcp-view/preact');",
           "if (typeof preact.definePreactComponent !== 'function') {",
           "  throw new Error('definePreactComponent export missing');",
+          "}",
+          "if (typeof preact.Card !== 'function' || typeof preact.DataTable !== 'function') {",
+          "  throw new Error('Preact presentation kit exports missing');",
           "}",
         ].join("\n"),
       ],

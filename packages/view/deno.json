@@ -1,6 +1,6 @@
 {
   "name": "@casys/mcp-view",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "license": "MIT",
   "exports": {
     ".": "./mod.ts",
@@ -11,14 +11,18 @@
   "publish": {
     "include": [
       "mod.ts",
+      "preact.ts",
       "react.ts",
       "scaffold.ts",
       "src/**/*.ts",
+      "src/**/*.tsx",
       "src/**/*.md",
+      "docs/**/*.md",
+      "CHANGELOG.md",
       "README.md",
       "LICENSE"
     ],
-    "exclude": ["**/*_test.ts"]
+    "exclude": ["**/*_test.ts", "**/*_test.tsx"]
   },
   "tasks": {
     "build:npm": "deno run -A scripts/build-npm.ts",
@@ -26,8 +30,9 @@
     "check": "deno check mod.ts preact.ts react.ts scaffold.ts",
     "lint": "deno lint",
     "fmt": "deno fmt",
+    "publish:check": "deno publish --dry-run --allow-dirty",
     "changelog:draft": "git -C ../.. cliff --config cliff.toml --tag-pattern 'view-v.*' --include-path 'packages/view/**' --unreleased",
-    "release:check": "deno task check && deno task lint && deno task test",
+    "release:check": "deno task check && deno task lint && deno task test && deno task publish:check",
     "release:tag": "deno run -A ../../scripts/release-tag.ts view"
   },
   "fmt": {

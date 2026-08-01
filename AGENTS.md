@@ -82,9 +82,8 @@ class and will be removed in v1.0.)
   for remote. Auth only applies to HTTP transport.
 - **Publishing**: On push to `main`, `.github/workflows/publish.yml` publishes
   every workspace member to JSR (`npx jsr publish` skips already-published
-  versions) and three of them to npm (`server`, `compose`, `bridge` via dnt;
-  `view` is JSR-only at this stage — see the comment at the bottom of
-  `publish.yml`). Each npm job is idempotent: it queries `npm view <pkg>@<ver>`
+  versions) and four of them to npm (`server`, `compose`, `bridge`, and `view`
+  via dnt). Each npm job is idempotent: it queries `npm view <pkg>@<ver>`
   before publishing, so repeated runs without a version bump exit cleanly
   instead of masking auth/build/network failures behind `|| echo`.
 
@@ -108,7 +107,7 @@ deno task changelog:draft
 # 3. Bump version in packages/<pkg>/deno.json. For compose, also bump
 #    packages/compose/src/version.ts (drift test will catch a miss).
 
-# 4. Run the release pre-flight (lint + check + tests).
+# 4. Run the release pre-flight (lint + check + tests, plus package-specific publish checks).
 deno task release:check
 
 # 5. Create the annotated tag <pkg>-v<version> locally.

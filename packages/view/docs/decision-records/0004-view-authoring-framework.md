@@ -38,6 +38,11 @@ proven by the ERPNext BOM palette: restrained cards, dense metrics and tables, s
 cross-selection state, and container queries. Domain viewers may add specialized CAD, diagram, and
 evidence styling without redefining the shared shell.
 
+Preact Apps consume those foundations as actual components from `@casys/mcp-view/preact`, not as
+independently maintained CSS imitations. The shared kit covers cards, badges, metrics, key-value
+facts, data tables, actions, toolbars, empty states, and system states. Source-owned CSS is reserved
+for visuals that the kit cannot express, such as a Three.js viewport or a SysON SVG canvas.
+
 ## Events and state
 
 Composition changes presentation only. `ui/compose/event` remains the separately declared

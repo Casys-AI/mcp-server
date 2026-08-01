@@ -52,8 +52,10 @@ event routes.
 1. Preserve focused tests around the current result model and visible evidence.
 2. Split the existing viewer into the smallest meaningful domain blocks; avoid tiny decorative
    fragments and avoid keeping the whole viewer as one component.
-3. Reuse the shared theme, status, metric-grid, and key-value primitives where they fit. Keep CAD,
-   diagrams, charts, and domain actions in custom components.
+3. In Preact Apps, import `Card`, `Badge`, `MetricGrid`, `KeyValueList`, `DataTable`, `Button`,
+   `Toolbar`, `EmptyState`, and `StateMessage` from `@casys/mcp-view/preact`. Keep only CAD,
+   diagrams, charts, and domain actions in custom components; do not copy the shared presentation
+   CSS into every MCP.
 4. If standalone usage matters, define it as `defaultSurface` using those same blocks. Otherwise
    omit it deliberately.
 5. Mount the negotiated surface from the App host context, falling back to `defaultSurface` when

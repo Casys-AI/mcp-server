@@ -15,6 +15,11 @@ Deno.test("shared theme exposes the ERPNext-derived component vocabulary", () =>
       ".mcp-view-metrics",
       ".mcp-view-table",
       ".mcp-view-cross-selection",
+      ".mcp-view-key-values",
+      ".mcp-view-button",
+      ".mcp-view-state",
+      ":focus-visible",
+      '[data-tone="danger"]',
     ]
   ) {
     assertStringIncludes(MCP_VIEW_THEME_CSS, className);

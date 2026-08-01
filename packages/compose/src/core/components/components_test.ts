@@ -20,7 +20,7 @@ Deno.test("component surface resolver uses the App default without inventing siz
   assertEquals(resolveComponentSurface(catalog), {
     status: "ready",
     source: "default",
-    surface: catalog.defaultSurface,
+    surface: catalog.defaultSurface!,
   });
 });
 
@@ -34,6 +34,16 @@ Deno.test("component surface resolver accepts an explicit subset and layout", ()
     source: "requested",
     surface: requested,
   });
+});
+
+Deno.test("component-only catalogs require an explicit host surface", () => {
+  assertEquals(
+    resolveComponentSurface({ components: catalog.components }),
+    {
+      status: "unresolved",
+      reason: "surface-required",
+    },
+  );
 });
 
 Deno.test("component surface resolver reports unknown components explicitly", () => {

@@ -45,7 +45,8 @@ export interface ViewComponentDescriptor {
 /** Serializable catalog advertised during `ui/initialize`. */
 export interface AdvertisedComponentCatalog {
   readonly components: Readonly<Record<string, ViewComponentDescriptor>>;
-  readonly defaultSurface: ComponentSurface;
+  /** Optional fallback for hosts that do not request a composition. */
+  readonly defaultSurface?: ComponentSurface;
 }
 
 export interface SurfaceContext {
@@ -53,7 +54,10 @@ export interface SurfaceContext {
   readonly status: "ready" | "legacy" | "unresolved";
   readonly source?: "requested" | "default";
   readonly surface?: ComponentSurface;
-  readonly reason?: "component-catalog-unavailable" | "unknown-components";
+  readonly reason?:
+    | "component-catalog-unavailable"
+    | "surface-required"
+    | "unknown-components";
   readonly missingComponents?: readonly string[];
   readonly eventChannel?: "ui/compose/event";
 }
@@ -80,7 +84,8 @@ export interface ViewComponentRegistry<TData = unknown, TAppContext = unknown> {
   readonly components: Readonly<
     Record<string, ViewComponentDefinition<TData, TAppContext>>
   >;
-  readonly defaultSurface: ComponentSurface;
+  /** Omit for component-only Apps that are meaningful only inside a host composition. */
+  readonly defaultSurface?: ComponentSurface;
 }
 
 export interface MountedComponentSurface {
@@ -122,10 +127,17 @@ export function defineComponentRegistry<TData = unknown, TAppContext = unknown>(
       throw new TypeError(`Component ${JSON.stringify(id)} must declare a mount function`);
     }
   }
-  const surface = defineComponentSurface(registry.defaultSurface);
-  validateSurfaceComponents(surface, new Set(entries.map(([id]) => id)));
+  const surface = registry.defaultSurface === undefined
+    ? undefined
+    : defineComponentSurface(registry.defaultSurface);
+  if (surface) {
+    validateSurfaceComponents(surface, new Set(entries.map(([id]) => id)));
+  }
   Object.freeze(registry.components);
-  return Object.freeze({ ...registry, defaultSurface: surface });
+  return Object.freeze({
+    ...registry,
+    ...(surface ? { defaultSurface: surface } : {}),
+  });
 }
 
 export function defineComponentSurface(surface: ComponentSurface): ComponentSurface {
@@ -176,7 +188,7 @@ export function advertisedComponentCatalog<TData, TAppContext>(
   );
   return Object.freeze({
     components: Object.freeze(components),
-    defaultSurface: registry.defaultSurface,
+    ...(registry.defaultSurface ? { defaultSurface: registry.defaultSurface } : {}),
   });
 }
 
@@ -207,7 +219,7 @@ export function applySurfaceContext(
 export function activeComponentSurface<TData, TAppContext>(
   registry: ViewComponentRegistry<TData, TAppContext>,
   hostContext: McpUiHostContext,
-): ComponentSurface {
+): ComponentSurface | undefined {
   const context = readSurfaceContext(hostContext);
   return context?.status === "ready" && context.surface
     ? defineComponentSurface(context.surface)
@@ -218,9 +230,14 @@ export function activeComponentSurface<TData, TAppContext>(
 export async function mountComponentSurface<TData, TAppContext>(
   options: MountComponentSurfaceOptions<TData, TAppContext>,
 ): Promise<MountedComponentSurface> {
-  const surface = defineComponentSurface(
-    options.surface ?? activeComponentSurface(options.registry, options.hostContext),
-  );
+  const selected = options.surface ??
+    activeComponentSurface(options.registry, options.hostContext);
+  if (!selected) {
+    throw new TypeError(
+      "Component-only App requires a host-selected surface",
+    );
+  }
+  const surface = defineComponentSurface(selected);
   validateSurfaceComponents(surface, new Set(Object.keys(options.registry.components)));
 
   const container = document.createElement("div");

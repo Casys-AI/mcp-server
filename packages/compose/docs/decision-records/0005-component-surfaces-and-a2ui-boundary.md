@@ -15,8 +15,12 @@ duplicated chrome instead of a coherent dashboard.
 Each componentized MCP App advertises `io.casys.mcp.view-components/v1` during `ui/initialize`:
 
 - a map of stable component keys to serializable descriptions;
-- one standalone `defaultSurface`;
+- an optional standalone `defaultSurface`;
 - no executable code or DOM contract.
+
+An App may intentionally be component-only. In that case it omits `defaultSurface` and Compose must
+provide an explicit selection. This is the preferred shape for product-specific palettes that have
+no meaningful public standalone viewer.
 
 A template may request `surface` for a source:
 
@@ -35,7 +39,8 @@ sources:
 
 Compose validates only the safe grammar, then sends the requested or default surface under
 `io.casys.mcp.surface/v1`. A missing catalog yields `legacy`; unknown component keys yield
-`unresolved`. Resolution never depends on dimensions or child DOM inspection.
+`unresolved`; a component-only App without an explicit selection yields `surface-required`.
+Resolution never depends on dimensions or child DOM inspection.
 
 `ui/compose/event` remains a separate, declared event plane. A component instance's stable `id`
 supports future stateful patch operations and unambiguous event routing without changing the current
@@ -51,7 +56,7 @@ subset at the edge.
 ## Acceptance criteria
 
 1. Network completion order never changes source slots.
-2. The standalone surface and dashboard surface use the same component implementations.
+2. When a standalone surface exists, it and dashboard surfaces use the same components.
 3. Unknown component keys fail explicitly.
 4. Repeated component instances have distinct stable IDs.
 5. Event routes deliver the same payload independently of surface composition.

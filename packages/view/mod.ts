@@ -57,6 +57,9 @@ export type {
 export { readResultData, readStructuredContent } from "./src/results.ts";
 export type { ReadResultDataOptions, ResultData } from "./src/results.ts";
 
+export { installMcpViewTheme, MCP_VIEW_THEME_CSS, MCP_VIEW_THEME_STYLE_ID } from "./src/theme.ts";
+export type { McpViewThemeDocument } from "./src/theme.ts";
+
 export {
   activeComponentSurface,
   advertisedComponentCatalog,

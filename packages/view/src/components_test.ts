@@ -56,6 +56,25 @@ Deno.test("component registry advertises descriptors and a default surface, neve
   );
 });
 
+Deno.test("component-only registries advertise no artificial standalone surface", () => {
+  const value = advertisedComponentCatalog(defineComponentRegistry({
+    components: registry().components,
+  }));
+  assertEquals(value, {
+    components: {
+      "test.status": { title: "Status" },
+      "test.metrics": { title: "Metrics", description: "Typed values" },
+    },
+  });
+  assertEquals(
+    activeComponentSurface(
+      defineComponentRegistry({ components: registry().components }),
+      {},
+    ),
+    undefined,
+  );
+});
+
 Deno.test("surface definitions reject arbitrary CSS, duplicate ids, and unknown components", () => {
   assertThrows(
     () =>
@@ -182,4 +201,19 @@ Deno.test("surface runtime rejects an unknown requested component before mutatin
       value: previousDocument,
     });
   }
+});
+
+Deno.test("component-only runtime requires a host-selected surface", async () => {
+  await assertRejects(
+    () =>
+      mountComponentSurface({
+        root: {} as HTMLElement,
+        registry: defineComponentRegistry({ components: registry().components }),
+        data: { status: "ready" },
+        appContext: {},
+        hostContext: {},
+      }),
+    TypeError,
+    "host-selected surface",
+  );
 });

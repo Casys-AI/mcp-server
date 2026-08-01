@@ -35,7 +35,7 @@ export interface ViewComponentDescriptor {
 
 export interface AdvertisedComponentCatalog {
   readonly components: Readonly<Record<string, ViewComponentDescriptor>>;
-  readonly defaultSurface: ComponentSurface;
+  readonly defaultSurface?: ComponentSurface;
 }
 
 export interface ReadyComponentSurface {
@@ -46,8 +46,8 @@ export interface ReadyComponentSurface {
 
 export interface UnresolvedComponentSurface {
   readonly status: "unresolved";
-  readonly reason: "unknown-components";
-  readonly missingComponents: readonly string[];
+  readonly reason: "surface-required" | "unknown-components";
+  readonly missingComponents?: readonly string[];
 }
 
 export type ComponentSurfaceResolution =

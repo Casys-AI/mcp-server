@@ -42,6 +42,7 @@
     "npm:hono@4.12.8": "4.12.8",
     "npm:jose@6": "6.2.2",
     "npm:linkedom@0.18.12": "0.18.12",
+    "npm:preact@^10.28.3": "10.29.7",
     "npm:react-dom@18.3.1": "18.3.1_react@18.3.1",
     "npm:react@18.3.1": "18.3.1"
   },
@@ -815,6 +816,9 @@
     "pkce-challenge@5.0.1": {
       "integrity": "sha512-wQ0b/W4Fr01qtpHlqSqspcj3EhBvimsdh0KlHhH8HRZnMsEa0ea2fTULOXOS9ccQr3om+GcGRk4e+isrZWV8qQ=="
     },
+    "preact@10.29.7": {
+      "integrity": "sha512-DCHYrK/B10yUD3ZjLfhZ3WIE/9Vf9VFUODcRE2dRomTYDpJk6z6L9wecSfhfE6M9ZTHUdyQkoC46arIDhEV84Q=="
+    },
     "proxy-addr@2.0.7": {
       "integrity": "sha512-llQsMLSUDUPT44jdrU/O37qlnifitDP+ZwrmmZcoSKyLKvtZxpyV0n2/bD/N4tBAAZ/gJEdZU7KMraoK1+XYAg==",
       "dependencies": [
@@ -1031,7 +1035,8 @@
           "jsr:@std/assert@1",
           "jsr:@std/path@^1.1.0",
           "npm:@modelcontextprotocol/ext-apps@^1.7.4",
-          "npm:@modelcontextprotocol/sdk@^1.29.0"
+          "npm:@modelcontextprotocol/sdk@^1.29.0",
+          "npm:preact@^10.28.3"
         ]
       }
     }

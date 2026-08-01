@@ -158,8 +158,9 @@ panel.
 
 ## Component surfaces
 
-A componentized MCP App advertises small domain components and one standalone default surface.
-Compose can select and arrange those components explicitly:
+A componentized MCP App advertises small domain components and may expose a standalone default
+surface. Component-only Apps omit the default and require Compose to select and arrange components
+explicitly:
 
 ```yaml
 sources:
@@ -176,8 +177,9 @@ sources:
 
 The viewer advertises `io.casys.mcp.view-components/v1` during `ui/initialize`. Compose sends the
 requested surface under `io.casys.mcp.surface/v1`; without an explicit request, the viewer's
-standalone default is used. Unknown keys resolve explicitly instead of silently disappearing. Legacy
-Apps continue unchanged. `ui/compose/event` remains the cross-view event plane.
+standalone default is used when one exists, otherwise resolution returns `surface-required`. Unknown
+keys resolve explicitly instead of silently disappearing. Legacy Apps continue unchanged.
+`ui/compose/event` remains the cross-view event plane.
 
 See [`ADR 0005`](docs/decision-records/0005-component-surfaces-and-a2ui-boundary.md) for the
 contract and A2UI boundary.

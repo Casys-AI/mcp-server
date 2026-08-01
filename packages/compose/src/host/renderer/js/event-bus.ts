@@ -213,7 +213,9 @@ export function generateEventBusScript(
           typeof descriptor.title !== 'string' || !descriptor.title) return undefined;
       }
       const known = new Set(entries.map(([id]) => id));
-      if (!validSurface(value.defaultSurface, known)) return undefined;
+      if (value.defaultSurface !== undefined && !validSurface(value.defaultSurface, known)) {
+        return undefined;
+      }
       return value;
     }
 
@@ -231,6 +233,14 @@ export function generateEventBusScript(
       }
       const requested = config?.surface;
       const surface = requested || catalog.defaultSurface;
+      if (!surface) {
+        return {
+          instanceId,
+          status: 'unresolved',
+          reason: 'surface-required',
+          eventChannel: COMPOSE_METHOD,
+        };
+      }
       const known = new Set(Object.keys(catalog.components));
       const missingComponents = [...new Set(
         surface.components

@@ -6,6 +6,7 @@ import {
   type ViewComponentDescriptor,
   type ViewComponentMountContext,
 } from "./components.ts";
+import { installMcpViewTheme } from "./theme.ts";
 
 export type ComponentTone = "neutral" | "info" | "success" | "warning" | "danger";
 
@@ -43,6 +44,7 @@ export function defineStatusComponent<TData, TAppContext = unknown>(
     descriptor: descriptor(config),
     mount(target, context) {
       const value = config.select(context.data);
+      installMcpViewTheme(target.ownerDocument);
       target.dataset.primitive = "status";
       target.dataset.tone = value.tone ?? "neutral";
       const label = element("strong", value.label);
@@ -54,6 +56,7 @@ export function defineStatusComponent<TData, TAppContext = unknown>(
       target.style.alignItems = "center";
       target.style.justifyContent = "space-between";
       target.style.gap = "0.75rem";
+      target.classList.add("mcp-view-card", "mcp-view-row");
     },
   });
 }
@@ -65,7 +68,9 @@ export function defineMetricGridComponent<TData, TAppContext = unknown>(
   return defineViewComponent<TData, TAppContext>({
     descriptor: descriptor(config),
     mount(target, context) {
+      installMcpViewTheme(target.ownerDocument);
       target.dataset.primitive = "metric-grid";
+      target.classList.add("mcp-view-metrics");
       target.style.display = "grid";
       target.style.gridTemplateColumns = "repeat(auto-fit, minmax(9rem, 1fr))";
       target.style.gap = "0.5rem";
@@ -73,14 +78,21 @@ export function defineMetricGridComponent<TData, TAppContext = unknown>(
         const card = document.createElement("article");
         card.dataset.metric = metric.id;
         applyCard(card);
+        card.classList.add("mcp-view-metric");
         const label = element("span", metric.label);
+        label.classList.add("mcp-view-metric-label");
         label.style.fontSize = "0.75rem";
         label.style.opacity = "0.72";
         const value = element("strong", String(metric.value));
+        value.classList.add("mcp-view-metric-value");
         value.style.fontSize = "1.25rem";
         value.style.overflowWrap = "anywhere";
         card.append(label, value);
-        if (metric.unit) card.append(element("span", metric.unit));
+        if (metric.unit) {
+          const unit = element("span", metric.unit);
+          unit.classList.add("mcp-view-metric-unit");
+          card.append(unit);
+        }
         if (metric.detail) {
           const detail = element("small", metric.detail);
           detail.style.opacity = "0.72";
@@ -101,6 +113,7 @@ export function defineKeyValueComponent<TData, TAppContext = unknown>(
   return defineViewComponent<TData, TAppContext>({
     descriptor: descriptor(config),
     mount(target, context) {
+      installMcpViewTheme(target.ownerDocument);
       target.dataset.primitive = "key-value";
       const list = document.createElement("dl");
       list.style.display = "grid";
@@ -159,6 +172,7 @@ function element<K extends keyof HTMLElementTagNameMap>(
 }
 
 function applyCard(target: HTMLElement): void {
+  target.classList.add("mcp-view-card");
   target.style.padding = "0.75rem";
   target.style.border = "1px solid var(--color-border, rgba(127, 127, 127, 0.28))";
   target.style.borderRadius = "0.5rem";

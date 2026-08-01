@@ -11,6 +11,12 @@ export function resolveComponentSurface(
   requested?: ComponentSurface,
 ): ComponentSurfaceResolution {
   const surface = requested ?? catalog.defaultSurface;
+  if (!surface) {
+    return {
+      status: "unresolved",
+      reason: "surface-required",
+    };
+  }
   const known = new Set(Object.keys(catalog.components));
   const missingComponents = [
     ...new Set(

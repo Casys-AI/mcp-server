@@ -16,11 +16,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   composed dashboard now mount the same component definitions.
 - Add the optional `@casys/mcp-view/react` adapter while keeping React and ReactDOM as optional npm
   peers and preserving direct Preact/ext-apps consumers.
+- Add the optional `@casys/mcp-view/preact` component-surface adapter and keep Preact as an optional
+  peer.
+- Add the shared ERPNext-derived component theme with stable tokens and classes for cards, metrics,
+  badges, tables, selection, cross-view state, and compact container layouts.
 
 ### Changed
 
-- Prepare `0.5.0` for the componentized viewer authoring framework and update generated scaffold
-  pins. Remove the unpublished semantic-projection experiment.
+- Prepare `0.6.0` for the Preact component-surface runtime and shared design language; generated
+  scaffolds now pin that version. Remove the unpublished semantic-projection experiment.
+- Permit component-only registries without `defaultSurface`; such Apps now report an explicit
+  `surface-required` state until a host supplies a composition.
 
 ## [0.4.1] - 2026-07-31
 

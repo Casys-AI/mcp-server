@@ -9,11 +9,13 @@ All notable changes to `@casys/mcp-compose` will be documented in this file.
 - Add explicit small-component surface negotiation between a Compose host and componentized MCP
   Apps, with safe layout, stable instance identities, default standalone surfaces, and explicit
   unknown-component failures.
+- Support component-only Apps with no standalone default and report `surface-required` when a host
+  omits the selection.
 
 ### Changed
 
-- Prepare `0.8.0` for the component-surface contract while keeping `ui/compose/event` as the
-  separate viewer-to-viewer event plane. Remove the unpublished size/purpose projection experiment.
+- Prepare `0.8.1` to support component-only catalogs while keeping `ui/compose/event` as the
+  separate viewer-to-viewer event plane.
 
 ## [0.7.1] - 2026-07-31
 

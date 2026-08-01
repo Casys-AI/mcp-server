@@ -27,6 +27,7 @@ await emptyDir("./dist-node");
 await build({
   entryPoints: [
     "./mod.ts",
+    { name: "./preact", path: "./preact.ts" },
     { name: "./react", path: "./react.ts" },
   ],
   outDir: "./dist-node",
@@ -74,6 +75,11 @@ pkg.exports = {
     import: "./esm/react.js",
     require: "./script/react.js",
   },
+  "./preact": {
+    types: "./esm/preact.d.ts",
+    import: "./esm/preact.js",
+    require: "./script/preact.js",
+  },
 };
 
 // dnt sees the optional React entry point and initially records its imports as
@@ -97,6 +103,13 @@ for (const dependency of optionalReactPeers) {
   pkg.peerDependencies[dependency] = version;
   pkg.peerDependenciesMeta[dependency] = { optional: true };
 }
+const preactVersion = pkg.dependencies?.preact;
+if (!preactVersion) {
+  throw new Error("[build-npm] expected dnt dependency preact");
+}
+delete pkg.dependencies.preact;
+pkg.peerDependencies.preact = preactVersion;
+pkg.peerDependenciesMeta.preact = { optional: true };
 await Deno.writeTextFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
 
 await smokeTestPackageImport();
@@ -128,9 +141,16 @@ async function smokeTestPackageImport(): Promise<void> {
           "if (typeof mod.defineView !== 'function') {",
           "  throw new Error('defineView export missing');",
           "}",
+          "if (typeof mod.installMcpViewTheme !== 'function') {",
+          "  throw new Error('installMcpViewTheme export missing');",
+          "}",
           "const react = await import('@casys/mcp-view/react');",
           "if (typeof react.defineReactView !== 'function') {",
           "  throw new Error('defineReactView export missing');",
+          "}",
+          "const preact = await import('@casys/mcp-view/preact');",
+          "if (typeof preact.definePreactComponent !== 'function') {",
+          "  throw new Error('definePreactComponent export missing');",
           "}",
         ].join("\n"),
       ],

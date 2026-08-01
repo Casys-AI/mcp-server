@@ -48,23 +48,27 @@ const detailView = defineView<State, { id: string }, Invoice>({
 });
 ```
 
-### Optional React adapter
+### Optional renderer adapters
 
 `@casys/mcp-view/react` exports `defineReactView()`. It returns a normal `ViewDefinition`, mounts
 with ReactDOM, and guarantees that the active root is unmounted on route leave or App teardown.
 React, ReactDOM, and their types are optional npm peers; importing the main package does not load a
-renderer. Preact consumers may keep using direct `ext-apps` until a concrete adapter is useful.
+renderer. `@casys/mcp-view/preact` exports `definePreactComponent()` and `startPreactSurfaceApp()`
+for result-driven component surfaces. Preact is also an optional peer.
 
 ### Structured results, component surfaces, and Compose events
 
 - `readStructuredContent()` reads only record-shaped `structuredContent`.
 - `readResultData()` adds JSON text fallback only with `{ fallback: "json-text" }`.
-- `defineComponentRegistry()` declares small domain components and their standalone default surface.
+- `defineComponentRegistry()` declares small domain components and an optional standalone default
+  surface. Omitting it creates a component-only App that requires a host-selected surface.
 - `mountComponentSurface()` mounts the host-selected or default surface and aggregates cleanup.
 - `defineStatusComponent()`, `defineMetricGridComponent()`, and `defineKeyValueComponent()` provide
   safe renderer-neutral primitives; `defineCustomComponent()` keeps specialized rendering local.
 - `ctx.events.emit()` / `ctx.events.on()` exchange validated `ui/compose/event` messages with a
   compatible parent. This channel is optional and distinct from standard model-context messages.
+- `installMcpViewTheme()` installs the shared ERPNext-derived visual tokens and component classes
+  once per document. The Preact surface runtime does this by default.
 
 #### `AppConfig<S>` fields
 
@@ -75,8 +79,8 @@ renderer. Preact consumers may keep using direct `ext-apps` until a concrete ada
 - `initialArgs?` — args forwarded to `initialView.onEnter`.
 - `initialState?` — initial value of `ctx.state`.
 - `capabilities?` — app-side capabilities (default `{}`).
-- `componentCatalog?` — component registry advertised under `io.casys.mcp.view-components/v1`. Its
-  default surface is also the complete standalone composition.
+- `componentCatalog?` — component registry advertised under `io.casys.mcp.view-components/v1`. When
+  present, its optional default surface is the complete standalone composition.
 - `autoTheme?` — auto-apply host theme/CSS/fonts on handshake and context updates. Default `true`.
   Set to `false` if the App ships its own complete stylesheet. `ctx.hostContext` remains live
   regardless.
@@ -199,7 +203,7 @@ The type surface is designed so each of the above can be added without breaking 
 `@casys/mcp-view/scaffold` is an executable subpath, not part of the iframe runtime API:
 
 ```sh
-deno run -A jsr:@casys/mcp-view@0.5.0/scaffold result-viewer <target> [--force]
+deno run -A jsr:@casys/mcp-view@0.6.0/scaffold result-viewer <target> [--force]
 ```
 
 It emits a small vanilla project with an inline-HTML bundling script and no domain brand or remote

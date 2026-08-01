@@ -624,6 +624,97 @@ Deno.test("generated event bus keeps unknown requested components unresolved", (
   });
 });
 
+Deno.test("generated event bus composes catalogs with no standalone default", () => {
+  const requestedSurface = {
+    layout: { type: "stack" as const, gap: "sm" as const },
+    components: [{ id: "metrics", component: "erpnext.bom.metrics" }],
+  };
+  const descriptor = buildCompositeUi(
+    [{
+      componentId: "bom",
+      source: "erpnext:bom",
+      resourceUri: "ui://erpnext-components/bom",
+      slot: 0,
+      surface: requestedSurface,
+    }],
+    { layout: "stack" },
+  );
+  const viewer = new FakeChildWindow();
+  const harness = createHarness(
+    generateEventBusScript(descriptor, resolveRendererSlots(descriptor)),
+    [{ dataset: { slot: "0" }, contentWindow: viewer }],
+    () => Promise.reject(new Error("not used")),
+  );
+  harness.emit(viewer, {
+    jsonrpc: "2.0",
+    id: "viewer-init",
+    method: "ui/initialize",
+    params: {
+      appCapabilities: {
+        experimental: {
+          "io.casys.mcp.view-components/v1": {
+            components: {
+              "erpnext.bom.metrics": { title: "BOM metrics" },
+            },
+          },
+        },
+      },
+    },
+  });
+  const handshake = findPost(viewer, (message) => message.id === "viewer-init");
+  const context = (handshake?.result as Record<string, unknown>).hostContext as Record<
+    string,
+    unknown
+  >;
+  assertEquals(context["io.casys.mcp.surface/v1"], {
+    instanceId: "bom",
+    status: "ready",
+    source: "requested",
+    surface: requestedSurface,
+    eventChannel: "ui/compose/event",
+  });
+});
+
+Deno.test("generated event bus reports when a component-only App is not composed", () => {
+  const descriptor = buildCompositeUi(
+    [{ source: "erpnext:bom", resourceUri: "ui://erpnext-components/bom", slot: 0 }],
+    { layout: "stack" },
+  );
+  const viewer = new FakeChildWindow();
+  const harness = createHarness(
+    generateEventBusScript(descriptor, resolveRendererSlots(descriptor)),
+    [{ dataset: { slot: "0" }, contentWindow: viewer }],
+    () => Promise.reject(new Error("not used")),
+  );
+  harness.emit(viewer, {
+    jsonrpc: "2.0",
+    id: "viewer-init",
+    method: "ui/initialize",
+    params: {
+      appCapabilities: {
+        experimental: {
+          "io.casys.mcp.view-components/v1": {
+            components: {
+              "erpnext.bom.metrics": { title: "BOM metrics" },
+            },
+          },
+        },
+      },
+    },
+  });
+  const handshake = findPost(viewer, (message) => message.id === "viewer-init");
+  const context = (handshake?.result as Record<string, unknown>).hostContext as Record<
+    string,
+    unknown
+  >;
+  assertEquals(context["io.casys.mcp.surface/v1"], {
+    instanceId: "erpnext:bom",
+    status: "unresolved",
+    reason: "surface-required",
+    eventChannel: "ui/compose/event",
+  });
+});
+
 Deno.test("generated event bus advertises the system dark theme used by its CSS", () => {
   const descriptor = buildCompositeUi(
     [{ source: "viewer", resourceUri: "ui://viewer/main", slot: 0 }],

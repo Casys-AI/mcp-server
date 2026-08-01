@@ -1,7 +1,6 @@
 # ADR 0003: Ship one vanilla result-viewer scaffold
 
-Date: 2026-07-31
-Status: Accepted
+Date: 2026-07-31 Status: Accepted
 
 ## Context
 
@@ -23,8 +22,8 @@ deno run -A jsr:@casys/mcp-view@0.4.0/scaffold result-viewer <target> [--force]
 
 The generated project is vanilla TypeScript and self-contained. It contains an HTML entrypoint,
 inline-bundle build script, main/bootstrap, generic model/parser, render helpers, host-aware CSS,
-and a focused test. The bootstrap passes `onToolInput` and `onToolResult` into `createMcpApp` so
-the SDK registers one-shot handlers before `connect()` and buffers the result until the initial view
+and a focused test. The bootstrap passes `onToolInput` and `onToolResult` into `createMcpApp` so the
+SDK registers one-shot handlers before `connect()` and buffers the result until the initial view
 exists.
 
 The generic parser handles only a record-shaped `structuredContent`, optional metrics, optional

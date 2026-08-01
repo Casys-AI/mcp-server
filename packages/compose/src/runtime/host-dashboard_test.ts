@@ -215,6 +215,7 @@ Deno.test({
       html: "",
       warnings: [],
       panels: [{
+        componentId: "panel",
         slot: 0,
         serverName: "mock-secure",
         toolName: "render",
@@ -271,7 +272,9 @@ Deno.test({
   fn: async () => {
     const manifest = await strictManifest();
     const template = await strictTemplate();
+    template.sources[0].calls[0].id = "first-panel";
     template.sources[0].calls.push({
+      id: "second-panel",
       tool: STRICT_RENDER_TOOL,
       args: { scenario: "second-panel" },
     });

@@ -8,6 +8,10 @@
  */
 
 export type { CompositeUiHost, HostConfig } from "./types.ts";
+export {
+  CASYS_COMPONENT_CATALOG_CAPABILITY_KEY,
+  CASYS_SURFACE_CONTEXT_KEY,
+} from "./components-contract.ts";
 
 // Renderer
 export { renderComposite } from "./renderer/mod.ts";

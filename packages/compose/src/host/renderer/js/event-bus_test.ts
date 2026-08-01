@@ -21,6 +21,7 @@ class FakeChildWindow {
 interface FakeIframe {
   readonly dataset: { readonly slot: string };
   readonly contentWindow: FakeChildWindow;
+  getBoundingClientRect?(): { width: number; height: number };
 }
 
 interface FakeMessageEvent {
@@ -35,15 +36,23 @@ function createHarness(
   script: string,
   iframes: readonly FakeIframe[],
   fetchFn: (input: string, init: RequestInit) => Promise<unknown>,
-): { emit(source: FakeChildWindow, data: unknown, origin?: string): void } {
+  prefersDark = false,
+): {
+  emit(source: FakeChildWindow, data: unknown, origin?: string): void;
+  resize(): void;
+} {
   const listeners: MessageListener[] = [];
+  const resizeListeners: Array<() => void> = [];
   const fakeWindow = {
-    addEventListener(type: string, listener: MessageListener) {
-      if (type === "message") listeners.push(listener);
+    matchMedia: () => ({ matches: prefersDark }),
+    addEventListener(type: string, listener: MessageListener | (() => void)) {
+      if (type === "message") listeners.push(listener as MessageListener);
+      if (type === "resize") resizeListeners.push(listener as () => void);
     },
   };
   const fakeDocument = {
     body: { classList: { contains: () => false } },
+    documentElement: { classList: { contains: () => false } },
     querySelectorAll(selector: string): readonly FakeIframe[] {
       return selector === "iframe[data-slot]" ? iframes : [];
     },
@@ -61,6 +70,9 @@ function createHarness(
   return {
     emit(source, data, origin = "http://legacy-slot.test") {
       for (const listener of listeners) listener({ source, data, origin });
+    },
+    resize() {
+      for (const listener of resizeListeners) listener();
     },
   };
 }
@@ -416,4 +428,226 @@ Deno.test("generated event bus rejects a navigated WindowProxy with the wrong or
     (post.message as Record<string, unknown>).id === "trusted-tool-call"
   );
   assertEquals(toolResponse?.targetOrigin, expectedOrigin);
+});
+
+Deno.test("generated event bus negotiates component surfaces, updates dimensions, and keeps compose events", () => {
+  const requestedSurface = {
+    layout: { type: "grid" as const, columns: 2, gap: "sm" as const },
+    components: [
+      { id: "status", component: "modelica.status" },
+      { id: "metrics", component: "modelica.metrics" },
+    ],
+  };
+  const descriptor = buildCompositeUi(
+    [
+      {
+        componentId: "thermal",
+        source: "modelica:simulate",
+        resourceUri: "ui://modelica/result",
+        slot: 0,
+        surface: requestedSurface,
+      },
+      {
+        componentId: "architecture",
+        source: "syson:snapshot",
+        resourceUri: "ui://syson/diagram",
+        slot: 1,
+      },
+    ],
+    {
+      layout: "split",
+      sync: [{
+        from: "thermal",
+        event: "requirement.select",
+        to: "architecture",
+        action: "requirement.highlight",
+      }],
+    },
+  );
+  let dimensions = { width: 560, height: 340 };
+  const thermal = new FakeChildWindow();
+  const architecture = new FakeChildWindow();
+  const harness = createHarness(
+    generateEventBusScript(descriptor, resolveRendererSlots(descriptor)),
+    [
+      {
+        dataset: { slot: "0" },
+        contentWindow: thermal,
+        getBoundingClientRect: () => dimensions,
+      },
+      {
+        dataset: { slot: "1" },
+        contentWindow: architecture,
+        getBoundingClientRect: () => ({ width: 560, height: 340 }),
+      },
+    ],
+    () => Promise.reject(new Error("not used")),
+  );
+
+  harness.emit(thermal, {
+    jsonrpc: "2.0",
+    id: "thermal-init",
+    method: "ui/initialize",
+    params: {
+      appInfo: { name: "thermal", version: "1.0.0" },
+      protocolVersion: "2026-01-26",
+      appCapabilities: {
+        experimental: {
+          "io.casys.mcp.view-components/v1": {
+            components: {
+              "modelica.status": { title: "Status" },
+              "modelica.metrics": { title: "Metrics" },
+              "modelica.provenance": { title: "Provenance" },
+            },
+            defaultSurface: {
+              layout: { type: "stack" },
+              components: [
+                { id: "status", component: "modelica.status" },
+                { id: "metrics", component: "modelica.metrics" },
+                { id: "provenance", component: "modelica.provenance" },
+              ],
+            },
+          },
+        },
+      },
+    },
+  });
+  harness.emit(architecture, {
+    jsonrpc: "2.0",
+    id: "architecture-init",
+    method: "ui/initialize",
+    params: { appCapabilities: {} },
+  });
+
+  const handshake = findPost(thermal, (message) => message.id === "thermal-init");
+  const result = handshake?.result as Record<string, unknown>;
+  const capabilities = result.hostCapabilities as Record<string, unknown>;
+  const context = result.hostContext as Record<string, unknown>;
+  assertEquals(
+    (capabilities.experimental as Record<string, unknown>)[
+      "io.casys.mcp.view-components/v1"
+    ],
+    { version: "1", eventChannel: "ui/compose/event" },
+  );
+  assertEquals(context.containerDimensions, { width: 560, height: 340 });
+  assertEquals(context.theme, "light");
+  assertEquals(context["io.casys.mcp.surface/v1"], {
+    instanceId: "thermal",
+    status: "ready",
+    source: "requested",
+    surface: requestedSurface,
+    eventChannel: "ui/compose/event",
+  });
+
+  dimensions = { width: 820, height: 560 };
+  harness.resize();
+  const contextChanges = thermal.posts.filter((post) =>
+    (post.message as Record<string, unknown>).method ===
+      "ui/notifications/host-context-changed"
+  );
+  const latest = contextChanges.at(-1)?.message as Record<string, unknown>;
+  const latestParams = latest.params as Record<string, unknown>;
+  assertEquals(latestParams.containerDimensions, { width: 820, height: 560 });
+  assertEquals(latestParams["io.casys.mcp.surface/v1"], {
+    instanceId: "thermal",
+    status: "ready",
+    source: "requested",
+    surface: requestedSurface,
+    eventChannel: "ui/compose/event",
+  });
+
+  harness.emit(thermal, {
+    jsonrpc: "2.0",
+    method: "ui/compose/event",
+    params: { event: "requirement.select", data: { id: "REQ-THERMAL-1" } },
+  });
+  assertEquals(
+    findPost(architecture, (message) => message.method === "ui/compose/event")?.params,
+    {
+      action: "requirement.highlight",
+      data: { id: "REQ-THERMAL-1" },
+      sourceSlot: 0,
+      sharedContext: {},
+    },
+  );
+});
+
+Deno.test("generated event bus keeps unknown requested components unresolved", () => {
+  const descriptor = buildCompositeUi(
+    [{
+      componentId: "thermal",
+      source: "modelica:simulate",
+      resourceUri: "ui://modelica/result",
+      slot: 0,
+      surface: {
+        layout: { type: "stack" },
+        components: [{ id: "chart", component: "modelica.chart" }],
+      },
+    }],
+    { layout: "stack" },
+  );
+  const viewer = new FakeChildWindow();
+  const harness = createHarness(
+    generateEventBusScript(descriptor, resolveRendererSlots(descriptor)),
+    [{ dataset: { slot: "0" }, contentWindow: viewer }],
+    () => Promise.reject(new Error("not used")),
+  );
+  harness.emit(viewer, {
+    jsonrpc: "2.0",
+    id: "viewer-init",
+    method: "ui/initialize",
+    params: {
+      appCapabilities: {
+        experimental: {
+          "io.casys.mcp.view-components/v1": {
+            components: { "modelica.status": { title: "Status" } },
+            defaultSurface: {
+              layout: { type: "stack" },
+              components: [{ id: "status", component: "modelica.status" }],
+            },
+          },
+        },
+      },
+    },
+  });
+  const handshake = findPost(viewer, (message) => message.id === "viewer-init");
+  const context = (handshake?.result as Record<string, unknown>).hostContext as Record<
+    string,
+    unknown
+  >;
+  assertEquals(context["io.casys.mcp.surface/v1"], {
+    instanceId: "thermal",
+    status: "unresolved",
+    reason: "unknown-components",
+    missingComponents: ["modelica.chart"],
+    eventChannel: "ui/compose/event",
+  });
+});
+
+Deno.test("generated event bus advertises the system dark theme used by its CSS", () => {
+  const descriptor = buildCompositeUi(
+    [{ source: "viewer", resourceUri: "ui://viewer/main", slot: 0 }],
+    { layout: "stack" },
+  );
+  const viewer = new FakeChildWindow();
+  const harness = createHarness(
+    generateEventBusScript(descriptor, resolveRendererSlots(descriptor)),
+    [{ dataset: { slot: "0" }, contentWindow: viewer }],
+    () => Promise.reject(new Error("not used")),
+    true,
+  );
+
+  harness.emit(viewer, {
+    jsonrpc: "2.0",
+    id: "viewer-init",
+    method: "ui/initialize",
+    params: { appCapabilities: {} },
+  });
+
+  const handshake = findPost(viewer, (message) => message.id === "viewer-init");
+  const context = (handshake?.result as Record<string, unknown>).hostContext as Record<
+    string,
+    unknown
+  >;
+  assertEquals(context.theme, "dark");
 });

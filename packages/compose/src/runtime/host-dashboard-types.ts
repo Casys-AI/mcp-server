@@ -14,6 +14,8 @@
  * only `serverName`, the collected `resourceUri`, and `allowedToolNames`.
  */
 export interface ComposedDashboardPanel {
+  /** Stable component identity shared by layout, surface selection, and event routes. */
+  readonly componentId: string;
   /** Numeric iframe slot assigned by the collector. */
   readonly slot: number;
   /** Manifest/server name that produced the panel. */

@@ -20,9 +20,11 @@ import type { McpUiHostCapabilities, McpUiHostContext } from "@modelcontextproto
 
 import type { AppConfig, AppContext, AppHandle, ToolResult, ViewDefinition } from "./types.ts";
 import { Router } from "./router.ts";
+import { createComposeEventClient } from "./compose-events.ts";
+import { applySurfaceContext, CASYS_COMPONENT_CATALOG_CAPABILITY_KEY } from "./components.ts";
 import { callServerToolGated } from "./capabilities.ts";
 import { MCPViewError } from "./errors.ts";
-import { wireLifecycleCallbacks } from "./lifecycle.ts";
+import { wireLifecycleCallbacks, wireTeardownLifecycle } from "./lifecycle.ts";
 import { sampleGated } from "./sample.ts";
 import { ToolRegistry, viewsDeclareTools } from "./tools.ts";
 
@@ -61,9 +63,18 @@ export async function createMcpApp<S = Record<string, never>>(
   // user-supplied capabilities rather than overwriting, so authors keep
   // full control of unrelated caps.
   const baseCaps = config.capabilities ?? {};
-  const finalCaps = viewsDeclareTools(config.views)
-    ? { ...baseCaps, tools: { listChanged: true, ...(baseCaps.tools ?? {}) } }
+  const componentCaps = config.componentCatalog
+    ? {
+      ...baseCaps,
+      experimental: {
+        ...(baseCaps.experimental ?? {}),
+        [CASYS_COMPONENT_CATALOG_CAPABILITY_KEY]: config.componentCatalog,
+      },
+    }
     : baseCaps;
+  const finalCaps = viewsDeclareTools(config.views)
+    ? { ...componentCaps, tools: { listChanged: true, ...(componentCaps.tools ?? {}) } }
+    : componentCaps;
 
   // Forward ext-apps AppOptions opt-ins. When the user opted into nothing,
   // we pass no third arg so ext-apps' default-parameter assignment runs in
@@ -79,19 +90,32 @@ export async function createMcpApp<S = Record<string, never>>(
   // dispatcher buffers anything the host sends while the handshake and the
   // initial route are still creating the AppHandle.
   const lifecycle = wireLifecycleCallbacks(app, config);
+  const teardown = wireTeardownLifecycle(app, config.onTeardown);
 
-  const parent = getParentWindow();
+  const frame = getFrameWindow();
+  const parent = frame.parent;
+  const events = createComposeEventClient(parent, frame);
   const transport = new PostMessageTransport(parent, parent);
-  await app.connect(transport);
+  try {
+    await app.connect(transport);
+  } catch (error) {
+    events.destroy();
+    teardown.abort(error);
+    throw error;
+  }
 
   const hostCaps = app.getHostCapabilities();
   if (!hostCaps) {
     // Defensive: ext-apps guarantees this is set after connect() resolves,
     // but a malformed host could in theory skip the handshake response.
-    throw new MCPViewError(
+    const error = new MCPViewError(
       "HANDSHAKE_NO_CAPABILITIES",
       "ui/initialize handshake completed without host capabilities — the host response was malformed.",
     );
+    events.destroy();
+    teardown.abort(error);
+    await transport.close().catch(() => {});
+    throw error;
   }
   const capabilities: McpUiHostCapabilities = Object.freeze({ ...hostCaps });
 
@@ -102,6 +126,7 @@ export async function createMcpApp<S = Record<string, never>>(
   let currentHostContext: McpUiHostContext = { ...(app.getHostContext() ?? {}) };
 
   if (autoTheme) applyHostContextSideEffects(currentHostContext);
+  applySurfaceContext(currentHostContext, document.documentElement);
 
   // Re-apply on host-context-changed. Using addEventListener (not
   // onhostcontextchanged) so we don't clobber user handlers they may wire
@@ -110,6 +135,7 @@ export async function createMcpApp<S = Record<string, never>>(
   const onHostContextChanged = (params: McpUiHostContext) => {
     currentHostContext = { ...currentHostContext, ...params };
     if (autoTheme) applyHostContextSideEffects(currentHostContext);
+    applySurfaceContext(currentHostContext, document.documentElement);
   };
   app.addEventListener("hostcontextchanged", onHostContextChanged);
 
@@ -133,6 +159,7 @@ export async function createMcpApp<S = Record<string, never>>(
       },
       state,
       tools: toolRegistry,
+      events,
       app,
     };
     toolRegistry.setContext(ctx);
@@ -141,47 +168,48 @@ export async function createMcpApp<S = Record<string, never>>(
 
     await router.goto(config.initialView, config.initialArgs);
 
-    let disposed = false;
+    let transportClosePromise: Promise<void> | undefined;
+    const closeTransport = (): Promise<void> => {
+      transportClosePromise ??= transport.close();
+      return transportClosePromise;
+    };
+    const cleanup = async (): Promise<void> => {
+      try {
+        await router.dispose();
+      } finally {
+        app.removeEventListener("hostcontextchanged", onHostContextChanged);
+        events.destroy();
+      }
+    };
     handle = {
       ctx,
+      events,
       get currentView() {
         return router.currentView;
       },
       navigate: (name, args) => router.goto(name, args),
       dispose: async () => {
-        if (disposed) return;
-        disposed = true;
-        // Drain pending navigations before closing to avoid tearing down the
-        // transport while an onLeave/onEnter hook is still in flight.
+        let cleanupError: unknown;
         try {
-          await router.drain();
-        } finally {
-          // Unregister any tools the active view still has registered, so a
-          // caller that reuses the underlying `App` after dispose() doesn't
-          // see stale view-side tools advertised. Best-effort: failures here
-          // must not block transport teardown.
-          try {
-            toolRegistry.unregisterAll();
-          } catch (err) {
-            console.warn("[mcp-view] toolRegistry.unregisterAll on dispose failed:", err);
-          }
-          // Unwire the auto-theme listener so we don't leak handlers if the
-          // underlying App is reused by the caller after dispose.
-          app.removeEventListener("hostcontextchanged", onHostContextChanged);
-          // Close the transport directly. We avoid `app.close()` because the
-          // declared `App` type in ext-apps@1.6.0 does not surface the inherited
-          // `Protocol.close` method on its .d.ts surface (TS2339); closing the
-          // transport triggers the same JSON-RPC teardown path.
-          await transport.close();
+          await teardown.dispose();
+        } catch (error) {
+          cleanupError = error;
         }
+        // Host teardown intentionally leaves the transport open long enough
+        // for ext-apps to send its response. Manual disposal owns closure.
+        await closeTransport();
+        if (cleanupError !== undefined) throw cleanupError;
       },
     };
+    teardown.activate(handle, cleanup);
 
     // The handle is now complete (including the initial route), so replay
     // early host notifications and serialise any arrivals during that replay.
     await lifecycle.activate(handle);
   } catch (err) {
     app.removeEventListener("hostcontextchanged", onHostContextChanged);
+    events.destroy();
+    teardown.abort(err);
     await transport.close().catch(() => {}); // best-effort, rethrowing
     throw err;
   }
@@ -252,11 +280,12 @@ function validateConfig<S>(config: AppConfig<S>): void {
 }
 
 /**
- * Resolve the parent window for `PostMessageTransport`. Split out for
+ * Resolve the iframe window used by `PostMessageTransport` and the optional
+ * Compose event client. Split out for
  * test injection: tests can override `globalThis.window` before calling
  * `createMcpApp`.
  */
-function getParentWindow(): Window {
+function getFrameWindow(): Window {
   // deno-lint-ignore no-explicit-any
   const w = (globalThis as any).window as Window | undefined;
   if (!w || !w.parent) {
@@ -266,7 +295,7 @@ function getParentWindow(): Window {
         "inside an iframe hosted by an MCP Apps-compatible client.",
     );
   }
-  return w.parent;
+  return w;
 }
 
 /**

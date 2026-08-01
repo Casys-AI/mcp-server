@@ -152,6 +152,36 @@ const orchestration = {
 };
 ```
 
+Stable component IDs may be used in routes, including when the same tool is instantiated more than
+once. A repeated tool name without explicit IDs is rejected instead of silently routing to the last
+panel.
+
+## Component surfaces
+
+A componentized MCP App advertises small domain components and one standalone default surface.
+Compose can select and arrange those components explicitly:
+
+```yaml
+sources:
+  - id: thermal
+    manifest: mcp-modelica
+    surface:
+      layout: { type: grid, columns: 2, gap: sm }
+      components:
+        - { id: status, component: modelica.execution-status }
+        - { id: metrics, component: modelica.metrics }
+    calls:
+      - tool: modelica_simulate
+```
+
+The viewer advertises `io.casys.mcp.view-components/v1` during `ui/initialize`. Compose sends the
+requested surface under `io.casys.mcp.surface/v1`; without an explicit request, the viewer's
+standalone default is used. Unknown keys resolve explicitly instead of silently disappearing. Legacy
+Apps continue unchanged. `ui/compose/event` remains the cross-view event plane.
+
+See [`ADR 0005`](docs/decision-records/0005-component-surfaces-and-a2ui-boundary.md) for the
+contract and A2UI boundary.
+
 ## Validation
 
 Validate sync rules before composition:

@@ -31,6 +31,8 @@ export class Router<S> {
   private _context: AppContext<S> | null = null;
   private _queue: Promise<void> = Promise.resolve();
   private _toolRegistry: ToolRegistry<S> | null = null;
+  private _disposed = false;
+  private _disposePromise: Promise<void> | null = null;
 
   constructor(views: ViewMap<S>, root: HTMLElement) {
     this.views = views;
@@ -86,6 +88,9 @@ export class Router<S> {
    * its `render`, then mounts the output into the DOM root.
    */
   goto(name: string, args: unknown): Promise<void> {
+    if (this._disposed) {
+      return Promise.reject(new Error("Router has been disposed"));
+    }
     // Chain onto the existing queue. The onReject branch keeps the queue alive
     // even if the previous navigation threw, so subsequent gotos still run.
     this._queue = this._queue.then(
@@ -93,6 +98,21 @@ export class Router<S> {
       () => this._doGoto(name, args),
     );
     return this._queue;
+  }
+
+  /**
+   * Leave the active view and clear its tools/DOM. Serialized after any
+   * navigation already in flight and idempotent across host/manual teardown.
+   */
+  dispose(): Promise<void> {
+    if (this._disposePromise) return this._disposePromise;
+    this._disposed = true;
+    this._disposePromise = this._queue.then(
+      () => this._doDispose(),
+      () => this._doDispose(),
+    );
+    this._queue = this._disposePromise;
+    return this._disposePromise;
   }
 
   private async _doGoto(name: string, args: unknown): Promise<void> {
@@ -141,6 +161,38 @@ export class Router<S> {
 
     mount(this.root, output);
     this._currentView = name;
+  }
+
+  private async _doDispose(): Promise<void> {
+    const activeName = this._currentView;
+    this._currentView = null;
+    const errors: unknown[] = [];
+
+    try {
+      if (activeName !== null && this._context !== null) {
+        await this.views[activeName]?.onLeave?.(this._context);
+      }
+    } catch (error) {
+      errors.push(error);
+    }
+
+    // Framework cleanup continues even when an adapter's onLeave hook fails,
+    // so teardown cannot strand tools or renderer-owned DOM.
+    try {
+      this._toolRegistry?.unregisterAll();
+    } catch (error) {
+      errors.push(error);
+    }
+    try {
+      this.root.replaceChildren();
+    } catch (error) {
+      errors.push(error);
+    }
+
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) {
+      throw new AggregateError(errors, "mcp-view active route cleanup failed");
+    }
   }
 }
 

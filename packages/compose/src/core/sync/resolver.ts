@@ -56,9 +56,13 @@ export function resolveSyncRules(
   rules: UiSyncRule[],
   resources: CollectedUiResource[],
 ): ResolutionResult {
-  const toolToSlot = new Map<string, number>();
+  const componentToSlot = new Map<string, number>();
+  const toolToSlots = new Map<string, number[]>();
   for (const resource of resources) {
-    toolToSlot.set(resource.source, resource.slot);
+    if (resource.componentId) componentToSlot.set(resource.componentId, resource.slot);
+    const slots = toolToSlots.get(resource.source) ?? [];
+    slots.push(resource.slot);
+    toolToSlots.set(resource.source, slots);
   }
 
   const resolved: ResolvedSyncRule[] = [];
@@ -66,14 +70,20 @@ export function resolveSyncRules(
 
   for (let i = 0; i < rules.length; i++) {
     const rule = rules[i];
-    const fromSlot = toolToSlot.get(rule.from);
+    const fromResolution = resolveReference(rule.from, componentToSlot, toolToSlots);
+    const fromSlot = fromResolution.slot;
     const isBroadcast = rule.to === "*";
-    const toSlot = isBroadcast ? ("*" as const) : toolToSlot.get(rule.to);
+    const toResolution = isBroadcast
+      ? undefined
+      : resolveReference(rule.to, componentToSlot, toolToSlots);
+    const toSlot = isBroadcast ? ("*" as const) : toResolution?.slot;
 
     if (fromSlot === undefined) {
       issues.push({
         code: ErrorCode.ORPHAN_SYNC_REFERENCE,
-        message: `Sync rule references unknown source tool "${rule.from}"`,
+        message: fromResolution.ambiguous
+          ? `Sync rule source "${rule.from}" is ambiguous; target a stable component id`
+          : `Sync rule references unknown source tool "${rule.from}"`,
         path: `sync[${i}].from`,
       });
       continue;
@@ -82,7 +92,9 @@ export function resolveSyncRules(
     if (!isBroadcast && toSlot === undefined) {
       issues.push({
         code: ErrorCode.ORPHAN_SYNC_REFERENCE,
-        message: `Sync rule references unknown target tool "${rule.to}"`,
+        message: toResolution?.ambiguous
+          ? `Sync rule target "${rule.to}" is ambiguous; target a stable component id`
+          : `Sync rule references unknown target tool "${rule.to}"`,
         path: `sync[${i}].to`,
       });
       continue;
@@ -97,4 +109,17 @@ export function resolveSyncRules(
   }
 
   return { rules: resolved, issues };
+}
+
+function resolveReference(
+  reference: string,
+  componentToSlot: ReadonlyMap<string, number>,
+  toolToSlots: ReadonlyMap<string, readonly number[]>,
+): { slot?: number; ambiguous: boolean } {
+  const componentSlot = componentToSlot.get(reference);
+  if (componentSlot !== undefined) return { slot: componentSlot, ambiguous: false };
+  const toolSlots = toolToSlots.get(reference) ?? [];
+  return toolSlots.length === 1
+    ? { slot: toolSlots[0], ambiguous: false }
+    : { ambiguous: toolSlots.length > 1 };
 }

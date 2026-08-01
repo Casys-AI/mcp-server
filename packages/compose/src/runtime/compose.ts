@@ -22,8 +22,14 @@
 
 import type { ComposeRequest, ComposeResult } from "./types.ts";
 import type { ComposedDashboardCsp, ComposedDashboardPanel } from "./host-dashboard-types.ts";
+import type { ComponentSurface } from "../core/types/components.ts";
 import { loadManifests } from "./manifest.ts";
-import { injectArgs, loadTemplate, validateTemplate } from "./template.ts";
+import {
+  injectArgs,
+  loadTemplate,
+  resolveTemplateComponentId,
+  validateTemplate,
+} from "./template.ts";
 import { createCluster } from "./cluster.ts";
 import { createCollector } from "../core/collector/collector.ts";
 import { buildCompositeUi } from "../core/composer/composer.ts";
@@ -81,9 +87,11 @@ export async function composeDashboard(
     const collector = createCollector();
     const panels: ComposedDashboardPanel[] = [];
 
-    // Call tools in parallel across sources, sequential within each source
-    await Promise.all(
-      template.sources.map(async (source) => {
+    // Calls still execute in parallel across sources and sequentially within
+    // each source. Their results are collected only after every source group
+    // settles, in template order, so network timing can never renumber slots.
+    const sourceOutcomes = await Promise.all(
+      template.sources.map(async (source, sourceIndex) => {
         const resolvedCalls = injectArgs(source.calls, args ?? {});
         const manifest = manifests.get(source.manifest);
         // Validation above guarantees this, but retaining the guard keeps the
@@ -103,9 +111,28 @@ export async function composeDashboard(
             ...(tool.inputSchema === undefined ? {} : { inputSchema: tool.inputSchema }),
           }));
         const allowedToolNames = allowedTools.map((tool) => tool.name);
+        const outcomes: Array<{
+          componentId: string;
+          qualifiedName: string;
+          serverName: string;
+          toolName: string;
+          args?: Record<string, unknown>;
+          surface?: ComponentSurface;
+          allowedToolNames: string[];
+          allowedTools: typeof allowedTools;
+          result?: unknown;
+          error?: string;
+        }> = [];
 
-        for (const call of resolvedCalls) {
+        for (let callIndex = 0; callIndex < resolvedCalls.length; callIndex++) {
+          const call = resolvedCalls[callIndex];
           const qualifiedName = `${source.manifest}:${call.tool}`;
+          const componentId = resolveTemplateComponentId(
+            source,
+            sourceIndex,
+            call,
+            callIndex,
+          );
 
           try {
             const result = await cluster.callTool(
@@ -113,36 +140,71 @@ export async function composeDashboard(
               call.tool,
               call.args,
             );
-            const collected = collector.collect(qualifiedName, result, call.args);
-            if (!collected) {
-              warnings.push(
-                `Tool "${qualifiedName}" did not return UI metadata (_meta.ui.resourceUri)`,
-              );
-            } else {
-              // Capture the actual tool-call provenance before any historical
-              // ui:// → HTTP projection. The interactive host binds this exact
-              // slot to this exact server/resource/tool allow-list.
-              const resourceCsp = extractResourceCsp(result);
-              panels.push({
-                slot: collected.slot,
-                serverName: source.manifest,
-                toolName: call.tool,
-                resourceUri: collected.resourceUri,
-                initialToolResult: result,
-                allowedToolNames,
-                allowedTools,
-                ...(resourceCsp === undefined ? {} : { resourceCsp }),
-              });
-            }
+            outcomes.push({
+              componentId,
+              qualifiedName,
+              serverName: source.manifest,
+              toolName: call.tool,
+              args: call.args,
+              surface: call.surface ?? source.surface,
+              allowedToolNames,
+              allowedTools,
+              result,
+            });
           } catch (e) {
             const err = e as RuntimeError;
-            warnings.push(
-              `Tool "${qualifiedName}" call failed: ${err.message ?? String(e)}`,
-            );
+            outcomes.push({
+              componentId,
+              qualifiedName,
+              serverName: source.manifest,
+              toolName: call.tool,
+              args: call.args,
+              surface: call.surface ?? source.surface,
+              allowedToolNames,
+              allowedTools,
+              error: err.message ?? String(e),
+            });
           }
         }
+        return outcomes;
       }),
     );
+
+    for (const outcome of sourceOutcomes.flat()) {
+      if (outcome.error !== undefined) {
+        warnings.push(`Tool "${outcome.qualifiedName}" call failed: ${outcome.error}`);
+        continue;
+      }
+      const collected = collector.collect(
+        outcome.qualifiedName,
+        outcome.result,
+        outcome.args,
+        {
+          componentId: outcome.componentId,
+          surface: outcome.surface,
+        },
+      );
+      if (!collected) {
+        warnings.push(
+          `Tool "${outcome.qualifiedName}" did not return UI metadata (_meta.ui.resourceUri)`,
+        );
+        continue;
+      }
+
+      // Capture provenance only after the stable slot is assigned.
+      const resourceCsp = extractResourceCsp(outcome.result);
+      panels.push({
+        componentId: outcome.componentId,
+        slot: collected.slot,
+        serverName: outcome.serverName,
+        toolName: outcome.toolName,
+        resourceUri: collected.resourceUri,
+        initialToolResult: outcome.result,
+        allowedToolNames: outcome.allowedToolNames,
+        allowedTools: outcome.allowedTools,
+        ...(resourceCsp === undefined ? {} : { resourceCsp }),
+      });
+    }
 
     // 4. Resolve ui:// URIs to real HTTP URLs
     const resources = collector.getResources().map((resource) => {
@@ -155,10 +217,12 @@ export async function composeDashboard(
 
     // 5. Build area map (source qualified name → area id)
     const areaMap: Record<string, string> = {};
-    for (const source of template.sources) {
+    for (let sourceIndex = 0; sourceIndex < template.sources.length; sourceIndex++) {
+      const source = template.sources[sourceIndex];
       if (source.id) {
-        for (const call of source.calls) {
-          areaMap[`${source.manifest}:${call.tool}`] = source.id;
+        for (let callIndex = 0; callIndex < source.calls.length; callIndex++) {
+          const call = source.calls[callIndex];
+          areaMap[resolveTemplateComponentId(source, sourceIndex, call, callIndex)] = source.id;
         }
       }
     }

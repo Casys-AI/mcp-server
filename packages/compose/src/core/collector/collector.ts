@@ -5,6 +5,7 @@
  */
 
 import type { CollectedUiResource } from "../types/resources.ts";
+import type { ComponentSurface } from "../types/components.ts";
 import { extractUiMeta } from "./extractor.ts";
 
 /**
@@ -24,6 +25,10 @@ export interface UiCollector {
     toolName: string,
     result: unknown,
     context?: Record<string, unknown>,
+    options?: {
+      readonly componentId?: string;
+      readonly surface?: ComponentSurface;
+    },
   ): CollectedUiResource | null;
 
   /** Get all collected resources in slot order. */
@@ -68,6 +73,10 @@ export function createCollector(): UiCollector {
       toolName: string,
       result: unknown,
       context?: Record<string, unknown>,
+      options?: {
+        readonly componentId?: string;
+        readonly surface?: ComponentSurface;
+      },
     ): CollectedUiResource | null {
       const meta = extractUiMeta(result);
       if (!meta?.resourceUri) {
@@ -75,9 +84,11 @@ export function createCollector(): UiCollector {
       }
 
       const resource: CollectedUiResource = {
+        ...(options?.componentId === undefined ? {} : { componentId: options.componentId }),
         source: toolName,
         resourceUri: meta.resourceUri,
         context,
+        ...(options?.surface === undefined ? {} : { surface: options.surface }),
         slot: resources.length,
       };
 

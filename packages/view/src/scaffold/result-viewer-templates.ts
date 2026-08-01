@@ -6,7 +6,7 @@ export const resultViewerTemplates: Readonly<Record<string, string>> = {
     "lib": ["deno.ns", "deno.window", "dom", "dom.iterable", "dom.asynciterable", "esnext"]
   },
   "imports": {
-    "@casys/mcp-view": "jsr:@casys/mcp-view@0.4.1"
+    "@casys/mcp-view": "jsr:@casys/mcp-view@0.5.0"
   },
   "minimumDependencyAge": {
     "age": "P1D",
@@ -41,7 +41,7 @@ export const resultViewerTemplates: Readonly<Record<string, string>> = {
   "build.ts": `import { dirname, fromFileUrl, join } from "jsr:@std/path@^1.1.0";
 
 const here = dirname(fromFileUrl(import.meta.url));
-const mcpViewModule = Deno.env.get("MCP_VIEW_MODULE") ?? "jsr:@casys/mcp-view@0.4.1";
+const mcpViewModule = Deno.env.get("MCP_VIEW_MODULE") ?? "jsr:@casys/mcp-view@0.5.0";
 const temporaryDirectory = await Deno.makeTempDir({ prefix: "mcp-view-result-viewer-" });
 const importMap = join(temporaryDirectory, "import-map.json");
 const bundlePath = join(temporaryDirectory, "result-viewer.js");
@@ -276,19 +276,141 @@ code { overflow-wrap: anywhere; font-family: var(--font-data); }
 @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
 @media (max-width: 480px) { #root { padding: 8px; } .result-header { display: block; } .status { display: inline-block; margin-top: 8px; } }
 `,
-  "src/main.ts": `import { createMcpApp, defineView } from "@casys/mcp-view";
+  "src/main.ts": `import {
+  advertisedComponentCatalog,
+  createMcpApp,
+  defineComponentRegistry,
+  defineCustomComponent,
+  defineKeyValueComponent,
+  defineMetricGridComponent,
+  defineView,
+  mountComponentSurface,
+  type AppContext,
+  type MountedComponentSurface,
+} from "@casys/mcp-view";
 import { isEmptyResult, parseStructuredResult, toolErrorMessage, type DisplayState } from "./model.ts";
-import { escapeHtml, renderDisplay } from "./render.ts";
+import { escapeHtml } from "./render.ts";
 
 interface ViewerState {
   display: DisplayState;
 }
 
-const resultView = defineView<ViewerState>({
-  render(ctx) {
-    return renderDisplay(ctx.state.display);
+type ViewerContext = AppContext<ViewerState>;
+let mountedSurface: MountedComponentSurface | undefined;
+let mountGeneration = 0;
+
+const components = defineComponentRegistry<ViewerState, ViewerContext>({
+  components: {
+    "result.identity": defineCustomComponent({
+      title: "Result identity",
+      mount(target, { data }) {
+        const display = data.display;
+        const title = document.createElement("h1");
+        const summary = document.createElement("p");
+        if (display.kind === "loading") {
+          title.textContent = "Loading result";
+          summary.textContent = "Waiting for a structured tool result…";
+        } else if (display.kind === "empty") {
+          title.textContent = "Nothing to display";
+          summary.textContent = "The tool completed without displayable fields.";
+        } else if (display.kind === "error") {
+          title.textContent = "Result unavailable";
+          summary.textContent = display.message;
+          target.setAttribute("role", "alert");
+        } else {
+          title.textContent = display.result.title;
+          summary.textContent = display.result.summary ?? display.result.status ?? "Structured result";
+        }
+        target.className = "masthead";
+        target.append(title, summary);
+      },
+    }),
+    "result.metrics": defineMetricGridComponent({
+      title: "Metrics",
+      select: (data) => data.display.kind === "result"
+        ? data.display.result.metrics.map((metric, index) => ({
+          id: "metric-" + index,
+          label: metric.label,
+          value: metric.value,
+        }))
+        : [],
+    }),
+    "result.details": defineKeyValueComponent({
+      title: "Details",
+      select: (data) => data.display.kind === "result"
+        ? data.display.result.details.map((detail, index) => ({
+          key: "detail-" + index,
+          label: detail.label,
+          value: detail.value,
+        }))
+        : [],
+    }),
+    "result.artifacts": defineCustomComponent({
+      title: "Artifacts",
+      mount(target, { data }) {
+        target.className = "panel artifact-list";
+        if (data.display.kind !== "result" || data.display.result.artifacts.length === 0) {
+          const empty = document.createElement("p");
+          empty.className = "muted";
+          empty.textContent = "No artifacts were supplied.";
+          target.append(empty);
+          return;
+        }
+        for (const artifact of data.display.result.artifacts) {
+          const item = document.createElement("article");
+          item.className = "artifact";
+          const label = document.createElement("strong");
+          label.textContent = artifact.label;
+          const uri = document.createElement("code");
+          uri.textContent = artifact.uri;
+          item.append(label, uri);
+          target.append(item);
+        }
+      },
+    }),
+  },
+  defaultSurface: {
+    layout: { type: "stack", gap: "sm" },
+    components: [
+      { id: "identity", component: "result.identity" },
+      { id: "metrics", component: "result.metrics" },
+      { id: "details", component: "result.details" },
+      { id: "artifacts", component: "result.artifacts" },
+    ],
   },
 });
+
+const resultView = defineView<ViewerState>({
+  async onLeave() {
+    await disposeSurface();
+  },
+  render(ctx) {
+    const host = document.createElement("section");
+    host.className = "viewer component-surface-host";
+    host.setAttribute("aria-label", "Structured result");
+    const generation = ++mountGeneration;
+    queueMicrotask(async () => {
+      if (generation !== mountGeneration) return;
+      await disposeSurface(false);
+      if (generation !== mountGeneration) return;
+      mountedSurface = await mountComponentSurface({
+        root: host,
+        registry: components,
+        data: ctx.state,
+        appContext: ctx,
+        hostContext: ctx.hostContext,
+      });
+    });
+    return host;
+  },
+});
+
+async function disposeSurface(invalidate = true): Promise<void> {
+  if (invalidate) mountGeneration++;
+  const current = mountedSurface;
+  mountedSurface = undefined;
+  await current?.dispose();
+}
 
 async function boot(): Promise<void> {
   const root = document.getElementById("root");
@@ -299,6 +421,7 @@ async function boot(): Promise<void> {
     views: { result: resultView },
     initialView: "result",
     initialState: { display: { kind: "loading" } },
+    componentCatalog: advertisedComponentCatalog(components),
     // Registered by mcp-view before connect(), so the initiating tool result
     // cannot be lost during the MCP Apps handshake.
     async onToolInput(_input, app) {
@@ -324,6 +447,9 @@ async function boot(): Promise<void> {
       }
       root.setAttribute("aria-busy", "false");
       await app.navigate("result");
+    },
+    async onTeardown() {
+      await disposeSurface();
     },
   });
 }

@@ -15,6 +15,10 @@ import type { CompositeUiDescriptor } from "../../../core/types/descriptor.ts";
 import { COMPOSE_EVENT_METHOD } from "../../../sdk/compose-events.ts";
 import { COMPOSE_VERSION, MCP_APPS_PROTOCOL_VERSION } from "../../../version.ts";
 import type { ResolvedRendererSlotOptions } from "../options.ts";
+import {
+  CASYS_COMPONENT_CATALOG_CAPABILITY_KEY,
+  CASYS_SURFACE_CONTEXT_KEY,
+} from "../../components-contract.ts";
 
 /**
  * Generate the event bus JavaScript for a composite UI.
@@ -66,6 +70,10 @@ export function generateEventBusScript(
     const slotConfigs = ${serializeForInlineScript(serialisedSlots)};
     const initialResultsDelivered = new Set();
     const initializationResponded = new Set();
+    const componentCatalogs = new Map();
+    const lastHostContexts = new Map();
+    const COMPONENT_CAPABILITY = '${CASYS_COMPONENT_CATALOG_CAPABILITY_KEY}';
+    const SURFACE_CONTEXT = '${CASYS_SURFACE_CONTEXT_KEY}';
 
     // Build slot -> iframe map + reverse lookup. The fallback lookup matters
     // when the iframe's WindowProxy becomes available after this script runs.
@@ -130,7 +138,13 @@ export function generateEventBusScript(
       const config = getSlotConfig(slot);
       const capabilities = {
         logging: {},
-        message: { text: {} }
+        message: { text: {} },
+        experimental: {
+          [COMPONENT_CAPABILITY]: {
+            version: '1',
+            eventChannel: COMPOSE_METHOD
+          }
+        }
       };
 
       // Do not over-advertise: only capability-gated requests with a local
@@ -143,6 +157,137 @@ export function generateEventBusScript(
       }
 
       return capabilities;
+    }
+
+    function measureSlot(slot) {
+      const iframe = iframes.get(slot);
+      if (!iframe || typeof iframe.getBoundingClientRect !== 'function') return undefined;
+      const rect = iframe.getBoundingClientRect();
+      const width = Math.max(0, Math.round(Number(rect?.width)));
+      const height = Math.max(0, Math.round(Number(rect?.height)));
+      if (!Number.isFinite(width) || !Number.isFinite(height) || width === 0 || height === 0) {
+        return undefined;
+      }
+      return { width, height };
+    }
+
+    function validSurface(value, knownComponents) {
+      if (!value || typeof value !== 'object') return undefined;
+      const layout = value.layout;
+      if (!layout || !['stack', 'row', 'grid'].includes(layout.type)) return undefined;
+      if (layout.columns !== undefined &&
+        (!Number.isInteger(layout.columns) || layout.columns < 1 || layout.columns > 12)) {
+        return undefined;
+      }
+      if (layout.type !== 'grid' && layout.columns !== undefined) return undefined;
+      if (layout.gap !== undefined && !['none', 'xs', 'sm', 'md', 'lg'].includes(layout.gap)) {
+        return undefined;
+      }
+      if (!Array.isArray(value.components) || value.components.length === 0) return undefined;
+      const ids = new Set();
+      for (const item of value.components) {
+        if (!item || typeof item !== 'object') return undefined;
+        if (typeof item.id !== 'string' || !item.id || ids.has(item.id)) return undefined;
+        if (typeof item.component !== 'string' || !item.component) return undefined;
+        if (item.area !== undefined &&
+          (typeof item.area !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]*$/.test(item.area))) {
+          return undefined;
+        }
+        ids.add(item.id);
+      }
+      if (knownComponents && value.components.some((item) => !knownComponents.has(item.component))) {
+        return undefined;
+      }
+      return value;
+    }
+
+    function validComponentCatalog(value) {
+      if (!value || typeof value !== 'object') return undefined;
+      if (!value.components || typeof value.components !== 'object' || Array.isArray(value.components)) {
+        return undefined;
+      }
+      const entries = Object.entries(value.components);
+      if (entries.length === 0) return undefined;
+      for (const [id, descriptor] of entries) {
+        if (!id || !descriptor || typeof descriptor !== 'object' ||
+          typeof descriptor.title !== 'string' || !descriptor.title) return undefined;
+      }
+      const known = new Set(entries.map(([id]) => id));
+      if (!validSurface(value.defaultSurface, known)) return undefined;
+      return value;
+    }
+
+    function surfaceContextForSlot(slot) {
+      const config = getSlotConfig(slot);
+      const instanceId = config?.componentId || String(slot);
+      const catalog = componentCatalogs.get(slot);
+      if (!catalog) {
+        return {
+          instanceId,
+          status: 'legacy',
+          reason: 'component-catalog-unavailable',
+          eventChannel: COMPOSE_METHOD,
+        };
+      }
+      const requested = config?.surface;
+      const surface = requested || catalog.defaultSurface;
+      const known = new Set(Object.keys(catalog.components));
+      const missingComponents = [...new Set(
+        surface.components
+          .map((item) => item.component)
+          .filter((component) => !known.has(component))
+      )].sort();
+      if (missingComponents.length > 0) {
+        return {
+          instanceId,
+          status: 'unresolved',
+          reason: 'unknown-components',
+          missingComponents,
+          eventChannel: COMPOSE_METHOD,
+        };
+      }
+      return {
+        instanceId,
+        status: 'ready',
+        source: requested ? 'requested' : 'default',
+        surface,
+        eventChannel: COMPOSE_METHOD,
+      };
+    }
+
+    function resolvedTheme() {
+      if (document.body.classList.contains('dark')) return 'dark';
+      if (document.documentElement?.classList.contains('light')) return 'light';
+      return typeof window.matchMedia === 'function' &&
+          window.matchMedia('(prefers-color-scheme: dark)').matches
+        ? 'dark'
+        : 'light';
+    }
+
+    function hostContextForSlot(slot) {
+      const dimensions = measureSlot(slot);
+      return {
+        theme: resolvedTheme(),
+        displayMode: 'inline',
+        availableDisplayModes: ['inline'],
+        ...(dimensions ? { containerDimensions: dimensions } : {}),
+        [SURFACE_CONTEXT]: surfaceContextForSlot(slot),
+      };
+    }
+
+    function sendHostContextChanged(slot) {
+      if (!initializationResponded.has(slot)) return;
+      const iframe = iframes.get(slot);
+      if (!iframe?.contentWindow) return;
+      const context = hostContextForSlot(slot);
+      const signature = JSON.stringify(context);
+      if (lastHostContexts.get(slot) === signature) return;
+      lastHostContexts.set(slot, signature);
+      post(iframe.contentWindow, {
+        jsonrpc: '2.0',
+        method: 'ui/notifications/host-context-changed',
+        params: context,
+      }, targetOriginForSlot(slot));
     }
 
     // Route an event through sync rules, calling
@@ -292,14 +437,18 @@ export function generateEventBusScript(
           return;
         }
 
+        const advertisedCatalog = message.params?.appCapabilities?.experimental?.[
+          COMPONENT_CAPABILITY
+        ];
+        const catalog = validComponentCatalog(advertisedCatalog);
+        if (catalog) componentCatalogs.set(sourceSlot, catalog);
+        const hostContext = hostContextForSlot(sourceSlot);
+        lastHostContexts.set(sourceSlot, JSON.stringify(hostContext));
         respond(event.source, message.id, {
           protocolVersion: '${MCP_APPS_PROTOCOL_VERSION}',
           hostInfo: { name: 'mcp-compose', version: '${COMPOSE_VERSION}' },
           hostCapabilities: getHostCapabilities(sourceSlot),
-          hostContext: {
-            theme: document.body.classList.contains('dark') ? 'dark' : 'light',
-            displayMode: 'inline'
-          }
+          hostContext
         }, targetOrigin);
         initializationResponded.add(sourceSlot);
         return;
@@ -374,6 +523,9 @@ export function generateEventBusScript(
       if (message.method) {
         console.warn('[mcp-compose] Unknown method:', message.method);
       }
+    });
+    window.addEventListener('resize', () => {
+      for (const slot of iframes.keys()) sendHostContextChanged(slot);
     });
     ${tabSwitchingCode}
   `;

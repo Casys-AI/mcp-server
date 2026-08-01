@@ -49,6 +49,16 @@ Deno.test({
     assertEquals(result.descriptor.layout, "split");
     assertEquals(result.descriptor.children.length, 2);
     assertEquals(result.descriptor.sync.length, 1);
+    assertEquals(
+      result.descriptor.children.map((child) => [child.componentId, child.slot]),
+      [["filters", 0], ["chart", 1]],
+    );
+    assertEquals(result.descriptor.sync[0], {
+      from: 0,
+      event: "filter.changed",
+      to: 1,
+      action: "data.update",
+    });
 
     assertStringIncludes(result.html, "<!DOCTYPE html>");
     assertStringIncludes(result.html, "layout-split");

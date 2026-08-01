@@ -1,3 +1,5 @@
+import type { ComponentSurface } from "../../core/types/components.ts";
+
 /**
  * Data contracts injected into the browser renderer.
  *
@@ -120,6 +122,10 @@ export interface RenderCompositeOptions {
 
 /** Fully-resolved, JSON-serialisable settings consumed by the event bus. */
 export interface ResolvedRendererSlotOptions {
+  /** Stable App instance identity shared by layout, events, and inner surfaces. */
+  readonly componentId: string;
+  /** Host-requested composition of components advertised by this App. */
+  readonly surface?: ComponentSurface;
   readonly iframeSrc: string;
   /** Canonical exact origin used for incoming and outgoing postMessage checks. */
   readonly expectedOrigin?: string;

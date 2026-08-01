@@ -1,19 +1,28 @@
 {
   "name": "@casys/mcp-view",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "license": "MIT",
   "exports": {
     ".": "./mod.ts",
+    "./react": "./react.ts",
     "./scaffold": "./scaffold.ts"
   },
   "publish": {
-    "include": ["mod.ts", "scaffold.ts", "src/**/*.ts", "src/**/*.md", "README.md", "LICENSE"],
+    "include": [
+      "mod.ts",
+      "react.ts",
+      "scaffold.ts",
+      "src/**/*.ts",
+      "src/**/*.md",
+      "README.md",
+      "LICENSE"
+    ],
     "exclude": ["**/*_test.ts"]
   },
   "tasks": {
     "build:npm": "deno run -A scripts/build-npm.ts",
     "test": "deno test --allow-read --allow-write --allow-run --allow-env src/ scaffold_test.ts",
-    "check": "deno check mod.ts scaffold.ts",
+    "check": "deno check mod.ts react.ts scaffold.ts",
     "lint": "deno lint",
     "fmt": "deno fmt",
     "changelog:draft": "git -C ../.. cliff --config cliff.toml --tag-pattern 'view-v.*' --include-path 'packages/view/**' --unreleased",

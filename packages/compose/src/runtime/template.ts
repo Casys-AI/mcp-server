@@ -9,7 +9,7 @@
  */
 
 import { parse as parseYaml } from "@std/yaml";
-import type { DashboardTemplate, McpManifest, TemplateToolCall } from "./types.ts";
+import type { DashboardTemplate, McpManifest, TemplateSource, TemplateToolCall } from "./types.ts";
 import { RuntimeErrorCode } from "./types.ts";
 import type { RuntimeError } from "./types.ts";
 import { isValidLayout } from "../core/types/layout.ts";
@@ -38,6 +38,7 @@ export function validateTemplate(
   if (!Array.isArray(template.sources) || template.sources.length === 0) {
     errors.push("Template must have at least one source");
   } else {
+    const componentIds = new Map<string, string>();
     for (let i = 0; i < template.sources.length; i++) {
       const source = template.sources[i];
       const manifest = manifests.get(source.manifest);
@@ -55,14 +56,37 @@ export function validateTemplate(
       }
 
       const toolNames = new Set(manifest.tools.map((t) => t.name));
+      const occurrences = new Map<string, number>();
+      for (const call of source.calls) {
+        occurrences.set(call.tool, (occurrences.get(call.tool) ?? 0) + 1);
+      }
       for (let j = 0; j < source.calls.length; j++) {
-        if (!toolNames.has(source.calls[j].tool)) {
+        const call = source.calls[j];
+        if (!toolNames.has(call.tool)) {
           errors.push(
-            `sources[${i}].calls[${j}].tool "${
-              source.calls[j].tool
-            }" not found in manifest "${source.manifest}"`,
+            `sources[${i}].calls[${j}].tool "${call.tool}" not found in manifest "${source.manifest}"`,
           );
         }
+        if ((occurrences.get(call.tool) ?? 0) > 1 && !call.id) {
+          errors.push(
+            `sources[${i}].calls[${j}] repeats tool "${call.tool}" and requires a stable 'id'`,
+          );
+        }
+
+        const componentId = resolveTemplateComponentId(source, i, call, j);
+        const previous = componentIds.get(componentId);
+        if (previous) {
+          errors.push(
+            `Duplicate component id "${componentId}" at sources[${i}].calls[${j}]; already used by ${previous}`,
+          );
+        } else {
+          componentIds.set(componentId, `sources[${i}].calls[${j}]`);
+        }
+        validateSurface(
+          call.surface ?? source.surface,
+          `sources[${i}]${call.surface ? `.calls[${j}]` : ""}.surface`,
+          errors,
+        );
       }
     }
   }
@@ -76,6 +100,94 @@ export function validateTemplate(
   }
 
   return { valid: errors.length === 0, errors };
+}
+
+/** Resolve the stable component identity used by slots, routes, and layout areas. */
+export function resolveTemplateComponentId(
+  source: TemplateSource,
+  _sourceIndex: number,
+  call: TemplateToolCall,
+  callIndex: number,
+): string {
+  if (call.id) return call.id;
+  if (source.calls.length === 1 && source.id) return source.id;
+  if (source.id) return `${source.id}/${call.tool}-${callIndex + 1}`;
+  return `${source.manifest}:${call.tool}`;
+}
+
+function validateSurface(
+  surface: TemplateSource["surface"],
+  path: string,
+  errors: string[],
+): void {
+  if (surface === undefined) return;
+  if (!surface || typeof surface !== "object") {
+    errors.push(`${path} must be an object`);
+    return;
+  }
+  const layout = surface.layout;
+  if (!layout || !["stack", "row", "grid"].includes(layout.type)) {
+    errors.push(`${path}.layout.type must be stack, row, or grid`);
+  } else {
+    if (
+      layout.columns !== undefined &&
+      (!Number.isInteger(layout.columns) || layout.columns < 1 || layout.columns > 12)
+    ) {
+      errors.push(`${path}.layout.columns must be an integer from 1 to 12`);
+    }
+    if (layout.type !== "grid" && layout.columns !== undefined) {
+      errors.push(`${path}.layout.columns is valid only for grid layouts`);
+    }
+    if (layout.gap !== undefined && !["none", "xs", "sm", "md", "lg"].includes(layout.gap)) {
+      errors.push(`${path}.layout.gap must be none, xs, sm, md, or lg`);
+    }
+  }
+  if (!Array.isArray(surface.components) || surface.components.length === 0) {
+    errors.push(`${path}.components must contain at least one component`);
+    return;
+  }
+  const ids = new Set<string>();
+  for (let index = 0; index < surface.components.length; index++) {
+    const component = surface.components[index];
+    const componentPath = `${path}.components[${index}]`;
+    if (!component || typeof component !== "object") {
+      errors.push(`${componentPath} must be an object`);
+      continue;
+    }
+    if (!validIdentifier(component.id)) {
+      errors.push(`${componentPath}.id is invalid`);
+    } else if (ids.has(component.id)) {
+      errors.push(`${componentPath}.id duplicates ${JSON.stringify(component.id)}`);
+    } else {
+      ids.add(component.id);
+    }
+    if (!validIdentifier(component.component)) {
+      errors.push(`${componentPath}.component is invalid`);
+    }
+    if (
+      component.area !== undefined &&
+      (typeof component.area !== "string" || !/^[A-Za-z][A-Za-z0-9_-]*$/.test(component.area))
+    ) {
+      errors.push(`${componentPath}.area is invalid`);
+    }
+    if (component.props !== undefined && !isJsonValue(component.props)) {
+      errors.push(`${componentPath}.props must contain only JSON values`);
+    }
+  }
+}
+
+function validIdentifier(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/.test(value);
+}
+
+function isJsonValue(value: unknown): boolean {
+  if (
+    value === null || typeof value === "string" || typeof value === "boolean" ||
+    (typeof value === "number" && Number.isFinite(value))
+  ) return true;
+  if (Array.isArray(value)) return value.every(isJsonValue);
+  if (value && typeof value === "object") return Object.values(value).every(isJsonValue);
+  return false;
 }
 
 /**

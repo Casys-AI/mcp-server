@@ -43,6 +43,85 @@ function composeEvents() {
   };
 }`;
 
+/** Tiny fixture-only MCP Apps handshake for exercising component surfaces. */
+export const COMPOSABLE_VIEW_JS = `
+function connectComponentView(catalog) {
+  var CAPABILITY = "io.casys.mcp.view-components/v1";
+  var CONTEXT = "io.casys.mcp.surface/v1";
+  var requestId = "compose-init-" + Math.random().toString(36).slice(2);
+  var initialized = false;
+
+  function applySurface(surface) {
+    if (!surface || !Array.isArray(surface.components)) return;
+    var root = document.querySelector("[data-component-surface]");
+    if (!root) return;
+    var nodes = new Map();
+    root.querySelectorAll("[data-view-component]").forEach(function(node) {
+      nodes.set(node.dataset.viewComponent, node);
+      node.hidden = true;
+    });
+    surface.components.forEach(function(item) {
+      var node = nodes.get(item.component);
+      if (!node) return;
+      node.hidden = false;
+      node.dataset.componentId = item.id;
+      if (item.area) node.style.gridArea = item.area;
+      root.appendChild(node);
+    });
+    var layout = surface.layout || { type: "stack" };
+    var gaps = { none: "0", xs: ".25rem", sm: ".5rem", md: "1rem", lg: "1.5rem" };
+    root.dataset.surfaceLayout = layout.type;
+    root.style.display = "grid";
+    root.style.gap = gaps[layout.gap || "md"];
+    root.style.gridTemplateColumns = layout.type === "grid"
+      ? "repeat(" + (layout.columns || 2) + ", minmax(0, 1fr))"
+      : layout.type === "row"
+      ? "repeat(" + surface.components.length + ", minmax(0, 1fr))"
+      : "minmax(0, 1fr)";
+  }
+
+  function applyHostContext(hostContext) {
+    var composition = hostContext && hostContext[CONTEXT];
+    var dataset = document.documentElement.dataset;
+    if (!composition || typeof composition !== "object") return;
+    dataset.casysSurfaceInstance = composition.instanceId || "";
+    dataset.casysSurfaceStatus = composition.status || "";
+    dataset.casysSurfaceSource = composition.source || "";
+    if (composition.status === "ready") applySurface(composition.surface);
+  }
+
+  window.addEventListener("message", function(event) {
+    var message = event.data;
+    if (!message || message.jsonrpc !== "2.0") return;
+    if (message.id === requestId && message.result) {
+      applyHostContext(message.result.hostContext);
+      if (!initialized) {
+        initialized = true;
+        window.parent.postMessage({
+          jsonrpc: "2.0",
+          method: "ui/notifications/initialized",
+          params: {}
+        }, "*");
+      }
+      return;
+    }
+    if (message.method === "ui/notifications/host-context-changed") {
+      applyHostContext(message.params);
+    }
+  });
+
+  window.parent.postMessage({
+    jsonrpc: "2.0",
+    id: requestId,
+    method: "ui/initialize",
+    params: {
+      appInfo: { name: document.title, version: "0.1.0" },
+      protocolVersion: "2026-01-26",
+      appCapabilities: { experimental: { [CAPABILITY]: catalog } }
+    }
+  }, "*");
+}`;
+
 /**
  * Start a stub server with HTTP + /ui route.
  * Shared boilerplate for all stubs.
@@ -100,12 +179,15 @@ export function buildStubHtml(title: string, bodyHtml: string, script: string): 
     @media (prefers-color-scheme: dark) {
       body { background: #1a1a1a; color: #e0e0e0; }
     }
+    [data-view-component] { min-width: 0; }
+    [data-view-component][hidden] { display: none !important; }
   </style>
 </head>
 <body>
   ${bodyHtml}
   <script>
     ${COMPOSE_EVENTS_JS}
+    ${COMPOSABLE_VIEW_JS}
     ${script}
   </script>
 </body>

@@ -132,6 +132,55 @@ Deno.test("resolveSyncRules - skips rule with orphan and resolves valid ones", (
   assertEquals(result.rules[0].to, 1);
 });
 
+Deno.test("resolveSyncRules - stable component ids disambiguate repeated tool viewers", () => {
+  const resources: CollectedUiResource[] = [
+    {
+      componentId: "baseline",
+      source: "modelica:simulate",
+      resourceUri: "ui://modelica/result",
+      slot: 0,
+    },
+    {
+      componentId: "candidate",
+      source: "modelica:simulate",
+      resourceUri: "ui://modelica/result",
+      slot: 1,
+    },
+  ];
+  const result = resolveSyncRules(
+    [{ from: "baseline", event: "time.select", to: "candidate", action: "time.highlight" }],
+    resources,
+  );
+
+  assertEquals(result.rules, [{
+    from: 0,
+    event: "time.select",
+    to: 1,
+    action: "time.highlight",
+  }]);
+  assertEquals(result.issues, []);
+});
+
+Deno.test("resolveSyncRules - repeated legacy tool names are rejected as ambiguous", () => {
+  const resources: CollectedUiResource[] = [
+    { source: "modelica:simulate", resourceUri: "ui://modelica/result", slot: 0 },
+    { source: "modelica:simulate", resourceUri: "ui://modelica/result", slot: 1 },
+  ];
+  const result = resolveSyncRules(
+    [{
+      from: "modelica:simulate",
+      event: "time.select",
+      to: "*",
+      action: "time.highlight",
+    }],
+    resources,
+  );
+
+  assertEquals(result.rules, []);
+  assertEquals(result.issues[0].code, ErrorCode.ORPHAN_SYNC_REFERENCE);
+  assertEquals(result.issues[0].message.includes("ambiguous"), true);
+});
+
 // =============================================================================
 // validateSyncRules Tests
 // =============================================================================

@@ -1,3 +1,5 @@
+import type { ComponentSurface } from "./components.ts";
+
 /**
  * Collected UI resource types.
  *
@@ -21,6 +23,9 @@
  * ```
  */
 export interface CollectedUiResource {
+  /** Stable instance identity. Unlike `source`, this distinguishes repeated tool calls. */
+  componentId?: string;
+
   /** Tool that produced this UI resource (e.g., `"postgres:query"`). */
   source: string;
 
@@ -29,6 +34,9 @@ export interface CollectedUiResource {
 
   /** Optional context data for the UI. */
   context?: Record<string, unknown>;
+
+  /** Optional inner surface assembled from components advertised by this App. */
+  surface?: ComponentSurface;
 
   /** Slot index (0-based execution order). */
   slot: number;

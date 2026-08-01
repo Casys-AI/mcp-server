@@ -11,7 +11,7 @@ import type { AppConfig } from "./types.ts";
 
 const minimalInfo = { name: "TestApp", version: "0.0.0" };
 
-Deno.test("AppConfig accepts strict, allowUnsafeEval, autoResize options (compile-time)", () => {
+Deno.test("AppConfig accepts runtime options and a component catalog (compile-time)", () => {
   // Smoke test — the value is asserted, but the real assertion is that this
   // file type-checks: AppConfig must surface the three new pass-through
   // fields so consumers can opt in. createMcpApp forwards them to the
@@ -25,10 +25,18 @@ Deno.test("AppConfig accepts strict, allowUnsafeEval, autoResize options (compil
     strict: true,
     allowUnsafeEval: false,
     autoResize: true,
+    componentCatalog: {
+      components: { "test.summary": { title: "Summary" } },
+      defaultSurface: {
+        layout: { type: "stack" },
+        components: [{ id: "summary", component: "test.summary" }],
+      },
+    },
   };
   assertEquals(cfg.strict, true);
   assertEquals(cfg.allowUnsafeEval, false);
   assertEquals(cfg.autoResize, true);
+  assertEquals(cfg.componentCatalog?.components["test.summary"].title, "Summary");
 });
 
 Deno.test("AppConfig exposes typed one-shot tool notification callbacks", () => {

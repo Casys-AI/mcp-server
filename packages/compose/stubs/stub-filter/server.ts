@@ -44,20 +44,43 @@ server.registerResource(
     text: buildStubHtml(
       "Filter Panel",
       `
-      <h3>Filters</h3>
-      <label>Category</label>
-      <select id="category">
-        ${CATEGORIES.map((c) => `<option value="${c}">${c}</option>`).join("")}
-      </select>
-      <br><br>
-      <label>Search</label>
-      <input id="search" type="text" placeholder="Search...">
+      <div data-component-surface>
+        <section data-view-component="filter.active-filter">
+          <h3>Active filter</h3>
+          <strong id="active-filter">all</strong>
+        </section>
+        <section data-view-component="filter.controls">
+          <h3>Filters</h3>
+          <label>Category</label>
+          <select id="category">
+            ${CATEGORIES.map((c) => `<option value="${c}">${c}</option>`).join("")}
+          </select>
+          <br><br>
+          <label>Search</label>
+          <input id="search" type="text" placeholder="Search...">
+        </section>
+      </div>
     `,
       `
       var events = composeEvents();
+      connectComponentView({
+        components: {
+          "filter.active-filter": { title: "Active filter" },
+          "filter.controls": { title: "Filter controls" }
+        },
+        defaultSurface: {
+          layout: { type: "stack", gap: "sm" },
+          components: [
+            { id: "active", component: "filter.active-filter" },
+            { id: "controls", component: "filter.controls" }
+          ]
+        }
+      });
       var cat = document.getElementById("category");
       var search = document.getElementById("search");
+      var active = document.getElementById("active-filter");
       function emitFilter() {
+        active.textContent = cat.value + (search.value ? ' · "' + search.value + '"' : "");
         events.emit("filter.changed", { category: cat.value, search: search.value });
       }
       cat.addEventListener("change", emitFilter);

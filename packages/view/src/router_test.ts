@@ -313,3 +313,98 @@ Deno.test("Router.goto serializes concurrent calls", async () => {
   ]);
   assertEquals(router.currentView, "b");
 });
+
+Deno.test("Router.dispose leaves the active view, clears tools and DOM exactly once", async () => {
+  let leaves = 0;
+  let unregisters = 0;
+  const root = fakeRoot();
+  const router = new Router({
+    active: defineView<Record<string, never>>({
+      onLeave() {
+        leaves++;
+      },
+      render: () => "<p>mounted</p>",
+    }),
+  }, root as unknown as HTMLElement);
+  router.setContext(fakeContext({}));
+  router.setToolRegistry({
+    registerForView() {},
+    unregisterAll() {
+      unregisters++;
+    },
+  } as never);
+
+  await router.goto("active", undefined);
+  await Promise.all([router.dispose(), router.dispose()]);
+
+  assertEquals(leaves, 1);
+  assertEquals(unregisters, 1);
+  assertEquals(root.innerHTML, "");
+  assertEquals(root.children, []);
+});
+
+Deno.test("Router.dispose still clears tools and DOM when active onLeave fails", async () => {
+  let unregisters = 0;
+  const root = fakeRoot();
+  const router = new Router({
+    active: defineView<Record<string, never>>({
+      onLeave() {
+        throw new Error("dispose leave failed");
+      },
+      render: () => "<p>mounted</p>",
+    }),
+  }, root as unknown as HTMLElement);
+  router.setContext(fakeContext({}));
+  router.setToolRegistry({
+    registerForView() {},
+    unregisterAll() {
+      unregisters++;
+    },
+  } as never);
+  await router.goto("active", undefined);
+
+  await assertRejects(() => router.dispose(), Error, "dispose leave failed");
+  assertEquals(unregisters, 1);
+  assertEquals(root.innerHTML, "");
+});
+
+Deno.test("Router.dispose aggregates route, tool and DOM cleanup failures", async () => {
+  const root = fakeRoot();
+  root.replaceChildren = () => {
+    throw new Error("DOM cleanup failed");
+  };
+  const router = new Router({
+    active: defineView<Record<string, never>>({
+      onLeave() {
+        throw new Error("route cleanup failed");
+      },
+      render: () => "<p>mounted</p>",
+    }),
+  }, root as unknown as HTMLElement);
+  router.setContext(fakeContext({}));
+  router.setToolRegistry({
+    registerForView() {},
+    unregisterAll() {
+      throw new Error("tool cleanup failed");
+    },
+  } as never);
+  await router.goto("active", undefined);
+
+  const error = await router.dispose().catch((caught) => caught);
+  assertEquals(error instanceof AggregateError, true);
+  assertEquals(
+    (error as AggregateError).errors.map((item) => (item as Error).message),
+    ["route cleanup failed", "tool cleanup failed", "DOM cleanup failed"],
+  );
+});
+
+Deno.test("Router rejects navigation scheduled after dispose", async () => {
+  const router = new Router({
+    active: defineView<Record<string, never>>({ render: () => "" }),
+  }, fakeRoot() as unknown as HTMLElement);
+  router.setContext(fakeContext({}));
+  await router.goto("active", undefined);
+  await router.dispose();
+
+  await assertRejects(() => router.goto("active", undefined), Error, "disposed");
+});

@@ -5,7 +5,7 @@
  *
  * @example
  * ```sh
- * deno run -A jsr:@casys/mcp-view@0.4.1/scaffold result-viewer ./my-view
+ * deno run -A jsr:@casys/mcp-view@0.5.0/scaffold result-viewer ./my-view
  * ```
  */
 
@@ -59,7 +59,7 @@ export function parseScaffoldArguments(args: readonly string[]): {
   const positional = args.filter((arg) => arg !== "--force");
   if (positional[0] !== "result-viewer" || positional.length !== 2) {
     throw new ScaffoldError(
-      "Usage: mcp-view scaffold result-viewer <target> [--force]. Example: deno run -A jsr:@casys/mcp-view@0.4.1/scaffold result-viewer ./result-viewer",
+      "Usage: mcp-view scaffold result-viewer <target> [--force]. Example: deno run -A jsr:@casys/mcp-view@0.5.0/scaffold result-viewer ./result-viewer",
     );
   }
   return { target: positional[1], options: { force } };

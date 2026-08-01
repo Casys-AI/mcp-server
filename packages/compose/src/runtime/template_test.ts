@@ -156,6 +156,61 @@ Deno.test("validateTemplate - multiple sources validated", () => {
   assertEquals(result.valid, true);
 });
 
+Deno.test("validateTemplate - component ids must be unique", () => {
+  const manifests = makeManifests({ name: "server-a", tools: ["tool-1"] });
+  const template = makeTemplate({
+    sources: [
+      { id: "evidence", manifest: "server-a", calls: [{ tool: "tool-1" }] },
+      { id: "evidence", manifest: "server-a", calls: [{ tool: "tool-1" }] },
+    ],
+  });
+
+  const result = validateTemplate(template, manifests);
+  assertEquals(result.valid, false);
+  assertEquals(result.errors.some((error) => error.includes("component id")), true);
+});
+
+Deno.test("validateTemplate - repeated calls require explicit stable ids", () => {
+  const manifests = makeManifests({ name: "server-a", tools: ["tool-1"] });
+  const template = makeTemplate({
+    sources: [{
+      id: "comparisons",
+      manifest: "server-a",
+      calls: [{ tool: "tool-1" }, { tool: "tool-1" }],
+    }],
+  });
+
+  const result = validateTemplate(template, manifests);
+  assertEquals(result.valid, false);
+  assertEquals(result.errors.some((error) => error.includes("stable 'id'")), true);
+});
+
+Deno.test("parseTemplate - keeps an inner component surface separate from dashboard layout", () => {
+  const template = parseTemplate(`
+name: Evidence
+sources:
+  - id: thermal
+    manifest: modelica
+    surface:
+      layout: { type: grid, columns: 2, gap: sm }
+      components:
+        - { id: status, component: modelica.status }
+        - { id: metrics, component: modelica.metrics }
+    calls:
+      - tool: simulate
+orchestration:
+  layout: split
+  `);
+
+  assertEquals(template.sources[0].surface, {
+    layout: { type: "grid", columns: 2, gap: "sm" },
+    components: [
+      { id: "status", component: "modelica.status" },
+      { id: "metrics", component: "modelica.metrics" },
+    ],
+  });
+});
+
 // =============================================================================
 // injectArgs
 // =============================================================================

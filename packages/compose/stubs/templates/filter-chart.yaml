@@ -1,15 +1,27 @@
 name: Filter-Chart Dashboard
 sources:
-  - manifest: stub-filter
+  - id: filters
+    manifest: stub-filter
+    surface:
+      layout: { type: stack, gap: sm }
+      components:
+        - { id: active, component: filter.active-filter }
     calls:
       - tool: show_filters
-  - manifest: stub-chart
+  - id: chart
+    manifest: stub-chart
+    surface:
+      layout: { type: grid, columns: 2, gap: sm }
+      components:
+        - { id: summary, component: chart.series-summary }
+        - { id: selection, component: chart.selected-filter }
+        - { id: chart, component: chart.bar-chart }
     calls:
       - tool: render_chart
 orchestration:
   layout: split
   sync:
-    - from: "stub-filter:show_filters"
+    - from: filters
       event: "filter.changed"
-      to: "stub-chart:render_chart"
+      to: chart
       action: "data.update"

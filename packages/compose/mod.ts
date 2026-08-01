@@ -30,17 +30,27 @@
 
 // Core — types, collector, sync, composer, renderer
 export type {
+  AdvertisedComponentCatalog,
   CollectedUiResource,
+  ComponentSurface,
+  ComponentSurfaceItem,
+  ComponentSurfaceLayout,
+  ComponentSurfaceResolution,
   CompositeUiDescriptor,
+  JsonValue,
   McpToolResult,
   McpUiCsp,
   McpUiPermissions,
   McpUiResourceMeta,
   McpUiToolMeta,
+  ReadyComponentSurface,
   ResolvedSyncRule,
+  SurfaceGap,
+  SurfaceLayoutType,
   UiLayout,
   UiOrchestration,
   UiSyncRule,
+  UnresolvedComponentSurface,
   ValidationIssue,
   ValidationResult,
 } from "./src/core/types/mod.ts";
@@ -54,6 +64,7 @@ export { resolveSyncRules, validateSyncRules } from "./src/core/sync/mod.ts";
 export type { ResolutionResult } from "./src/core/sync/mod.ts";
 
 export { buildCompositeUi } from "./src/core/composer/mod.ts";
+export { resolveComponentSurface } from "./src/core/components/mod.ts";
 
 export { renderComposite } from "./src/host/renderer/mod.ts";
 

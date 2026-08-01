@@ -45,11 +45,69 @@ export { createMcpApp, defineView } from "./src/app.ts";
 export { MCPViewError } from "./src/errors.ts";
 export type { MCPViewErrorCode } from "./src/errors.ts";
 
+export { COMPOSE_EVENT_METHOD, createComposeEventClient } from "./src/compose-events.ts";
+export type {
+  ComposeEventClient,
+  ComposeEventHandler,
+  ComposeEventPayload,
+  ComposeEventSource,
+  ComposeEventTarget,
+} from "./src/compose-events.ts";
+
+export { readResultData, readStructuredContent } from "./src/results.ts";
+export type { ReadResultDataOptions, ResultData } from "./src/results.ts";
+
+export {
+  activeComponentSurface,
+  advertisedComponentCatalog,
+  applySurfaceContext,
+  CASYS_COMPONENT_CATALOG_CAPABILITY_KEY,
+  CASYS_SURFACE_CONTEXT_KEY,
+  componentCatalogCapabilities,
+  defineComponentRegistry,
+  defineComponentSurface,
+  defineViewComponent,
+  mountComponentSurface,
+  readSurfaceContext,
+} from "./src/components.ts";
+
+export {
+  defineCustomComponent,
+  defineKeyValueComponent,
+  defineMetricGridComponent,
+  defineStatusComponent,
+} from "./src/component-primitives.ts";
+export type {
+  ComponentTone,
+  KeyValueComponentValue,
+  MetricComponentValue,
+  StatusComponentValue,
+} from "./src/component-primitives.ts";
+export type {
+  AdvertisedComponentCatalog,
+  ComponentCleanup,
+  ComponentSurface,
+  ComponentSurfaceItem,
+  ComponentSurfaceLayout,
+  JsonValue,
+  MountComponentSurfaceOptions,
+  MountedComponentSurface,
+  SurfaceContext,
+  SurfaceGap,
+  SurfaceLayoutType,
+  ViewComponentDefinition,
+  ViewComponentDescriptor,
+  ViewComponentMountContext,
+  ViewComponentRegistry,
+} from "./src/components.ts";
+
 export type {
   AppConfig,
   AppContext,
   AppHandle,
   AppLifecycleCallbacks,
+  TeardownLifecycleCallback,
+  TeardownReason,
   ToolInputLifecycleCallback,
   ToolInputPartialLifecycleCallback,
   ToolResult,

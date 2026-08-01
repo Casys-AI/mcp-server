@@ -12,6 +12,7 @@ import type { UiSyncRule } from "../core/types/sync-rules.ts";
 import type { CompositeUiDescriptor } from "../core/types/descriptor.ts";
 import type { ReadResourceResult } from "@modelcontextprotocol/sdk/types.js";
 import type { ComposedDashboardPanel } from "./host-dashboard-types.ts";
+import type { ComponentSurface } from "../core/types/components.ts";
 
 // =============================================================================
 // Transport types
@@ -259,10 +260,14 @@ export interface McpCluster {
  * ```
  */
 export interface TemplateToolCall {
+  /** Stable component identity when one source contains multiple calls. */
+  id?: string;
   /** Tool name (bare, scoped to the source's manifest). */
   tool: string;
   /** Static arguments. `{{key}}` placeholders are replaced at compose time. */
   args?: Record<string, unknown>;
+  /** Optional call-specific composition of small App-owned components. */
+  surface?: ComponentSurface;
 }
 
 /**
@@ -275,6 +280,8 @@ export interface TemplateSource {
   manifest: string;
   /** Tools to call on this server. */
   calls: TemplateToolCall[];
+  /** Small-component surface inherited by calls in this source. */
+  surface?: ComponentSurface;
 }
 
 /**

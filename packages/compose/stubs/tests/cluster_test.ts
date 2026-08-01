@@ -130,6 +130,9 @@ Deno.test({
       assertStringIncludes(html, "<!DOCTYPE html>");
       assertStringIncludes(html, "composeEvents");
       assertStringIncludes(html, "ui/compose/event");
+      assertStringIncludes(html, "ui/initialize");
+      assertStringIncludes(html, "io.casys.mcp.view-components/v1");
+      assertStringIncludes(html, "chart.series-summary");
     } finally {
       await conn.close();
     }

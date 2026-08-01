@@ -106,13 +106,15 @@ function generateAreasLayout(
   const areaMap = descriptor.areaMap ?? {};
   const iframesHtml = descriptor.children
     .map((child) => {
-      const area = areaMap[child.source] ?? child.source;
+      const componentId = child.componentId ?? child.source;
+      const area = areaMap[componentId] ?? componentId;
       const slot = slots.get(child.slot);
       return `<iframe
         id="ui-${child.slot}"
         src="${escapeAttr(slot?.iframeSrc ?? child.resourceUri)}"
         data-slot="${child.slot}"
         data-source="${escapeAttr(child.source)}"
+        data-component-id="${escapeAttr(componentId)}"
         data-area="${escapeAttr(area)}"
 ${generateSandboxAttribute(slot)}
       ></iframe>`;
@@ -155,6 +157,7 @@ function generateTabsLayout(
           src="${escapeAttr(slots.get(child.slot)?.iframeSrc ?? child.resourceUri)}"
           data-slot="${child.slot}"
           data-source="${escapeAttr(child.source)}"
+          data-component-id="${escapeAttr(child.componentId ?? child.source)}"
 ${generateSandboxAttribute(slots.get(child.slot))}
         ></iframe>`,
     )
@@ -179,6 +182,7 @@ function generateIframe(
         src="${escapeAttr(slot?.iframeSrc ?? child.resourceUri)}"
         data-slot="${child.slot}"
         data-source="${escapeAttr(child.source)}"
+        data-component-id="${escapeAttr(child.componentId ?? child.source)}"
 ${generateSandboxAttribute(slot)}
       ></iframe>`;
 }
@@ -212,6 +216,8 @@ export function resolveRendererSlots(
     );
 
     slots.set(child.slot, {
+      componentId: child.componentId ?? child.source,
+      surface: child.surface,
       iframeSrc: configured?.iframeSrc ?? child.resourceUri,
       expectedOrigin: normalizeExpectedOrigin(configured?.expectedOrigin),
       sandbox,

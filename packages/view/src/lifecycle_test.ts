@@ -2,10 +2,12 @@ import { assertEquals, assertRejects } from "@std/assert";
 import { App } from "@modelcontextprotocol/ext-apps";
 
 import {
+  type TeardownReason,
   type ToolInputParams,
   type ToolInputPartialParams,
   type ToolResultParams,
   wireLifecycleCallbacks,
+  wireTeardownLifecycle,
 } from "./lifecycle.ts";
 import type { AppHandle, AppLifecycleCallbacks } from "./types.ts";
 
@@ -13,6 +15,10 @@ interface FakeOneShotApp {
   ontoolinput?: (params: ToolInputParams) => void;
   ontoolinputpartial?: (params: ToolInputPartialParams) => void;
   ontoolresult?: (params: ToolResultParams) => void;
+}
+
+interface FakeTeardownApp {
+  onteardown?: () => Promise<Record<string, never>>;
 }
 
 function fakeApp(): FakeOneShotApp {
@@ -34,6 +40,7 @@ function result(label: string): ToolResultParams {
 function fakeHandle(): AppHandle<Record<string, never>> {
   return {
     ctx: {} as AppHandle<Record<string, never>>["ctx"],
+    events: {} as AppHandle<Record<string, never>>["events"],
     currentView: "home",
     navigate: () => Promise.resolve(),
     dispose: () => Promise.resolve(),
@@ -185,4 +192,78 @@ Deno.test("LifecycleDispatcher rejects a second activation", async () => {
     Error,
     "may only be called once",
   );
+});
+
+Deno.test("wireTeardownLifecycle registers the host handler before activation", () => {
+  const app: FakeTeardownApp = {};
+  wireTeardownLifecycle(app as Parameters<typeof wireTeardownLifecycle>[0]);
+  assertEquals(typeof app.onteardown, "function");
+});
+
+Deno.test("wireTeardownLifecycle is accepted by ext-apps strict mode before connect", () => {
+  const app = new App(
+    { name: "teardown-test", version: "0.0.0" },
+    {},
+    { strict: true },
+  );
+  wireTeardownLifecycle(app);
+  assertEquals(typeof app.onteardown, "function");
+});
+
+Deno.test("host teardown and manual dispose share one cleanup", async () => {
+  const app: FakeTeardownApp = {};
+  const calls: string[] = [];
+  const dispatcher = wireTeardownLifecycle(
+    app as Parameters<typeof wireTeardownLifecycle<Record<string, never>>>[0],
+    (_handle, reason: TeardownReason) => {
+      calls.push(`user:${reason}`);
+    },
+  );
+  const hostRequest = app.onteardown?.();
+  assertEquals(calls, []);
+
+  dispatcher.activate(fakeHandle(), () => {
+    calls.push("internal");
+  });
+  await hostRequest;
+  await dispatcher.dispose();
+
+  assertEquals(calls, ["user:host", "internal"]);
+});
+
+Deno.test("manual dispose followed by host teardown cleans up once", async () => {
+  const app: FakeTeardownApp = {};
+  let userCalls = 0;
+  let internalCalls = 0;
+  const dispatcher = wireTeardownLifecycle(
+    app as Parameters<typeof wireTeardownLifecycle<Record<string, never>>>[0],
+    () => {
+      userCalls++;
+    },
+  );
+  dispatcher.activate(fakeHandle(), () => {
+    internalCalls++;
+  });
+
+  await dispatcher.dispose();
+  assertEquals(await app.onteardown?.(), {});
+  assertEquals(userCalls, 1);
+  assertEquals(internalCalls, 1);
+});
+
+Deno.test("teardown always runs internal cleanup when the user callback fails", async () => {
+  const app: FakeTeardownApp = {};
+  let internalCalls = 0;
+  const dispatcher = wireTeardownLifecycle(
+    app as Parameters<typeof wireTeardownLifecycle<Record<string, never>>>[0],
+    () => {
+      throw new Error("user teardown failed");
+    },
+  );
+  dispatcher.activate(fakeHandle(), () => {
+    internalCalls++;
+  });
+
+  await assertRejects(() => dispatcher.dispose(), Error, "user teardown failed");
+  assertEquals(internalCalls, 1);
 });

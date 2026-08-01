@@ -4,22 +4,33 @@ All notable changes to `@casys/mcp-compose` will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Add explicit small-component surface negotiation between a Compose host and componentized MCP
+  Apps, with safe layout, stable instance identities, default standalone surfaces, and explicit
+  unknown-component failures.
+
+### Changed
+
+- Prepare `0.8.0` for the component-surface contract while keeping `ui/compose/event` as the
+  separate viewer-to-viewer event plane. Remove the unpublished size/purpose projection experiment.
+
 ## [0.7.1] - 2026-07-31
 
 ### Fixed
 
-- **Nested App framing.** Reviewed `frameAncestors` now propagate to every child MCP App
-  response as well as the parent dashboard, so an embedded dashboard works through the complete
-  product-shell iframe chain. Invalid CSP sources remain excluded.
+- **Nested App framing.** Reviewed `frameAncestors` now propagate to every child MCP App response as
+  well as the parent dashboard, so an embedded dashboard works through the complete product-shell
+  iframe chain. Invalid CSP sources remain excluded.
 
 ## [0.7.0] - 2026-07-31
 
 ### Added
 
-- **Reviewed dashboard embedding.** `composeAndServeDashboard()` and
-  `serveComposedDashboard()` accept `frameAncestors` when a local product shell needs to mount the
-  live dashboard in-place. Values are restricted to validated HTTP(S) origins; the default remains
-  `frame-ancestors 'none'` so standalone dashboards are not embeddable accidentally.
+- **Reviewed dashboard embedding.** `composeAndServeDashboard()` and `serveComposedDashboard()`
+  accept `frameAncestors` when a local product shell needs to mount the live dashboard in-place.
+  Values are restricted to validated HTTP(S) origins; the default remains `frame-ancestors 'none'`
+  so standalone dashboards are not embeddable accidentally.
 
 ## [0.6.0] - 2026-07-31
 

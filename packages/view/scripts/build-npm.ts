@@ -25,7 +25,10 @@ console.log(`[build-npm] Version: ${VERSION}`);
 await emptyDir("./dist-node");
 
 await build({
-  entryPoints: ["./mod.ts"],
+  entryPoints: [
+    "./mod.ts",
+    { name: "./react", path: "./react.ts" },
+  ],
   outDir: "./dist-node",
   shims: {
     deno: false,
@@ -66,7 +69,34 @@ pkg.exports = {
     import: "./esm/mod.js",
     require: "./script/mod.js",
   },
+  "./react": {
+    types: "./esm/react.d.ts",
+    import: "./esm/react.js",
+    require: "./script/react.js",
+  },
 };
+
+// dnt sees the optional React entry point and initially records its imports as
+// hard dependencies. Keep the base package renderer-neutral: npm consumers
+// that only import `@casys/mcp-view` must not install a UI framework. Projects
+// opting into `@casys/mcp-view/react` already own these renderer dependencies.
+const optionalReactPeers = [
+  "react",
+  "react-dom",
+  "@types/react",
+  "@types/react-dom",
+] as const;
+pkg.peerDependencies ??= {};
+pkg.peerDependenciesMeta ??= {};
+for (const dependency of optionalReactPeers) {
+  const version = pkg.dependencies?.[dependency];
+  if (!version) {
+    throw new Error(`[build-npm] expected dnt dependency ${dependency}`);
+  }
+  delete pkg.dependencies[dependency];
+  pkg.peerDependencies[dependency] = version;
+  pkg.peerDependenciesMeta[dependency] = { optional: true };
+}
 await Deno.writeTextFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
 
 await smokeTestPackageImport();
@@ -97,6 +127,10 @@ async function smokeTestPackageImport(): Promise<void> {
           "}",
           "if (typeof mod.defineView !== 'function') {",
           "  throw new Error('defineView export missing');",
+          "}",
+          "const react = await import('@casys/mcp-view/react');",
+          "if (typeof react.defineReactView !== 'function') {",
+          "  throw new Error('defineReactView export missing');",
           "}",
         ].join("\n"),
       ],

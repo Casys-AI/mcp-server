@@ -20,6 +20,15 @@ import type {
 
 import type { AppHandle, AppLifecycleCallbacks } from "./types.ts";
 
+/** Source of the first teardown request that wins the idempotency race. */
+export type TeardownReason = "host" | "dispose";
+
+/** Author cleanup hook, invoked at most once with a fully initialized handle. */
+export type TeardownLifecycleCallback<S> = (
+  handle: AppHandle<S>,
+  reason: TeardownReason,
+) => void | Promise<void>;
+
 /** Notification payload for a completed tool-input notification. */
 export type ToolInputParams = McpUiToolInputNotification["params"];
 
@@ -42,6 +51,9 @@ type LifecycleEvent =
 /** Structural minimum needed to install the ext-apps one-shot callbacks. */
 type OneShotEventSource = Pick<App, "ontoolinput" | "ontoolinputpartial" | "ontoolresult">;
 
+/** Structural minimum needed to register host teardown before connect. */
+type TeardownEventSource = Pick<App, "onteardown">;
+
 /**
  * Register the ext-apps one-shot notification handlers immediately.
  *
@@ -58,6 +70,108 @@ export function wireLifecycleCallbacks<S>(
   app.ontoolinputpartial = (params) => dispatcher.capture({ kind: "toolInputPartial", params });
   app.ontoolresult = (params) => dispatcher.capture({ kind: "toolResult", params });
   return dispatcher;
+}
+
+/**
+ * Register `ui/resource-teardown` before `App.connect()` and coordinate it
+ * with manual `AppHandle.dispose()`. Both paths share one cleanup operation.
+ */
+export function wireTeardownLifecycle<S>(
+  app: TeardownEventSource,
+  callback?: TeardownLifecycleCallback<S>,
+): TeardownDispatcher<S> {
+  const dispatcher = new TeardownDispatcher(callback);
+  app.onteardown = async () => {
+    await dispatcher.request("host");
+    return {};
+  };
+  return dispatcher;
+}
+
+/** Internal cleanup function installed once the router and handle exist. */
+type InternalCleanup = () => void | Promise<void>;
+
+/**
+ * Defers an early host request until activation, then runs author and
+ * framework cleanup exactly once. Transport closure remains the manual
+ * dispose caller's responsibility so the host request can still be replied to.
+ */
+export class TeardownDispatcher<S> {
+  private readonly callback?: TeardownLifecycleCallback<S>;
+  private handle?: AppHandle<S>;
+  private cleanup?: InternalCleanup;
+  private cleanupPromise?: Promise<void>;
+  private pending?: {
+    readonly reason: TeardownReason;
+    readonly resolve: () => void;
+    readonly reject: (error: unknown) => void;
+  };
+
+  constructor(callback?: TeardownLifecycleCallback<S>) {
+    this.callback = callback;
+  }
+
+  /** Supply the fully initialized handle and framework cleanup operation. */
+  activate(handle: AppHandle<S>, cleanup: InternalCleanup): void {
+    if (this.handle) throw new Error("TeardownDispatcher.activate() may only be called once");
+    this.handle = handle;
+    this.cleanup = cleanup;
+    if (!this.pending) return;
+
+    const pending = this.pending;
+    this.pending = undefined;
+    this.run(pending.reason).then(pending.resolve, pending.reject);
+  }
+
+  /** Manual-dispose entry point. */
+  dispose(): Promise<void> {
+    return this.request("dispose");
+  }
+
+  /** Reject a host request buffered during a failed bootstrap. */
+  abort(error: unknown): void {
+    if (!this.pending) return;
+    const pending = this.pending;
+    this.pending = undefined;
+    pending.reject(error);
+  }
+
+  /** Shared host/manual idempotency gate. */
+  request(reason: TeardownReason): Promise<void> {
+    if (this.cleanupPromise) return this.cleanupPromise;
+    if (this.handle && this.cleanup) {
+      this.cleanupPromise = this.run(reason);
+      return this.cleanupPromise;
+    }
+
+    this.cleanupPromise = new Promise<void>((resolve, reject) => {
+      this.pending = { reason, resolve, reject };
+    });
+    return this.cleanupPromise;
+  }
+
+  private async run(reason: TeardownReason): Promise<void> {
+    if (!this.handle || !this.cleanup) {
+      throw new Error("TeardownDispatcher cleanup ran before activation");
+    }
+
+    const errors: unknown[] = [];
+    try {
+      await this.callback?.(this.handle, reason);
+    } catch (error) {
+      errors.push(error);
+    }
+    try {
+      await this.cleanup();
+    } catch (error) {
+      errors.push(error);
+    }
+
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) {
+      throw new AggregateError(errors, "mcp-view teardown callbacks failed");
+    }
+  }
 }
 
 /**

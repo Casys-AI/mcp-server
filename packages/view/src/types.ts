@@ -24,9 +24,13 @@ import type {
 import type { CallToolResult, Implementation } from "@modelcontextprotocol/sdk/types.js";
 
 import type { SampleArgs, SampleResult } from "./sample.ts";
+import type { ComposeEventClient } from "./compose-events.ts";
+import type { AdvertisedComponentCatalog } from "./components.ts";
+import type { TeardownLifecycleCallback } from "./lifecycle.ts";
 import type { ToolsHandle, ViewToolDef } from "./tools.ts";
 
 export type { SampleArgs, SampleResult } from "./sample.ts";
+export type { TeardownLifecycleCallback, TeardownReason } from "./lifecycle.ts";
 export type { InferToolArgs, ToolsHandle, ViewToolDef } from "./tools.ts";
 
 // ---------------------------------------------------------------------------
@@ -94,6 +98,13 @@ export interface AppLifecycleCallbacks<S> {
   onToolInput?: ToolInputLifecycleCallback<S>;
   onToolInputPartial?: ToolInputPartialLifecycleCallback<S>;
   onToolResult?: ToolResultLifecycleCallback<S>;
+
+  /**
+   * Cleanup invoked for either host `ui/resource-teardown` or manual
+   * `dispose()`, whichever arrives first. Registered before `connect()` and
+   * called at most once with a fully initialized handle.
+   */
+  onTeardown?: TeardownLifecycleCallback<S>;
 }
 
 /**
@@ -294,6 +305,13 @@ export interface AppContext<S> {
   readonly tools: ToolsHandle;
 
   /**
+   * Optional cross-viewer event channel. It is always safe to subscribe;
+   * events are delivered only when the host routes `ui/compose/event`.
+   * This API is standalone and does not depend on `@casys/mcp-compose`.
+   */
+  readonly events?: ComposeEventClient;
+
+  /**
    * Escape hatch: the underlying ext-apps `App` instance. Use for anything
    * the SDK does not wrap (sendMessage, updateModelContext, event listeners,
    * `createSamplingMessage` with `tools`, raw `registerTool` handles, …).
@@ -364,6 +382,13 @@ export interface AppConfig<S = Record<string, never>> extends AppLifecycleCallba
   capabilities?: McpUiAppCapabilities;
 
   /**
+   * Serializable catalog of small components owned by this App. `createMcpApp`
+   * advertises it under the Casys experimental capability while preserving
+   * every unrelated capability supplied above.
+   */
+  componentCatalog?: AdvertisedComponentCatalog;
+
+  /**
    * Auto-apply theme + CSS variables + font rules from host context to the
    * document on handshake and on every `host-context-changed` notification.
    *
@@ -429,6 +454,9 @@ export interface AppHandle<S> {
    * app's lifetime.
    */
   readonly ctx: AppContext<S>;
+
+  /** Same standalone event client exposed as `ctx.events`. */
+  readonly events?: ComposeEventClient;
 
   /**
    * Name of the currently-mounted view.

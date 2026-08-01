@@ -14,6 +14,20 @@ export type { UiOrchestration } from "./orchestration.ts";
 
 export type { CollectedUiResource } from "./resources.ts";
 
+export type {
+  AdvertisedComponentCatalog,
+  ComponentSurface,
+  ComponentSurfaceItem,
+  ComponentSurfaceLayout,
+  ComponentSurfaceResolution,
+  JsonValue,
+  ReadyComponentSurface,
+  SurfaceGap,
+  SurfaceLayoutType,
+  UnresolvedComponentSurface,
+  ViewComponentDescriptor,
+} from "./components.ts";
+
 export type { CompositeUiDescriptor } from "./descriptor.ts";
 
 export type {

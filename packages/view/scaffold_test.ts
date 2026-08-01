@@ -26,6 +26,9 @@ Deno.test("result-viewer scaffold creates a standalone vanilla project in a temp
     }
     const main = await Deno.readTextFile(join(target, "src/main.ts"));
     assertStringIncludes(main, "createMcpApp");
+    assertStringIncludes(main, "defineComponentRegistry");
+    assertStringIncludes(main, "mountComponentSurface");
+    assertStringIncludes(main, '"result.metrics"');
     assertStringIncludes(main, "onToolResult");
     assertStringIncludes(main, "before connect()");
     assertStringIncludes(main, 'aria-busy", "false');
@@ -35,13 +38,13 @@ Deno.test("result-viewer scaffold creates a standalone vanilla project in a temp
 
     const configPath = join(target, "deno.json");
     const generatedConfig = await Deno.readTextFile(configPath);
-    assertStringIncludes(generatedConfig, '"@casys/mcp-view": "jsr:@casys/mcp-view@0.4.1"');
+    assertStringIncludes(generatedConfig, '"@casys/mcp-view": "jsr:@casys/mcp-view@0.5.0"');
     assertStringIncludes(generatedConfig, '"minimumDependencyAge"');
     assertStringIncludes(generatedConfig, '"exclude": ["jsr:@casys/mcp-view"]');
     await Deno.writeTextFile(
       configPath,
       generatedConfig.replace(
-        "jsr:@casys/mcp-view@0.4.1",
+        "jsr:@casys/mcp-view@0.5.0",
         new URL("./mod.ts", import.meta.url).href,
       ),
     );

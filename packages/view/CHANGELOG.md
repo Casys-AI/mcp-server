@@ -7,6 +7,21 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Add renderer-neutral structured-result helpers, deterministic teardown, pre-connect tool-result
+  lifecycle wiring, small reusable component registries/surfaces, and the optional Compose event
+  channel.
+- Add safe status, metric-grid, key-value, and custom-component factories. A standalone viewer and a
+  composed dashboard now mount the same component definitions.
+- Add the optional `@casys/mcp-view/react` adapter while keeping React and ReactDOM as optional npm
+  peers and preserving direct Preact/ext-apps consumers.
+
+### Changed
+
+- Prepare `0.5.0` for the componentized viewer authoring framework and update generated scaffold
+  pins. Remove the unpublished semantic-projection experiment.
+
 ## [0.4.1] - 2026-07-31
 
 ### Fixed

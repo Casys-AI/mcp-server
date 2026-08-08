@@ -2,6 +2,127 @@
 
 All notable changes to `@casys/mcp-server` will be documented in this file.
 
+## [0.25.0] — 2026-08-08
+
+### Security
+
+- **Client credentials are now bound to the authorization server that minted
+  them** (spec 2026-07-28, SEP-2352). Previously `tokens()` returned stored
+  credentials to any caller. The SDK's `auth()` discovers the authorization
+  server from the **MCP server's own** protected-resource metadata and then
+  hands those tokens to `refreshAuthorization(authorizationServerUrl, …)` — so
+  an MCP server that changed, or was made to advertise, a different
+  authorization server received a refresh token minted by the previous one. A
+  client must not let a resource server choose who sees its credentials.
+
+  The binding is recorded from `saveDiscoveryState()`, which `auth()` calls
+  after discovery and before asking for tokens. Two details matter:
+
+  - It binds to the **discovered URL**, not to `metadata.issuer`. `issuer` is
+    published by the authorization server about itself, and SDK 1.29 validates
+    the metadata's shape without checking it against the URL it was fetched
+    from — so binding to the claim would let an attacker's server unlock
+    another server's credentials by claiming its name. A mismatch is logged
+    (RFC 8414 requires them to match) but nothing depends on the claim.
+  - The `refresh_token` carry-over in `saveTokens()` is now scoped to the same
+    authorization server. `auth({ authorizationCode })` reaches `saveTokens()`
+    without passing through `tokens()`, so an exchange returning no refresh
+    token would otherwise have re-labelled the previous server's secret with
+    the new issuer.
+
+  **On upgrade:** existing stored credentials carry no recorded issuer, so they
+  are discarded once and re-authorization is required. A genuine authorization
+  server migration behaves the same way — old credentials dropped, new
+  authorization performed — and both are reported through the new optional
+  `logger` on the client config.
+
+### Added
+
+- `logger?: (message: string) => void` on the OAuth client config. Credential
+  lifecycle events — an authorization server change, a discarded legacy
+  record — are otherwise invisible, and an operator seeing an unexpected login
+  prompt has no way to find out why. URLs are redacted to origin and path
+  before being logged.
+
+- **W3C trace context propagation** (spec 2026-07-28, SEP-414). A tool-call span
+  now joins the caller's trace instead of starting a detached one. `traceparent`
+  and `tracestate` are read from `params._meta` — bare, not namespaced, which
+  the revision spells out as an explicit exception to the `_meta` prefix rule so
+  the values match what a caller would put in an HTTP header — and become the
+  span's remote parent.
+
+  Both are validated against the W3C grammar rather than passed through:
+  `traceparent` follows the forward-compatibility rule (version `00` is a fixed
+  55 characters, a higher version may carry unknown trailing fields), and
+  `tracestate` members are checked against the ABNF, with invalid or duplicate
+  members dropped. The list is re-serialised onto the next hop, so accepting a
+  malformed member would turn one peer's bug into ours. `tracestate` is carried
+  through a minimal `TraceState` implementation because `@opentelemetry/api`
+  declares the interface but ships no implementation.
+
+  **`baggage` is deliberately not read.** It is an unbounded, caller-controlled
+  key/value list that routinely carries tenant, user and session identifiers,
+  and the only thing this server could do with it is copy it into spans —
+  exporting whatever a caller put there to the trace backend, with no way to
+  know whether it holds PII or a secret. Propagating it safely needs the OTel
+  baggage API and an explicit key allowlist; until a use case asks for that,
+  reading it at all is a liability.
+
+  Wired on both transports — a local stdio server is where a detached span is
+  hardest to trace back to the host that caused it. stdio now also reads
+  `io.modelcontextprotocol/logLevel`, which it previously ignored. A malformed
+  header degrades to an unparented span and never fails the call.
+
+### Fixed
+
+- **`server/discover` now answers on stdio.** The spec makes the RPC a MUST for
+  every server and names stdio as a primary use — a client probes it for
+  backward compatibility. Only the HTTP path implemented it, so a stdio peer got
+  `-32601` and concluded this was not a 2026-07-28 server. That conclusion was
+  wrong in exactly the case the probe exists for: the SDK's stdio handshake
+  negotiates `2025-11-25`, so `server/discover` is the only way a peer learns
+  the server also speaks `2026-07-28` over HTTP.
+
+  Routed through the SDK's `fallbackRequestHandler` — `setRequestHandler` takes
+  a Zod schema and the method is absent from the SDK's type surface; declaring
+  one schema is not worth a Zod peer dependency in the public API. Unknown
+  methods still answer `MethodNotFound`. Both transports now build the payload
+  from one `buildDiscoverResult()`, so `instructions` or a new capability cannot
+  land on one path only.
+
+- **Tool argument validation now runs on JSON Schema 2020-12.** The validator
+  imported ajv's default export, which is **draft-07**. Spec 2026-07-28
+  (SEP-2106) allows any 2020-12 keyword in `inputSchema` / `outputSchema`, and
+  the draft-07 build treats the keywords added in 2020-12 — `prefixItems`,
+  `unevaluatedProperties`, `unevaluatedItems`, `$dynamicRef` — as unknown.
+  Combined with `strict: false` the failure was **silent**: the schema compiled,
+  the constraint never ran, and a violating payload validated clean. A tool
+  declaring `prefixItems: [{type:"string"}, {type:"number"}]` accepted
+  `[42, "nope"]`.
+
+  **Two breaking consequences**, both worth checking before upgrading:
+
+  1. A deployment already shipping a 2020-12 schema will see payloads that used
+     to pass now correctly fail.
+  2. A schema using the **draft-07 tuple form** — `items: [...]` with an array —
+     is now rejected by ajv at compile time, so `registerTool` throws and the
+     tool never registers. 2020-12 replaced that form with `prefixItems` and
+     requires `items` to be a single subschema. The failure is at startup, not
+     on first call, and it is deliberate: a tool whose declared boundary cannot
+     be enforced should not come up pretending it can. Migration is mechanical —
+     rename `items` to `prefixItems`.
+
+  Everything draft-07 and 2020-12 share is unaffected, including
+  `items`-as-a-single-subschema, which is the form used throughout this repo.
+  Both cases are pinned by tests.
+
+- **`fallbackRequestHandler` changes the message on unrouted methods.** The code
+  is unchanged (`-32601`), but the string a stdio peer receives goes from
+  `"Method not found"` to `"MCP error -32601: Method not found"`: an error
+  raised from a handler travels as `McpError`, whose constructor adds that
+  prefix, and there is no way to raise the code from a handler without it. Only
+  a peer matching on the message text rather than the code is affected.
+
 ## [0.24.1] — 2026-07-31
 
 ### Fixed

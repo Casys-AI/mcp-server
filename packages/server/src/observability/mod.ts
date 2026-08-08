@@ -12,6 +12,7 @@ export {
   endToolCallSpan,
   getServerTracer,
   isOtelEnabled,
+  parseTraceParent,
   recordAuthEvent,
   startToolCallSpan,
   type ToolCallSpanAttributes,

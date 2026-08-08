@@ -18,7 +18,12 @@ export interface StoredCredentials {
   tokens: OAuthTokens;
   /** When the tokens were obtained (Unix epoch ms) */
   obtainedAt: number;
-  /** Authorization server URL (needed for refresh) */
+  /**
+   * Issuer that minted these credentials (SEP-2352).
+   *
+   * Absent on records written before the binding existed; `tokens()` treats
+   * that as unusable, since nothing proves who minted them.
+   */
   authServerUrl?: string;
 }
 
@@ -48,6 +53,14 @@ export interface OAuthClientConfigBase {
   callbackPort?: number;
   /** Timeout for user to complete OAuth flow (ms, default: 120_000) */
   authTimeout?: number;
+  /**
+   * Optional sink for credential-lifecycle events.
+   *
+   * Notably an authorization-server change (SEP-2352): the client silently
+   * drops its stored credentials and re-authorizes, and an operator debugging
+   * an unexpected login prompt has no other way to see why.
+   */
+  logger?: (message: string) => void;
 }
 
 /** Static OAuth client registration (default, backwards-compatible mode). */

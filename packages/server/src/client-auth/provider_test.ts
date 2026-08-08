@@ -62,6 +62,14 @@ Deno.test("OAuthClientProviderImpl - saveTokens preserves existing refresh_token
     openBrowser: async () => {},
   });
 
+  // Discovery first, exactly as `auth()` does before it ever saves tokens.
+  // Since SEP-2352 the carry-over is scoped to one authorization server, so
+  // this keeps the test on the real code path rather than a shape `auth()`
+  // never produces. The boundary itself lives in issuer-binding_test.ts.
+  await provider.saveDiscoveryState({
+    authorizationServerUrl: "https://as.example.com",
+  });
+
   await provider.saveTokens({
     access_token: "access-123",
     token_type: "bearer",

@@ -2,7 +2,7 @@
 
 All notable changes to `@casys/mcp-server` will be documented in this file.
 
-## [Unreleased]
+## [0.25.0] — 2026-08-08
 
 ### Security
 

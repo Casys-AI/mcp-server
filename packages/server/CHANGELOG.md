@@ -4,7 +4,45 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
 
 ## [Unreleased]
 
+### Security
+
+- **Client credentials are now bound to the authorization server that minted
+  them** (spec 2026-07-28, SEP-2352). Previously `tokens()` returned stored
+  credentials to any caller. The SDK's `auth()` discovers the authorization
+  server from the **MCP server's own** protected-resource metadata and then
+  hands those tokens to `refreshAuthorization(authorizationServerUrl, …)` — so
+  an MCP server that changed, or was made to advertise, a different
+  authorization server received a refresh token minted by the previous one. A
+  client must not let a resource server choose who sees its credentials.
+
+  The binding is recorded from `saveDiscoveryState()`, which `auth()` calls
+  after discovery and before asking for tokens. Two details matter:
+
+  - It binds to the **discovered URL**, not to `metadata.issuer`. `issuer` is
+    published by the authorization server about itself, and SDK 1.29 validates
+    the metadata's shape without checking it against the URL it was fetched
+    from — so binding to the claim would let an attacker's server unlock
+    another server's credentials by claiming its name. A mismatch is logged
+    (RFC 8414 requires them to match) but nothing depends on the claim.
+  - The `refresh_token` carry-over in `saveTokens()` is now scoped to the same
+    authorization server. `auth({ authorizationCode })` reaches `saveTokens()`
+    without passing through `tokens()`, so an exchange returning no refresh
+    token would otherwise have re-labelled the previous server's secret with
+    the new issuer.
+
+  **On upgrade:** existing stored credentials carry no recorded issuer, so they
+  are discarded once and re-authorization is required. A genuine authorization
+  server migration behaves the same way — old credentials dropped, new
+  authorization performed — and both are reported through the new optional
+  `logger` on the client config.
+
 ### Added
+
+- `logger?: (message: string) => void` on the OAuth client config. Credential
+  lifecycle events — an authorization server change, a discarded legacy
+  record — are otherwise invisible, and an operator seeing an unexpected login
+  prompt has no way to find out why. URLs are redacted to origin and path
+  before being logged.
 
 - **W3C trace context propagation** (spec 2026-07-28, SEP-414). A tool-call span
   now joins the caller's trace instead of starting a detached one. `traceparent`

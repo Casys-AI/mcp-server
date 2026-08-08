@@ -18,8 +18,10 @@ import {
   type ClientCapabilities,
   ErrorCode,
   type Implementation,
+  type JSONRPCRequest,
   ListResourcesRequestSchema,
   ListToolsRequestSchema,
+  McpError,
   type ReadResourceRequest,
   ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
@@ -102,7 +104,12 @@ import {
   type SubscriptionSink,
 } from "./subscriptions/subscription-registry.ts";
 import { ServerMetrics } from "./observability/metrics.ts";
-import { endToolCallSpan, startToolCallSpan } from "./observability/otel.ts";
+import type { SpanContext } from "@opentelemetry/api";
+import {
+  endToolCallSpan,
+  parseTraceParent,
+  startToolCallSpan,
+} from "./observability/otel.ts";
 import {
   BodyTooLargeError,
   DEFAULT_MAX_BODY_BYTES,
@@ -160,6 +167,16 @@ const STATELESS_SERVER_INFO_KEY = "io.modelcontextprotocol/serverInfo";
  */
 const STATELESS_LOG_LEVEL_KEY = "io.modelcontextprotocol/logLevel";
 
+/**
+ * W3C trace context keys in `params._meta` (spec 2026-07-28, SEP-414).
+ *
+ * Unlike every other per-request field these are NOT namespaced — the revision
+ * documents the bare W3C names, so that a `_meta` envelope carries the same
+ * key a caller would put in an HTTP header.
+ */
+const TRACEPARENT_KEY = "traceparent";
+const TRACESTATE_KEY = "tracestate";
+
 /** Protocol version whose wire format this server implements natively */
 const SPEC_2026_07_28 = "2026-07-28";
 
@@ -212,6 +229,34 @@ interface StatelessClientMeta {
   readonly clientInfo?: Implementation;
   readonly clientCapabilities?: ClientCapabilities;
   readonly logLevel?: McpLogLevel;
+  /** Caller's W3C trace context, so the tool span joins their trace. */
+  readonly traceContext?: SpanContext;
+}
+
+/**
+ * Read the W3C trace context out of `params._meta` (spec 2026-07-28, SEP-414).
+ *
+ * A malformed header leaves the span unparented rather than failing the call:
+ * losing the trace join is an observability gap, refusing the tool call would
+ * be an outage.
+ *
+ * `baggage` is deliberately NOT read. It is an unbounded, caller-controlled
+ * key/value list that routinely carries tenant, user and session identifiers,
+ * and the only thing this server could do with it is copy it into spans —
+ * exporting whatever a caller put there to the trace backend, with no way to
+ * know whether it holds a PII or a secret. Propagating it properly means the
+ * OTel baggage API and an explicit allowlist of keys; until there is a use case
+ * asking for that, reading it at all is a liability. The key stays reserved by
+ * the spec, and this server ignores it.
+ */
+function readTraceContext(
+  meta: Record<string, unknown>,
+): { traceContext?: SpanContext } {
+  const traceContext = parseTraceParent(
+    meta[TRACEPARENT_KEY],
+    meta[TRACESTATE_KEY],
+  );
+  return traceContext ? { traceContext } : {};
 }
 
 /** Valid `io.modelcontextprotocol/logLevel` values (RFC 5424 severities). */
@@ -661,9 +706,31 @@ export class McpApp {
         const toolName = request.params.name;
         const args = request.params.arguments || {};
 
+        // Per-request `_meta` is transport-independent. Trace context matters
+        // here because a local server is exactly where a detached span is
+        // hardest to correlate back to the host that caused it; `logLevel` is
+        // read for the same reason it is on HTTP — the spec makes it
+        // per-request, and a handler must stay silent without it.
+        const meta = request.params._meta;
+        const clientMeta: StatelessClientMeta | undefined = isRecord(meta)
+          ? {
+            ...readTraceContext(meta),
+            ...(readLogLevel(meta) !== undefined
+              ? { logLevel: readLogLevel(meta) }
+              : {}),
+          }
+          : undefined;
+
         let result: unknown;
         try {
-          result = await this.executeToolCall(toolName, args);
+          result = await this.executeToolCall(
+            toolName,
+            args,
+            undefined,
+            undefined,
+            undefined,
+            clientMeta,
+          );
         } catch (error) {
           return this.handleToolError(error, toolName);
         }
@@ -672,6 +739,66 @@ export class McpApp {
         // let them propagate
         return this.buildToolCallResult(toolName, result);
       },
+    );
+
+    // `server/discover` over stdio (spec 2026-07-28, SEP-2575).
+    //
+    // The spec makes this RPC a MUST for every server and names stdio as a
+    // primary use: a client probes it for backward compatibility. That matters
+    // here precisely because the SDK's stdio handshake still negotiates
+    // 2025-11-25 — `server/discover` is then the only way for a peer to learn
+    // this server also speaks 2026-07-28 over HTTP.
+    //
+    // Routed through `fallbackRequestHandler` rather than `setRequestHandler`
+    // because the latter takes a Zod schema, and the method is absent from the
+    // SDK's type surface. Adding a Zod dependency to declare one schema would
+    // put a peer dependency in the public API for a single string comparison.
+    // Every other unknown method keeps its previous answer: MethodNotFound.
+    server.fallbackRequestHandler = (request: JSONRPCRequest) => {
+      if (request.method !== "server/discover") {
+        // Same text the SDK used for an unrouted method. It still reaches the
+        // wire as "MCP error -32601: Method not found" — `McpError` prefixes
+        // its own message and a handler cannot raise the code without it. The
+        // code is unchanged, which is what a peer switches on; the string
+        // difference is pinned by a test and noted in the changelog. Appending
+        // the method name on top of that would have been a second, gratuitous
+        // change to the same field.
+        throw new McpError(ErrorCode.MethodNotFound, "Method not found");
+      }
+      return Promise.resolve(this.buildDiscoverResult());
+    };
+  }
+
+  /**
+   * The `server/discover` result (spec 2026-07-28, SEP-2575).
+   *
+   * Single source of truth for both transports. They used to be one inline
+   * object on the HTTP path; a stdio copy would have been the second place to
+   * forget `instructions` or a new capability.
+   *
+   * Always stamped as 2026-07-28 regardless of what the transport negotiated.
+   * That is deliberate but not free: nothing gates the method, so a peer that
+   * negotiated `2025-11-25` over stdio can call it and receive an envelope it
+   * never agreed to. The alternative is worse — stamping the negotiated version
+   * would make the probe answer "2025" to the client asking whether this server
+   * speaks 2026, which is the one question it exists to answer. Treat
+   * `server/discover` as a cross-version exception: its result describes what
+   * the server supports, not what the current transport negotiated.
+   */
+  private buildDiscoverResult(): Record<string, unknown> {
+    return this.stampResult(
+      this.withCacheHints({
+        supportedVersions: [...STATELESS_SUPPORTED_VERSIONS],
+        capabilities: this.buildServerCapabilities(),
+        serverInfo: {
+          name: this.options.name,
+          version: this.options.version,
+        },
+        ...(this.options.instructions
+          ? { instructions: this.options.instructions }
+          : {}),
+      }, SPEC_2026_07_28),
+      SPEC_2026_07_28,
     );
   }
 
@@ -1008,12 +1135,16 @@ export class McpApp {
     };
 
     // OTel span + metrics
-    const span = startToolCallSpan(toolName, {
-      "mcp.tool.name": toolName,
-      "mcp.server.name": this.options.name,
-      "mcp.transport": request ? "http" : "stdio",
-      "mcp.session.id": sessionId,
-    });
+    const span = startToolCallSpan(
+      toolName,
+      {
+        "mcp.tool.name": toolName,
+        "mcp.server.name": this.options.name,
+        "mcp.transport": request ? "http" : "stdio",
+        "mcp.session.id": sessionId,
+      },
+      clientMeta?.traceContext,
+    );
 
     // Update gauges before execution
     const queueMetrics = this.requestQueue.getMetrics();
@@ -1927,20 +2058,7 @@ export class McpApp {
           return c.json({
             jsonrpc: "2.0",
             id,
-            result: this.stampResult(
-              this.withCacheHints({
-                supportedVersions: [...STATELESS_SUPPORTED_VERSIONS],
-                capabilities: this.buildServerCapabilities(),
-                serverInfo: {
-                  name: this.options.name,
-                  version: this.options.version,
-                },
-                ...(this.options.instructions
-                  ? { instructions: this.options.instructions }
-                  : {}),
-              }, statelessVersion),
-              statelessVersion,
-            ),
+            result: this.buildDiscoverResult(),
           });
         }
 
@@ -2005,6 +2123,7 @@ export class McpApp {
                   STATELESS_CLIENT_CAPABILITIES_KEY
                 ] as ClientCapabilities | undefined,
                 logLevel: readLogLevel(params["_meta"]),
+                ...readTraceContext(params["_meta"]),
               }
               : undefined;
 

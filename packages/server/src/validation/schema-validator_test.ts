@@ -336,3 +336,132 @@ Deno.test("SchemaValidator - uniqueItems and object-size bounds are reported too
   assertEquals(crowded.valid, false);
   assertEquals(crowded.errors[0].expected, "properties <= 2");
 });
+
+// ── JSON Schema 2020-12 (spec 2026-07-28, SEP-2106) ─────────────────────────
+//
+// These assert on the draft, not on a feature. Against ajv's default export —
+// draft-07 — every one of them passed as `valid: true`: the keyword was
+// unknown, `strict: false` swallowed it, and the constraint silently never ran.
+// A validator that accepts what it was told to reject is worse than none,
+// because callers stop checking themselves. These fail loudly if the import
+// ever falls back to the draft-07 build.
+
+Deno.test("SchemaValidator - 2020-12 prefixItems constrains tuple positions", () => {
+  const validator = new SchemaValidator();
+
+  validator.addSchema("tuple", {
+    type: "object",
+    properties: {
+      pair: {
+        type: "array",
+        prefixItems: [{ type: "string" }, { type: "number" }],
+      },
+    },
+  });
+
+  assertEquals(validator.validate("tuple", { pair: ["a", 1] }).valid, true);
+
+  const swapped = validator.validate("tuple", { pair: [1, "a"] });
+  assertEquals(swapped.valid, false);
+  assertEquals(swapped.errors[0].path, "/pair/0");
+  assertEquals(swapped.errors[0].expected, "string");
+});
+
+Deno.test("SchemaValidator - 2020-12 unevaluatedProperties seals an object", () => {
+  const validator = new SchemaValidator();
+
+  validator.addSchema("sealed", {
+    type: "object",
+    properties: { a: { type: "string" } },
+    unevaluatedProperties: false,
+  });
+
+  assertEquals(validator.validate("sealed", { a: "x" }).valid, true);
+  assertEquals(
+    validator.validate("sealed", { a: "x", smuggled: "in" }).valid,
+    false,
+  );
+});
+
+Deno.test("SchemaValidator - 2020-12 unevaluatedItems bounds an array", () => {
+  const validator = new SchemaValidator();
+
+  validator.addSchema("bounded_items", {
+    type: "object",
+    properties: {
+      only_two: {
+        type: "array",
+        prefixItems: [{ type: "string" }, { type: "string" }],
+        unevaluatedItems: false,
+      },
+    },
+  });
+
+  assertEquals(
+    validator.validate("bounded_items", { only_two: ["a", "b"] }).valid,
+    true,
+  );
+  assertEquals(
+    validator.validate("bounded_items", { only_two: ["a", "b", "c"] }).valid,
+    false,
+  );
+});
+
+Deno.test("SchemaValidator - the draft-07 keywords shared with 2020-12 still validate", () => {
+  // Scoped to the shared subset on purpose — this does NOT claim draft-07
+  // compatibility in general. `items` as a single subschema means the same
+  // thing in both drafts, and that is the spelling in use across this repo.
+  // The tuple form is the one that changed; see the test below.
+  const validator = new SchemaValidator();
+
+  validator.addSchema("legacy", {
+    type: "object",
+    properties: {
+      tags: { type: "array", items: { type: "string" }, minItems: 1 },
+      code: { type: "string", pattern: "^[a-z]+$" },
+    },
+    required: ["code"],
+    additionalProperties: false,
+  });
+
+  assertEquals(
+    validator.validate("legacy", { code: "abc", tags: ["x"] }).valid,
+    true,
+  );
+  assertEquals(validator.validate("legacy", { code: "ABC" }).valid, false);
+  assertEquals(validator.validate("legacy", { tags: ["x"] }).valid, false);
+  assertEquals(
+    validator.validate("legacy", { code: "abc", extra: 1 }).valid,
+    false,
+  );
+});
+
+Deno.test("SchemaValidator - a draft-07 tuple schema is rejected at registration", () => {
+  // The sharp edge of the 2020-12 move, pinned so nobody has to rediscover it
+  // from a bug report. `items: [...]` was the draft-07 tuple form; 2020-12
+  // replaced it with `prefixItems` and requires `items` to be a single
+  // subschema.
+  //
+  // The failure is louder than "the constraint stops applying": ajv rejects the
+  // schema at compile time, so `addSchema` throws and the tool never
+  // registers. That is the right failure — a tool whose declared boundary
+  // cannot be enforced should not come up pretending it can — but it is a
+  // breaking change for any consumer shipping a tuple, and it surfaces at
+  // startup rather than on the first call.
+  const validator = new SchemaValidator();
+
+  assertThrows(
+    () =>
+      validator.addSchema("legacy_tuple", {
+        type: "object",
+        properties: {
+          pair: {
+            type: "array",
+            items: [{ type: "string" }, { type: "number" }],
+          },
+        },
+      }),
+    Error,
+    "schema is invalid",
+  );
+});

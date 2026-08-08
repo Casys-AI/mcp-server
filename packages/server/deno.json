@@ -22,6 +22,7 @@
     "@modelcontextprotocol/ext-apps": "npm:@modelcontextprotocol/ext-apps@^1.7.4",
     "@std/assert": "jsr:@std/assert@^1",
     "ajv": "npm:ajv@^8.17.1",
+    "ajv/dist/2020.js": "npm:ajv@^8.17.1/dist/2020.js",
     "hono": "npm:hono@^4",
     "hono/cors": "npm:hono@^4/cors",
     "jose": "npm:jose@^6.0.0",

@@ -8,7 +8,20 @@
  */
 
 // deno-lint-ignore-file no-explicit-any
-import AjvDefault from "ajv";
+// Draft 2020-12, not ajv's default export (draft-07). Spec 2026-07-28
+// (SEP-2106) allows any JSON Schema 2020-12 keyword in `inputSchema` /
+// `outputSchema`, and the draft-07 build treats the keywords added in 2020-12 —
+// `prefixItems`, `unevaluatedProperties`, `unevaluatedItems`, `$dynamicRef` —
+// as unknown. Combined with `strict: false` that failure is silent: the schema
+// compiles, the constraint is never applied, and a violating payload validates
+// clean. A tool author's declared boundary has to actually hold.
+//
+// Spelled as the full `dist/` path, not `ajv/2020`: `build-node.sh` copies
+// import specifiers verbatim into the npm distribution, and ajv 8 ships no
+// `exports` map and no root-level `2020.js`, so `ajv/2020` resolves under
+// Deno's import map and then fails at runtime in Node with ERR_MODULE_NOT_FOUND.
+// This path resolves under both.
+import AjvDefault from "ajv/dist/2020.js";
 
 // Get the Ajv constructor (handles ESM/CJS differences)
 const Ajv = (AjvDefault as any).default ?? AjvDefault;

@@ -2,6 +2,55 @@
 
 All notable changes to `@casys/mcp-server` will be documented in this file.
 
+## [0.26.0] — 2026-08-11
+
+### Added
+
+- **Full resource content and lifecycle support.** `ResourceContent` is now a
+  discriminated union: return either `{ text }` or `{ blob }`, never both.
+  `blob` is standard padded base64, so binary resources such as images,
+  archives, and generated files travel without lossy text coercion. The public
+  `TextResourceContent` and `BlobResourceContent` types are exported alongside
+  `ResourceContent` and `ResourceHandler`.
+
+  The framework enforces the same boundary at runtime for JavaScript consumers
+  and unchecked TypeScript: a handler response must contain exactly one payload
+  form, echo the requested URI exactly, have a non-empty MIME type, and use
+  canonical base64 for blobs. Resource-content `_meta` is preserved; resource
+  `annotations`, `icons`, `title`, and `_meta` belong to the `resources/list`
+  metadata where the MCP schema defines them. Existing text handlers that
+  already return their requested URI and a MIME type continue to work unchanged.
+
+- `MCPResource.size?: number` publishes a known byte size in `resources/list`
+  and attests it on every read: the response must contain exactly that many
+  UTF-8 text bytes or decoded blob bytes. The package rejects fractional,
+  unsafe, or negative values at registration, rather than emitting metadata a
+  client has to disregard. When a resource explicitly registers `mimeType`, a
+  read response must use the same value; an omitted resource MIME type is also
+  omitted from the listing rather than guessed.
+
+- `unregisterResource(uri): boolean` removes a registered resource safely before
+  or after transport startup once resource handlers are installed. The framework
+  owns one resource registry and exposes it through low-level MCP list/read/
+  templates handlers, so a failed SDK-side rollback cannot leave a ghost
+  resource. A missing URI returns `false`, enabling idempotent cleanup.
+
+- `registerResources()` validates handlers, canonical URIs, metadata, existing
+  duplicates, and intra-batch duplicates before committing the complete batch.
+  It emits exactly one best-effort `notifications/resources/list_changed` after
+  a successful started-server mutation, and none on validation failure.
+
+- `expectResources: true` predeclares `resources: { listChanged: true }`,
+  including while the registry is empty. `resources/list`, `resources/read`, and
+  `resources/templates/list` are then available from startup; the template list
+  is explicitly empty until template support is added.
+
+### Changed
+
+- `resourceCsp` only injects into the text branch of an HTML resource. Binary
+  blobs are returned byte-for-byte as their base64 payload, even when their MIME
+  type is `text/html`.
+
 ## [0.25.0] — 2026-08-08
 
 ### Security
@@ -20,15 +69,15 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
 
   - It binds to the **discovered URL**, not to `metadata.issuer`. `issuer` is
     published by the authorization server about itself, and SDK 1.29 validates
-    the metadata's shape without checking it against the URL it was fetched
-    from — so binding to the claim would let an attacker's server unlock
-    another server's credentials by claiming its name. A mismatch is logged
-    (RFC 8414 requires them to match) but nothing depends on the claim.
+    the metadata's shape without checking it against the URL it was fetched from
+    — so binding to the claim would let an attacker's server unlock another
+    server's credentials by claiming its name. A mismatch is logged (RFC 8414
+    requires them to match) but nothing depends on the claim.
   - The `refresh_token` carry-over in `saveTokens()` is now scoped to the same
     authorization server. `auth({ authorizationCode })` reaches `saveTokens()`
     without passing through `tokens()`, so an exchange returning no refresh
-    token would otherwise have re-labelled the previous server's secret with
-    the new issuer.
+    token would otherwise have re-labelled the previous server's secret with the
+    new issuer.
 
   **On upgrade:** existing stored credentials carry no recorded issuer, so they
   are discarded once and re-authorization is required. A genuine authorization
@@ -39,10 +88,10 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
 ### Added
 
 - `logger?: (message: string) => void` on the OAuth client config. Credential
-  lifecycle events — an authorization server change, a discarded legacy
-  record — are otherwise invisible, and an operator seeing an unexpected login
-  prompt has no way to find out why. URLs are redacted to origin and path
-  before being logged.
+  lifecycle events — an authorization server change, a discarded legacy record —
+  are otherwise invisible, and an operator seeing an unexpected login prompt has
+  no way to find out why. URLs are redacted to origin and path before being
+  logged.
 
 - **W3C trace context propagation** (spec 2026-07-28, SEP-414). A tool-call span
   now joins the caller's trace instead of starting a detached one. `traceparent`

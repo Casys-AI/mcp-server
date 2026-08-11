@@ -1,6 +1,6 @@
 {
   "name": "@casys/mcp-server",
-  "version": "0.25.0",
+  "version": "0.26.0",
   "license": "MIT",
   "exports": {
     ".": "./mod.ts"
@@ -14,7 +14,7 @@
     "test:security": "deno test --allow-net --allow-read --allow-env --no-check src/http-security_test.ts",
     "test:http": "deno test --allow-net --allow-read --allow-env --no-check src/http-server_test.ts src/http-security_test.ts",
     "changelog:draft": "git -C ../.. cliff --config cliff.toml --tag-pattern 'server-v.*' --include-path 'packages/server/**' --unreleased",
-    "release:check": "deno task test",
+    "release:check": "deno check mod.ts src/ && deno task test",
     "release:tag": "deno run -A ../../scripts/release-tag.ts server"
   },
   "imports": {

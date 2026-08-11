@@ -440,6 +440,54 @@ server.registerResource(
 );
 ```
 
+Handlers return one payload form: `text` (including HTML) **or** `blob` for
+binary content encoded as standard padded base64. Existing text handlers remain
+valid. The framework also checks at runtime that the response URI exactly
+matches the requested URI and that the MIME type is non-empty, which protects
+JavaScript and unchecked TypeScript handlers as well as typed callers.
+
+```typescript
+server.registerResource(
+  { uri: "file://reports/latest.pdf", name: "Latest report", size: 184_320 },
+  async (uri) => ({
+    uri: uri.toString(),
+    mimeType: "application/pdf",
+    blob: await loadReportAsCanonicalBase64(),
+  }),
+);
+```
+
+`size` is optional resource metadata shown in `resources/list`; when present it
+must be a non-negative safe integer and is verified on every read against the
+exact UTF-8 byte length of `text` or decoded byte length of `blob`. Supplying
+`mimeType` in the resource metadata likewise binds every response to that exact
+MIME type. If it is absent, it is absent from `resources/list`; the handler
+still declares the MIME type when it serves the bytes. Resource content may
+include `_meta`. Put `annotations`, `icons`, `title`, and resource `_meta` on
+the `MCPResource` registration, where MCP defines those fields.
+
+With `resourceCsp`, CSP injection applies only to the `text` branch of an HTML
+resource. Blobs are never decoded, transformed, or re-encoded.
+
+Register resources before `start()` / `startHttp()` to install the resource
+handlers and advertise `resources: { listChanged: true }`. They can then be
+added or removed at any time through `unregisterResource(uri)`, which returns
+`true` only once. For a registry that starts empty and discovers resources
+asynchronously, construct with `expectResources: true`; that mode installs the
+same handlers at construction time:
+
+```typescript
+const app = new McpApp({
+  name: "relay",
+  version: "1.0.0",
+  expectResources: true,
+});
+
+// After start(): list/read/templates handlers are already installed.
+app.registerResource(resource, handler);
+app.unregisterResource(resource.uri); // true, then false if called again
+```
+
 #### Capability negotiation (clients that don't support MCP Apps)
 
 Not every MCP client renders UI resources. Clients that do advertise the
@@ -506,11 +554,12 @@ to introspect the protocol target directly.
 ```typescript
 const server = new McpApp(options: McpAppOptions);
 
-// Registration (before start)
+// Registration (before start, unless expectResources: true)
 server.registerTool(tool, handler);
 server.registerTools(tools, handlers);
 server.registerResource(resource, handler);
 server.registerResources(resources, handlers);
+server.unregisterResource(resourceUri); // safe before or after start
 server.use(middleware);
 
 // Transport

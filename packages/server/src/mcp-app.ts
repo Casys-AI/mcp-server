@@ -20,6 +20,7 @@ import {
   type Implementation,
   type JSONRPCRequest,
   ListResourcesRequestSchema,
+  ListResourceTemplatesRequestSchema,
   ListToolsRequestSchema,
   McpError,
   type ReadResourceRequest,
@@ -67,11 +68,7 @@ import type {
   StructuredToolResult,
   ToolHandler,
 } from "./types.ts";
-import {
-  getMcpAppsCapability,
-  MCP_APP_MIME_TYPE,
-  MCP_APP_URI_SCHEME,
-} from "./types.ts";
+import { getMcpAppsCapability, MCP_APP_MIME_TYPE } from "./types.ts";
 import { discoverViewers, resolveViewerDistPath } from "./ui/viewer-utils.ts";
 import type { DiscoverViewersFS } from "./ui/viewer-utils.ts";
 import { buildCspHeader, injectCspMetaTag } from "./security/csp.ts";
@@ -594,6 +591,9 @@ export class McpApp {
       {
         capabilities: {
           tools: {},
+          ...(options.expectResources
+            ? { resources: { listChanged: true } }
+            : {}),
         },
         instructions: options.instructions,
       },
@@ -629,7 +629,7 @@ export class McpApp {
   }
 
   /**
-   * Pre-install resources/list and resources/read handlers on the low-level
+   * Pre-install the resources handlers on the low-level
    * SDK Server. This declares the `resources` capability BEFORE transport
    * connection, allowing dynamic resource registration after start().
    *
@@ -637,20 +637,24 @@ export class McpApp {
    * by registerResource() calls (e.g., after async MCP discovery).
    */
   private installResourceHandlers(): void {
+    if (this.resourceHandlersInstalled) return;
+    if (this.started) {
+      throw new Error(
+        "[McpApp] Cannot install resource handlers after the server starts. " +
+          "Set expectResources: true or register resources before start().",
+      );
+    }
     const server = this.mcpServer.server;
 
     // Declare resources capability before transport connects
-    server.registerCapabilities({ resources: {} });
+    server.registerCapabilities({ resources: { listChanged: true } });
 
     // resources/list — returns currently registered resources
     server.setRequestHandler(ListResourcesRequestSchema, () => {
       return {
-        resources: Array.from(this.resources.values()).map((r) => ({
-          uri: r.resource.uri,
-          name: r.resource.name,
-          description: r.resource.description,
-          mimeType: r.resource.mimeType ?? MCP_APP_MIME_TYPE,
-        })),
+        resources: Array.from(this.resources.values()).map((r) =>
+          this.toResourceListing(r.resource)
+        ),
       };
     });
 
@@ -661,12 +665,18 @@ export class McpApp {
         const uri = request.params.uri;
         const info = this.resources.get(uri);
         if (!info) {
-          throw new Error(`Resource not found: ${uri}`);
+          throw new McpError(
+            ErrorCode.InvalidParams,
+            `Resource not found: ${uri}`,
+          );
         }
 
         try {
-          const content = await info.handler(new URL(uri));
-          const finalContent = this.applyResourceCsp(content);
+          const finalContent = await this.readResourceForProtocol(
+            uri,
+            info.resource,
+            info.handler,
+          );
           return { contents: [finalContent] };
         } catch (error) {
           this.log(
@@ -679,8 +689,15 @@ export class McpApp {
       },
     );
 
+    // We currently expose concrete resources only. An explicit empty template
+    // list is nevertheless required once the resources capability exists:
+    // clients are entitled to ask which URI templates can be expanded.
+    server.setRequestHandler(ListResourceTemplatesRequestSchema, () => ({
+      resourceTemplates: [],
+    }));
+
     this.resourceHandlersInstalled = true;
-    this.log("Resources capability pre-declared (expectResources: true)");
+    this.resourceLog("Resources capability installed");
   }
 
   /**
@@ -1175,31 +1192,259 @@ export class McpApp {
   // ============================================
 
   /**
-   * Validate resource URI scheme
-   * Logs warning if not using ui:// scheme (MCP Apps standard)
-   */
-  /**
    * Apply CSP meta tag injection to HTML resource content (if configured).
-   * Only transforms HTML content (checks mimeType); non-HTML passes through.
+   * Only transforms text HTML content; blob responses pass through unchanged.
    */
-  private applyResourceCsp(
-    content: import("./types.ts").ResourceContent,
-  ): import("./types.ts").ResourceContent {
+  private applyResourceCsp(content: ResourceContent): ResourceContent {
     if (!this.options.resourceCsp) return content;
-    if (!content.mimeType?.includes("text/html")) return content;
+    const mediaType = content.mimeType.split(";", 1)[0].trim().toLowerCase();
+    if (
+      !this.isTextResourceContent(content) ||
+      mediaType !== "text/html"
+    ) {
+      return content;
+    }
 
     const cspValue = buildCspHeader(this.options.resourceCsp);
     return {
       ...content,
-      text: injectCspMetaTag(content.text ?? "", cspValue),
+      text: injectCspMetaTag(content.text, cspValue),
     };
   }
 
+  private isTextResourceContent(
+    content: ResourceContent,
+  ): content is Extract<ResourceContent, { text: string }> {
+    return "text" in content;
+  }
+
+  /** Standard padded base64 with zero pad bits, without whitespace or URL-safe substitutions. */
+  private isCanonicalBase64(blob: string): boolean {
+    try {
+      // `atob` accepts several equivalent spellings. Re-encoding is what
+      // rejects omitted padding, whitespace, URL-safe alphabets, and non-zero
+      // pad bits such as `/x==` (whose canonical form is `/w==`). Both APIs are
+      // Web-standard globals available in Deno and supported Node runtimes.
+      return btoa(atob(blob)) === blob;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Validate an untrusted handler result at the API boundary.
+   *
+   * TypeScript callers get the discriminated `ResourceContent` union at compile
+   * time. This check closes the equivalent JavaScript, `any`, and unchecked
+   * TypeScript paths before a malformed result reaches an MCP client.
+   */
+  private validateResourceContent(
+    requestedUri: string,
+    candidate: unknown,
+    resource: MCPResource,
+  ): ResourceContent {
+    if (!isRecord(candidate)) {
+      throw new Error("[McpApp] Resource handler must return an object");
+    }
+
+    const hasText = Object.prototype.hasOwnProperty.call(candidate, "text");
+    const hasBlob = Object.prototype.hasOwnProperty.call(candidate, "blob");
+    if (hasText === hasBlob) {
+      throw new Error(
+        "[McpApp] Resource content must contain exactly one of text or blob",
+      );
+    }
+    if (candidate.uri !== requestedUri) {
+      throw new Error(
+        `[McpApp] Resource content URI must match requested URI: ${requestedUri}`,
+      );
+    }
+    if (Object.prototype.hasOwnProperty.call(candidate, "annotations")) {
+      throw new Error(
+        "[McpApp] Resource content annotations are not a ResourceContents field; put annotations on MCPResource metadata",
+      );
+    }
+    if (candidate._meta !== undefined && !isRecord(candidate._meta)) {
+      throw new Error(
+        "[McpApp] Resource content _meta must be an object when supplied",
+      );
+    }
+    if (
+      typeof candidate.mimeType !== "string" ||
+      candidate.mimeType.trim().length === 0
+    ) {
+      throw new Error(
+        "[McpApp] Resource content mimeType must be a non-empty string",
+      );
+    }
+    if (hasText && typeof candidate.text !== "string") {
+      throw new Error("[McpApp] Resource content text must be a string");
+    }
+    if (hasBlob) {
+      if (typeof candidate.blob !== "string") {
+        throw new Error("[McpApp] Resource content blob must be a string");
+      }
+      if (!this.isCanonicalBase64(candidate.blob)) {
+        throw new Error(
+          "[McpApp] Resource content blob must be canonical standard base64",
+        );
+      }
+    }
+
+    if (
+      resource.mimeType !== undefined &&
+      candidate.mimeType !== resource.mimeType
+    ) {
+      throw new Error(
+        `[McpApp] Resource content mimeType must match registered metadata: ${resource.mimeType}`,
+      );
+    }
+    if (resource.size !== undefined) {
+      const actualSize = hasText
+        ? new TextEncoder().encode(candidate.text as string).byteLength
+        : atob(candidate.blob as string).length;
+      if (actualSize !== resource.size) {
+        throw new Error(
+          `[McpApp] Resource content size must match registered metadata: expected ${resource.size}, got ${actualSize}`,
+        );
+      }
+    }
+
+    // Do not forward arbitrary JavaScript fields to the wire. In particular,
+    // annotations belong to Resource, not ResourceContents in the MCP schema.
+    return hasText
+      ? {
+        uri: requestedUri,
+        mimeType: candidate.mimeType,
+        text: candidate.text as string,
+        ...(candidate._meta !== undefined ? { _meta: candidate._meta } : {}),
+      }
+      : {
+        uri: requestedUri,
+        mimeType: candidate.mimeType,
+        blob: candidate.blob as string,
+        ...(candidate._meta !== undefined ? { _meta: candidate._meta } : {}),
+      };
+  }
+
+  /** Run, validate, and CSP-harden a handler for a protocol response. */
+  private async readResourceForProtocol(
+    requestedUri: string,
+    resource: MCPResource,
+    handler: ResourceHandler,
+  ): Promise<ResourceContent> {
+    const content = this.validateResourceContent(
+      requestedUri,
+      await handler(new URL(requestedUri)),
+      resource,
+    );
+    // Size attests the bytes delivered to the client. CSP injection changes a
+    // text body, so validate the served representation too rather than only
+    // the handler's pre-injection value.
+    return this.validateResourceContent(
+      requestedUri,
+      this.applyResourceCsp(content),
+      resource,
+    );
+  }
+
+  /** Convert public metadata into the exact wire listing shape. */
+  private toResourceListing(resource: MCPResource): Record<string, unknown> {
+    return {
+      uri: resource.uri,
+      name: resource.name,
+      ...(resource.title !== undefined ? { title: resource.title } : {}),
+      ...(resource.description !== undefined
+        ? { description: resource.description }
+        : {}),
+      ...(resource.mimeType !== undefined
+        ? { mimeType: resource.mimeType }
+        : {}),
+      ...(resource.size !== undefined ? { size: resource.size } : {}),
+      ...(resource.icons !== undefined ? { icons: resource.icons } : {}),
+      ...(resource.annotations !== undefined
+        ? { annotations: resource.annotations }
+        : {}),
+      ...(resource._meta !== undefined ? { _meta: resource._meta } : {}),
+    };
+  }
+
+  /** Fail early rather than publishing a metadata value clients must ignore. */
+  private validateResourceMetadata(resource: MCPResource): void {
+    this.validateResourceUri(resource.uri);
+    if (typeof resource.name !== "string" || resource.name.length === 0) {
+      throw new Error("[McpApp] Resource name must be a non-empty string");
+    }
+    if (
+      resource.mimeType !== undefined &&
+      (typeof resource.mimeType !== "string" ||
+        resource.mimeType.trim().length === 0)
+    ) {
+      throw new Error(
+        "[McpApp] Resource mimeType must be a non-empty string when supplied",
+      );
+    }
+    if (
+      resource.size !== undefined &&
+      (!Number.isSafeInteger(resource.size) || resource.size < 0)
+    ) {
+      throw new Error(
+        `[McpApp] Resource size must be a non-negative safe integer (got ${resource.size})`,
+      );
+    }
+  }
+
+  /**
+   * Resources are keyed by their wire URI, so accepting a spelling which URL
+   * canonicalisation changes would make list/read/handler identity ambiguous.
+   * Refuse it at registration instead of silently normalising a caller-owned
+   * identifier. Non-`ui:` schemes are valid MCP resources and remain allowed.
+   */
   private validateResourceUri(uri: string): void {
-    if (!uri.startsWith(MCP_APP_URI_SCHEME)) {
-      this.log(
-        `[WARN] Resource URI "${uri}" does not use ${MCP_APP_URI_SCHEME} scheme. ` +
-          `MCP Apps standard requires ui:// URIs.`,
+    if (typeof uri !== "string" || uri.length === 0) {
+      throw new Error("[McpApp] Resource URI must be a non-empty string");
+    }
+    let canonical: string;
+    try {
+      canonical = new URL(uri).toString();
+    } catch {
+      throw new Error(`[McpApp] Resource URI must be an absolute URI: ${uri}`);
+    }
+    if (canonical !== uri) {
+      throw new Error(
+        `[McpApp] Resource URI must be canonical: received ${uri}, canonical form is ${canonical}`,
+      );
+    }
+  }
+
+  /** A consumer logger is observability, never a resource-commit dependency. */
+  private resourceLog(message: string): void {
+    try {
+      this.log(message);
+    } catch {
+      // Deliberately ignored: a throwing logger must not contradict a committed
+      // resource mutation or make a retry appear necessary.
+    }
+  }
+
+  /**
+   * Publish the one post-commit list-changed projection for a mutation.
+   * It is best-effort by design: registry state is authoritative and callers
+   * must not receive a false failure after it changes.
+   */
+  private notifyResourceListChanged(): void {
+    if (!this.started) return;
+    try {
+      if (this.subscriptions !== null) {
+        this.sendNotification("notifications/resources/list_changed");
+      } else {
+        this.mcpServer.sendResourceListChanged();
+      }
+    } catch (error) {
+      this.resourceLog(
+        `[WARN] Resource list changed notification was not delivered: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
       );
     }
   }
@@ -1224,8 +1469,11 @@ export class McpApp {
    * ```
    */
   registerResource(resource: MCPResource, handler: ResourceHandler): void {
-    // Validate URI scheme
-    this.validateResourceUri(resource.uri);
+    this.validateResourceMetadata(resource);
+
+    if (typeof handler !== "function") {
+      throw new Error("[McpApp] Resource handler must be a function");
+    }
 
     // Check for duplicate
     if (this.resources.has(resource.uri)) {
@@ -1234,41 +1482,40 @@ export class McpApp {
       );
     }
 
-    if (this.resourceHandlersInstalled) {
-      // expectResources mode: handlers are already installed on the low-level
-      // server. Just add to our internal registry — the handlers read from
-      // this.resources dynamically.
-      this.resources.set(resource.uri, { resource, handler });
-    } else {
-      // Standard mode: register via SDK (must be called before start())
-      this.mcpServer.registerResource(
-        resource.name,
-        resource.uri,
-        {
-          description: resource.description,
-          mimeType: resource.mimeType ?? MCP_APP_MIME_TYPE,
-        },
-        async (uri: URL) => {
-          try {
-            const content = await handler(uri);
-            const finalContent = this.applyResourceCsp(content);
-            return { contents: [finalContent] };
-          } catch (error) {
-            this.log(
-              `[ERROR] Resource handler failed for ${uri}: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-            );
-            throw error;
-          }
-        },
-      );
-
-      // Track in our registry
-      this.resources.set(resource.uri, { resource, handler });
+    // Static registrations lazily install the single low-level handler set.
+    // Once a transport starts, handler installation would be too late, so a
+    // deployment that needs late discovery must opt in with expectResources.
+    if (!this.resourceHandlersInstalled) {
+      if (this.started) {
+        throw new Error(
+          "[McpApp] Cannot register a resource after start without expectResources: true.",
+        );
+      }
+      this.installResourceHandlers();
     }
 
-    this.log(`Registered resource: ${resource.name} (${resource.uri})`);
+    // The Map is the only registry. It commits atomically and has no secondary
+    // SDK entry which could survive a failed rollback as a ghost resource.
+    this.resources.set(resource.uri, { resource, handler });
+    this.resourceLog(`Registered resource: ${resource.name} (${resource.uri})`);
+    this.notifyResourceListChanged();
+  }
+
+  /**
+   * Remove a resource from this server.
+   *
+   * It is safe before or after either transport starts once resources are
+   * installed. Returns `false` when no such URI is present, so callers can make
+   * idempotent cleanup calls without catching an error.
+   */
+  unregisterResource(uri: string): boolean {
+    const info = this.resources.get(uri);
+    if (!info) return false;
+
+    this.resources.delete(uri);
+    this.resourceLog(`Unregistered resource: ${uri}`);
+    this.notifyResourceListChanged();
+    return true;
   }
 
   /**
@@ -1282,6 +1529,8 @@ export class McpApp {
     resources: MCPResource[],
     handlers: Map<string, ResourceHandler>,
   ): void {
+    // No mutation means no capability installation and no notification.
+    if (resources.length === 0) return;
     // Validate all handlers exist BEFORE registering any (fail-fast)
     const missingHandlers: string[] = [];
     for (const resource of resources) {
@@ -1312,19 +1561,50 @@ export class McpApp {
       );
     }
 
-    // All validations passed, register resources
-    for (const resource of resources) {
-      const handler = handlers.get(resource.uri);
-      if (!handler) {
-        // Should never happen after validation, but defensive check
-        throw new Error(
-          `[McpApp] Handler disappeared for ${resource.uri}`,
-        );
-      }
-      this.registerResource(resource, handler);
+    // A duplicate inside this batch would otherwise fail only when the second
+    // registration is attempted, after the first has been made visible.
+    const seenUris = new Set<string>();
+    const repeatedUris = resources
+      .map((resource) => resource.uri)
+      .filter((uri) => {
+        if (seenUris.has(uri)) return true;
+        seenUris.add(uri);
+        return false;
+      });
+    if (repeatedUris.length > 0) {
+      throw new Error(
+        `[McpApp] Resources are repeated in this batch:\n` +
+          repeatedUris.map((uri) => `  - ${uri}`).join("\n"),
+      );
     }
 
-    this.log(`Registered ${resources.length} resources`);
+    for (const resource of resources) {
+      this.validateResourceMetadata(resource);
+      if (typeof handlers.get(resource.uri) !== "function") {
+        throw new Error(
+          `[McpApp] Resource handler must be a function: ${resource.uri}`,
+        );
+      }
+    }
+    if (!this.resourceHandlersInstalled) {
+      if (this.started) {
+        throw new Error(
+          "[McpApp] Cannot register resources after start without expectResources: true.",
+        );
+      }
+      this.installResourceHandlers();
+    }
+    // All validation and the one possible handler-install side effect happened
+    // before this point. A Map update cannot partially fail, so the batch gets
+    // one commit and one notification (or neither on validation failure).
+    for (const resource of resources) {
+      this.resources.set(resource.uri, {
+        resource,
+        handler: handlers.get(resource.uri)!,
+      });
+    }
+    this.resourceLog(`Registered ${resources.length} resources`);
+    if (resources.length > 0) this.notifyResourceListChanged();
   }
 
   /**
@@ -1388,13 +1668,13 @@ export class McpApp {
         },
         async () => {
           const html = await Promise.resolve(readFile(currentDistPath));
-          const content: import("./types.ts").ResourceContent = {
+          const content: ResourceContent = {
             uri: resourceUri,
             mimeType: MCP_APP_MIME_TYPE,
             text: html,
           };
           if (config.csp) {
-            (content as unknown as Record<string, unknown>)._meta = {
+            content._meta = {
               ui: { csp: config.csp },
             };
           }
@@ -2613,13 +2893,23 @@ export class McpApp {
             id,
             result: this.stampResult(
               this.withCacheHints({
-                resources: Array.from(this.resources.values()).map((r) => ({
-                  uri: r.resource.uri,
-                  name: r.resource.name,
-                  description: r.resource.description,
-                  mimeType: r.resource.mimeType ?? MCP_APP_MIME_TYPE,
-                })),
+                resources: Array.from(this.resources.values()).map((r) =>
+                  this.toResourceListing(r.resource)
+                ),
               }, statelessVersion),
+              statelessVersion,
+            ),
+          });
+        }
+
+        // Concrete resources only for now. Keep this endpoint explicit rather
+        // than falling through to MethodNotFound once resources are advertised.
+        if (method === "resources/templates/list") {
+          return c.json({
+            jsonrpc: "2.0",
+            id,
+            result: this.stampResult(
+              this.withCacheHints({ resourceTemplates: [] }, statelessVersion),
               statelessVersion,
             ),
           });
@@ -2660,8 +2950,11 @@ export class McpApp {
           }
 
           try {
-            const content = await resourceInfo.handler(new URL(uri));
-            const finalContent = this.applyResourceCsp(content);
+            const finalContent = await this.readResourceForProtocol(
+              uri,
+              resourceInfo.resource,
+              resourceInfo.handler,
+            );
             return c.json({
               jsonrpc: "2.0",
               id,
@@ -3389,7 +3682,11 @@ export class McpApp {
   async readResourceContent(uri: string): Promise<ResourceContent | null> {
     const entry = this.resources.get(uri);
     if (!entry) return null;
-    return await entry.handler(new URL(uri));
+    return this.validateResourceContent(
+      uri,
+      await entry.handler(new URL(uri)),
+      entry.resource,
+    );
   }
 
   /**
@@ -3918,7 +4215,12 @@ export class McpApp {
     // created from it, so advertising and behaviour cannot drift apart.
     return {
       tools: {},
-      resources: this.resources.size > 0 ? {} : undefined,
+      // Capability lifetime is defined by installed handlers, not the current
+      // Map size. A dynamic registry may correctly be empty at initialize and
+      // gain resources later; `listChanged` tells clients to refresh then.
+      resources: this.resourceHandlersInstalled
+        ? { listChanged: true }
+        : undefined,
       ...(extensions && Object.keys(extensions).length > 0
         ? { extensions }
         : {}),

@@ -7,6 +7,28 @@
  */
 
 import { McpApp } from "../mcp-app.ts";
+import { MCP_APP_MIME_TYPE } from "../types.ts";
+
+const RESOURCE_URI = "ui://e2e-stdio/lifecycle";
+const BATCH_RESOURCES = ["batch-a", "batch-b"].map((name) => ({
+  uri: `ui://e2e-stdio/${name}`,
+  name,
+}));
+
+function registerBatch(): string {
+  app.registerResources(
+    BATCH_RESOURCES,
+    new Map(BATCH_RESOURCES.map((resource) => [
+      resource.uri,
+      () => ({
+        uri: resource.uri,
+        mimeType: "text/plain",
+        text: resource.name,
+      }),
+    ])),
+  );
+  return "registered batch";
+}
 
 const app = new McpApp({
   name: "e2e-stdio",
@@ -25,6 +47,64 @@ app.registerTool(
     },
   },
   (args) => args.value ?? "empty",
+);
+
+app.registerResource(
+  {
+    uri: RESOURCE_URI,
+    name: "Lifecycle resource",
+    mimeType: MCP_APP_MIME_TYPE,
+    size: 5,
+  },
+  () => ({
+    uri: RESOURCE_URI,
+    mimeType: MCP_APP_MIME_TYPE,
+    text: "hello",
+    _meta: { fixture: "stdio" },
+  }),
+);
+
+app.registerTool(
+  {
+    name: "unregister_lifecycle_resource",
+    description: "Remove the fixture resource after startup",
+    inputSchema: { type: "object" },
+  },
+  () => app.unregisterResource(RESOURCE_URI) ? "removed" : "absent",
+);
+
+app.registerTool(
+  {
+    name: "register_resource_batch",
+    description: "Register two resources in one post-start batch",
+    inputSchema: { type: "object" },
+  },
+  registerBatch,
+);
+
+app.registerTool(
+  {
+    name: "register_duplicate_resource_batch",
+    description: "Attempt to register the same batch again",
+    inputSchema: { type: "object" },
+  },
+  registerBatch,
+);
+
+app.registerTool(
+  {
+    name: "register_second_lifecycle_resource",
+    description: "Register one resource after the stdio transport starts",
+    inputSchema: { type: "object" },
+  },
+  () => {
+    const uri = "ui://e2e-stdio/second";
+    app.registerResource(
+      { uri, name: "Second lifecycle resource" },
+      () => ({ uri, mimeType: "text/plain", text: "second" }),
+    );
+    return "registered";
+  },
 );
 
 await app.start();

@@ -325,27 +325,84 @@ export interface MCPResource {
   /** Description of the resource */
   description?: string;
 
-  /** MIME type. Defaults to MCP_APP_MIME_TYPE if not specified */
+  /** Optional display title, distinct from the protocol-required `name`. */
+  title?: string;
+
+  /** Optional visual hints advertised in `resources/list`. */
+  icons?: Array<{
+    src: string;
+    mimeType?: string;
+    sizes?: string[];
+    theme?: "light" | "dark";
+  }>;
+
+  /** Optional client-facing resource annotations. */
+  annotations?: {
+    audience?: Array<"user" | "assistant">;
+    priority?: number;
+    lastModified?: string;
+  };
+
+  /** Optional protocol/extension metadata advertised in `resources/list`. */
+  _meta?: Record<string, unknown>;
+
+  /** MIME type, when known before the resource is read. */
   mimeType?: string;
+
+  /**
+   * Byte size of the resource when it is known.
+   *
+   * This is an exact byte-size attestation: when supplied, every read must
+   * return exactly this many UTF-8 bytes for `text`, or decoded bytes for
+   * `blob`. It is surfaced in `resources/list` so clients can make loading
+   * decisions before reading. Must be a non-negative safe integer.
+   */
+  size?: number;
 }
 
 /**
- * Content returned by a resource handler
+ * Common fields of every resource response.
  */
-export interface ResourceContent {
-  /** URI of the resource (should match request) */
+interface ResourceContentBase {
+  /** URI of the resource. It must exactly match the URI that was requested. */
   uri: string;
-  /** MIME type of the content */
+  /** Non-empty MIME type of the content. */
   mimeType: string;
-  /** The actual content (HTML for MCP Apps) */
-  text: string;
+  /** Optional MCP metadata passed through to the protocol response. */
+  _meta?: Record<string, unknown>;
 }
+
+/** A UTF-8/text resource response. */
+export interface TextResourceContent extends ResourceContentBase {
+  /** Text payload, including HTML for MCP Apps. */
+  text: string;
+  /** Text and blob payloads are mutually exclusive. */
+  blob?: never;
+}
+
+/** A binary resource response encoded as canonical standard base64. */
+export interface BlobResourceContent extends ResourceContentBase {
+  /** Standard, padded base64 payload. */
+  blob: string;
+  /** Text and blob payloads are mutually exclusive. */
+  text?: never;
+}
+
+/**
+ * Content returned by a resource handler.
+ *
+ * Exactly one payload form is allowed: `text` for text/HTML, or `blob` for
+ * binary content encoded as canonical standard base64. The framework validates
+ * the same XOR contract at runtime before writing the response, which keeps
+ * JavaScript consumers and unchecked handler results on the protocol-safe path.
+ */
+export type ResourceContent = TextResourceContent | BlobResourceContent;
 
 /**
  * Resource handler callback
  *
  * @param uri - The requested resource URI as URL object
- * @returns ResourceContent with uri, mimeType, and text
+ * @returns A text or base64-blob ResourceContent whose URI matches `uri`
  *
  * @example
  * ```typescript
@@ -354,6 +411,9 @@ export interface ResourceContent {
  *   mimeType: MCP_APP_MIME_TYPE,
  *   text: "<html>...</html>"
  * });
+ *
+ * // For binary content, return `blob` instead of `text`:
+ * // { uri: uri.toString(), mimeType: "image/png", blob: "iVBORw0KGgo..." }
  * ```
  */
 export type ResourceHandler = (

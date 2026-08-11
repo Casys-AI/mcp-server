@@ -11,9 +11,9 @@
  * @module lib/server/src/resource-registration_test
  */
 
-import { assertEquals, assertThrows } from "@std/assert";
+import { assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { McpApp } from "./mcp-app.ts";
-import type { MCPResource, ResourceHandler } from "./types.ts";
+import type { MCPResource, ResourceContent, ResourceHandler } from "./types.ts";
 import { MCP_APP_MIME_TYPE } from "./types.ts";
 
 /**
@@ -227,29 +227,369 @@ Deno.test("registerResource - handles URI edge cases (trailing slash, query para
   assertEquals(server.getResourceCount(), uriVariants.length);
 });
 
-Deno.test("registerResource - accepts non-ui:// URI with warning (soft validation)", () => {
-  // Using separate server with custom logger to capture warning
-  let warnLogged = false;
-  const warnServer = new McpApp({
-    name: "warn-test",
-    version: "1.0.0",
-    logger: (msg) => {
-      if (msg.includes("[WARN]")) warnLogged = true;
-    },
-  });
-
+Deno.test("registerResource accepts canonical non-ui resources and rejects non-canonical identities", () => {
+  const server = createTestServer();
   const resource: MCPResource = {
     uri: "file://local/path",
     name: "Local File",
   };
 
-  // Should not throw, but logs warning
-  warnServer.registerResource(resource, () => ({
+  server.registerResource(resource, () => ({
     uri: resource.uri,
     mimeType: "text/plain",
     text: "content",
   }));
 
-  assertEquals(warnServer.hasResource("file://local/path"), true);
-  assertEquals(warnLogged, true);
+  assertEquals(server.hasResource("file://local/path"), true);
+  assertThrows(
+    () =>
+      server.registerResource(
+        { uri: "UI://test/noncanonical", name: "Noncanonical" },
+        () => ({
+          uri: "UI://test/noncanonical",
+          mimeType: "text/plain",
+          text: "x",
+        }),
+      ),
+    Error,
+    "Resource URI must be canonical",
+  );
+});
+
+Deno.test("ResourceContent is a compile-time XOR between text and blob", () => {
+  const text: ResourceContent = {
+    uri: "ui://test/text",
+    mimeType: "text/plain",
+    text: "text",
+  };
+  const blob: ResourceContent = {
+    uri: "ui://test/blob",
+    mimeType: "application/octet-stream",
+    blob: "AA==",
+  };
+
+  // @ts-expect-error ResourceContent intentionally forbids both payload forms.
+  const invalid: ResourceContent = {
+    uri: "ui://test/invalid",
+    mimeType: "text/plain",
+    text: "text",
+    blob: "dGV4dA==",
+  };
+  void invalid;
+
+  const misplacedAnnotations: ResourceContent = {
+    uri: "ui://test/misplaced-annotations",
+    mimeType: "text/plain",
+    text: "text",
+    // @ts-expect-error annotations belong to MCPResource, not ResourceContents.
+    annotations: { audience: ["assistant"] },
+  };
+  void misplacedAnnotations;
+
+  assertEquals(text.text, "text");
+  assertEquals(blob.blob, "AA==");
+});
+
+Deno.test("ResourceContent runtime contract rejects invalid unchecked handler results", async () => {
+  const cases: Array<{
+    name: string;
+    content: Record<string, unknown>;
+    message: string;
+  }> = [
+    {
+      name: "both payloads",
+      content: {
+        uri: "ui://test/both-payloads",
+        mimeType: "text/plain",
+        text: "text",
+        blob: "dGV4dA==",
+      },
+      message: "exactly one of text or blob",
+    },
+    {
+      name: "wrong URI",
+      content: {
+        uri: "ui://test/not-requested",
+        mimeType: "text/plain",
+        text: "text",
+      },
+      message: "must match requested URI",
+    },
+    {
+      name: "empty mime type",
+      content: {
+        uri: "ui://test/empty-mime-type",
+        mimeType: "   ",
+        text: "text",
+      },
+      message: "mimeType must be a non-empty string",
+    },
+    {
+      name: "non-canonical base64",
+      content: {
+        uri: "ui://test/non-canonical-base64",
+        mimeType: "application/octet-stream",
+        blob: "dGV4dA",
+      },
+      message: "canonical standard base64",
+    },
+    {
+      name: "non-zero pad bits",
+      content: {
+        uri: "ui://test/non-zero-pad-bits",
+        mimeType: "application/octet-stream",
+        blob: "/x==",
+      },
+      message: "canonical standard base64",
+    },
+    {
+      name: "misplaced annotations",
+      content: {
+        uri: "ui://test/misplaced-annotations",
+        mimeType: "text/plain",
+        text: "text",
+        annotations: { audience: ["assistant"] },
+      },
+      message: "annotations are not a ResourceContents field",
+    },
+  ];
+
+  for (const { name, content, message } of cases) {
+    const server = createTestServer();
+    const uri = `ui://test/${name.replaceAll(" ", "-")}`;
+    server.registerResource(
+      { uri, name },
+      () => content as unknown as ResourceContent,
+    );
+    await assertRejects(
+      () => server.readResourceContent(uri),
+      Error,
+      message,
+    );
+  }
+});
+
+Deno.test("registerResource validates metadata size", () => {
+  const server = createTestServer();
+  const handler: ResourceHandler = () => ({
+    uri: "ui://test/size",
+    mimeType: "text/plain",
+    text: "size",
+  });
+
+  server.registerResource(
+    { uri: "ui://test/size", name: "Size", size: 4 },
+    handler,
+  );
+  assertEquals(server.getResourceInfo("ui://test/size")?.size, 4);
+
+  assertThrows(
+    () =>
+      server.registerResource(
+        { uri: "ui://test/negative", name: "Negative", size: -1 },
+        handler,
+      ),
+    Error,
+    "size must be a non-negative safe integer",
+  );
+  assertThrows(
+    () =>
+      server.registerResource(
+        { uri: "ui://test/fraction", name: "Fraction", size: 1.5 },
+        handler,
+      ),
+    Error,
+    "size must be a non-negative safe integer",
+  );
+  assertThrows(
+    () =>
+      server.registerResource(
+        {
+          uri: "ui://test/unsafe",
+          name: "Unsafe",
+          size: Number.MAX_SAFE_INTEGER + 1,
+        },
+        handler,
+      ),
+    Error,
+    "size must be a non-negative safe integer",
+  );
+});
+
+Deno.test("resource reads attest explicit MIME metadata and exact byte size", async () => {
+  const server = createTestServer();
+  server.registerResource(
+    { uri: "ui://test/mime-attestation", name: "MIME", mimeType: "text/html" },
+    () => ({
+      uri: "ui://test/mime-attestation",
+      mimeType: "text/plain",
+      text: "wrong MIME",
+    }),
+  );
+  server.registerResource(
+    { uri: "ui://test/utf8-attestation", name: "UTF-8", size: 2 },
+    () => ({
+      uri: "ui://test/utf8-attestation",
+      mimeType: "text/plain",
+      text: "€",
+    }),
+  );
+  server.registerResource(
+    { uri: "ui://test/blob-attestation", name: "Blob", size: 4 },
+    () => ({
+      uri: "ui://test/blob-attestation",
+      mimeType: "application/octet-stream",
+      blob: "AAEC",
+    }),
+  );
+
+  await assertRejects(
+    () => server.readResourceContent("ui://test/mime-attestation"),
+    Error,
+    "mimeType must match registered metadata",
+  );
+  await assertRejects(
+    () => server.readResourceContent("ui://test/utf8-attestation"),
+    Error,
+    "expected 2, got 3",
+  );
+  await assertRejects(
+    () => server.readResourceContent("ui://test/blob-attestation"),
+    Error,
+    "expected 4, got 3",
+  );
+});
+
+Deno.test("unregisterResource removes a static registration before start and is idempotent", () => {
+  const server = createTestServer();
+  const uri = "ui://test/remove-before-start";
+  server.registerResource(
+    { uri, name: "Remove before start" },
+    () => ({ uri, mimeType: "text/plain", text: "present" }),
+  );
+
+  assertEquals(server.unregisterResource(uri), true);
+  assertEquals(server.hasResource(uri), false);
+  assertEquals(server.getResourceCount(), 0);
+  assertEquals(server.unregisterResource(uri), false);
+  assertEquals(server.unregisterResource("ui://test/absent"), false);
+});
+
+Deno.test("registerResources commits despite a throwing logger and does not create ghosts", () => {
+  let reachedBatchCommitLog = false;
+  const server = new McpApp({
+    name: "late-registration-failure",
+    version: "1.0.0",
+    logger: (message) => {
+      if (message === "Registered 2 resources") {
+        reachedBatchCommitLog = true;
+        throw new Error("late registration failure");
+      }
+    },
+  });
+  const resources: MCPResource[] = [
+    { uri: "ui://test/first", name: "First" },
+    { uri: "ui://test/second", name: "Second" },
+  ];
+  const handlers = new Map<string, ResourceHandler>(
+    resources.map((resource) => [
+      resource.uri,
+      () => ({
+        uri: resource.uri,
+        mimeType: "text/plain",
+        text: resource.name,
+      }),
+    ]),
+  );
+
+  server.registerResources(resources, handlers);
+  assertEquals(reachedBatchCommitLog, true);
+  assertEquals(
+    server.getResourceUris(),
+    resources.map((resource) => resource.uri),
+  );
+  assertEquals(server.unregisterResource("ui://test/first"), true);
+  assertEquals(server.unregisterResource("ui://test/second"), true);
+  assertEquals(server.getResourceCount(), 0);
+  // A re-registration is a fresh Map insertion, not a stale SDK entry.
+  server.registerResource(resources[0], handlers.get(resources[0].uri)!);
+  assertEquals(server.getResourceUris(), [resources[0].uri]);
+});
+
+type ResourceInstallerProbe = {
+  registerCapabilities: (...args: unknown[]) => unknown;
+  setRequestHandler: (...args: unknown[]) => unknown;
+};
+
+function lowLevelServer(app: McpApp): ResourceInstallerProbe {
+  return (app as unknown as {
+    mcpServer: { server: ResourceInstallerProbe };
+  }).mcpServer.server;
+}
+
+Deno.test("resource handler installation failures never commit or poison retry", () => {
+  const failurePoints: Array<{
+    name: string;
+    inject: (server: ResourceInstallerProbe) => () => void;
+  }> = [
+    {
+      name: "registerCapabilities",
+      inject: (server) => {
+        const original = server.registerCapabilities;
+        server.registerCapabilities = () => {
+          throw new Error("injected registerCapabilities failure");
+        };
+        return () => {
+          server.registerCapabilities = original;
+        };
+      },
+    },
+    ...[1, 2, 3].map((failureCall) => ({
+      name: `setRequestHandler #${failureCall}`,
+      inject: (server: ResourceInstallerProbe) => {
+        const original = server.setRequestHandler;
+        let callCount = 0;
+        server.setRequestHandler = (...args: unknown[]) => {
+          callCount += 1;
+          if (callCount === failureCall) {
+            throw new Error(
+              `injected setRequestHandler #${failureCall} failure`,
+            );
+          }
+          return original.apply(server, args);
+        };
+        return () => {
+          server.setRequestHandler = original;
+        };
+      },
+    })),
+  ];
+
+  for (const failurePoint of failurePoints) {
+    const app = createTestServer();
+    const uri = `ui://install-failure/${
+      failurePoint.name.replaceAll(" ", "-").replace("#", "call-")
+    }`;
+    const resource = { uri, name: failurePoint.name };
+    const handler: ResourceHandler = () => ({
+      uri,
+      mimeType: "text/plain",
+      text: "retryable",
+    });
+    const restore = failurePoint.inject(lowLevelServer(app));
+    assertThrows(
+      () => app.registerResource(resource, handler),
+      Error,
+      "injected",
+    );
+    assertEquals(app.getResourceCount(), 0, failurePoint.name);
+    assertEquals(app.hasResource(uri), false, failurePoint.name);
+    restore();
+
+    // The same exact identity must remain usable: no partial wrapper commit and
+    // no low-level handler ghost may poison the retry.
+    app.registerResource(resource, handler);
+    assertEquals(app.getResourceCount(), 1, failurePoint.name);
+    assertEquals(app.getResourceUris(), [uri], failurePoint.name);
+  }
 });

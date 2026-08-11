@@ -66,6 +66,7 @@ export type {
 
 // Type exports
 export type {
+  BlobResourceContent,
   HttpRateLimitContext,
   HttpRateLimitOptions,
   HttpServerInstance,
@@ -86,6 +87,7 @@ export type {
   SamplingParams,
   SamplingResult,
   StructuredToolResult,
+  TextResourceContent,
   ToolAnnotations,
   ToolErrorMapper,
   ToolHandler,

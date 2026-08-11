@@ -1625,7 +1625,7 @@ Deno.test("startHttp - handles resources/list", async () => {
     const data = await res.json();
     assertEquals(data.result.resources.length, 1);
     assertEquals(data.result.resources[0].uri, "ui://test/viewer");
-    assertEquals(data.result.resources[0].mimeType, MCP_APP_MIME_TYPE);
+    assertEquals(data.result.resources[0].mimeType, undefined);
   } finally {
     await http.shutdown();
   }

@@ -213,7 +213,7 @@ Deno.test("track C - a sentinel-encoded Mcp-Name is decoded before comparison", 
     logger: () => {},
     transport: "stateless",
   });
-  const uri = "ui://rapports/été/synthèse";
+  const uri = "ui://rapports/%C3%A9t%C3%A9/synth%C3%A8se";
   server.registerResource(
     { uri, name: "accented", mimeType: "text/plain" },
     () => ({ uri, mimeType: "text/plain", text: "ok" }),

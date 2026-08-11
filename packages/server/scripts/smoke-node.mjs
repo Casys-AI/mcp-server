@@ -118,8 +118,22 @@ console.log("node client-auth smoke ok");
     version: "0.0.0",
     maxConcurrent: 2,
     logger: () => {},
+    resourceCsp: { allowInline: true },
   });
   app.registerTools([], {});
+  app.registerResource(
+    {
+      uri: "ui://node-smoke/blob",
+      name: "Node blob resource",
+      mimeType: "text/html",
+      size: 3,
+    },
+    () => ({
+      uri: "ui://node-smoke/blob",
+      mimeType: "text/html",
+      blob: "AAEC",
+    }),
+  );
   const http = await app.startHttp({ port: 38988, hostname: "127.0.0.1" });
   try {
     // A conforming 2026-07-28 request: the protocol version lives in
@@ -154,6 +168,76 @@ console.log("node client-auth smoke ok");
       throw new Error(`McpApp.startHttp tools/list returned ${res.status}`);
     }
     await res.body?.cancel();
+
+    // A binary resource exercises the Node copy of the content validation and
+    // confirms CSP does not decode or mutate base64 blobs.
+    const resource = await fetch("http://127.0.0.1:38988/mcp", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "resources/read",
+        "Mcp-Name": "ui://node-smoke/blob",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 3,
+        method: "resources/read",
+        params: {
+          _meta: {
+            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+            "io.modelcontextprotocol/clientCapabilities": {},
+          },
+          uri: "ui://node-smoke/blob",
+        },
+      }),
+    });
+    const resourceBody = await resource.json();
+    const content = resourceBody.result?.contents?.[0];
+    if (
+      resource.status !== 200 || content?.blob !== "AAEC" || "text" in content
+    ) {
+      throw new Error("McpApp Node resource blob smoke failed");
+    }
+
+    // The pre-start resource installed the one shared resource-handler set, so
+    // a later addition must appear immediately without a second SDK registry.
+    app.registerResource(
+      { uri: "ui://node-smoke/live", name: "Node live resource" },
+      () => ({
+        uri: "ui://node-smoke/live",
+        mimeType: "text/plain",
+        text: "live",
+      }),
+    );
+    const list = await fetch("http://127.0.0.1:38988/mcp", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "resources/list",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 4,
+        method: "resources/list",
+        params: {
+          _meta: {
+            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+            "io.modelcontextprotocol/clientCapabilities": {},
+          },
+        },
+      }),
+    });
+    const listBody = await list.json();
+    if (
+      list.status !== 200 ||
+      !listBody.result?.resources?.some((item) =>
+        item.uri === "ui://node-smoke/live"
+      )
+    ) {
+      throw new Error("McpApp Node live resource registration smoke failed");
+    }
 
     // And the legacy shape must be refused — this is the 0.24.0 break, so the
     // smoke test is the right place to catch a silent regression of it.

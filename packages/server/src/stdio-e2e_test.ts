@@ -202,23 +202,45 @@ function request(
   return { jsonrpc: "2.0", id, method, params };
 }
 
+const PROTOCOL_VERSION = "2026-07-28";
+const LEGACY_PROTOCOL_VERSION = "2025-11-25";
+const PROTOCOL_VERSION_KEY = "io.modelcontextprotocol/protocolVersion";
+const CLIENT_INFO_KEY = "io.modelcontextprotocol/clientInfo";
+const CLIENT_CAPABILITIES_KEY = "io.modelcontextprotocol/clientCapabilities";
+const SERVER_INFO_KEY = "io.modelcontextprotocol/serverInfo";
+const SERVER_INFO = { name: "e2e-stdio", version: "9.9.9" };
+
+function modernRequest(
+  id: number,
+  method: string,
+  params: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return request(id, method, {
+    ...params,
+    _meta: {
+      [PROTOCOL_VERSION_KEY]: PROTOCOL_VERSION,
+      [CLIENT_INFO_KEY]: { name: "e2e-modern", version: "1.0.0" },
+      [CLIENT_CAPABILITIES_KEY]: {},
+    },
+  });
+}
+
 const HANDSHAKE = [
   request(1, "initialize", {
-    protocolVersion: "2026-07-28",
+    protocolVersion: LEGACY_PROTOCOL_VERSION,
     capabilities: {},
     clientInfo: { name: "e2e", version: "1.0.0" },
   }),
   { jsonrpc: "2.0", method: "notifications/initialized" },
 ];
 
-Deno.test("stdio e2e - a spawned server answers server/discover", async () => {
+Deno.test("stdio e2e - modern discover and tools/list carry the 2026 result envelope", async () => {
   const responses = await exchange([
-    ...HANDSHAKE,
-    request(2, "server/discover"),
-    request(3, "tools/list"),
+    modernRequest(1, "server/discover"),
+    modernRequest(2, "tools/list"),
   ]);
 
-  const discover = responses.get(2);
+  const discover = responses.get(1);
   assertExists(discover, "server/discover got no response at all");
   assertEquals(
     discover.error,
@@ -228,13 +250,18 @@ Deno.test("stdio e2e - a spawned server answers server/discover", async () => {
 
   const result = discover.result;
   assertExists(result);
-  assertEquals(result.supportedVersions, ["2026-07-28"]);
-  assertEquals(result.serverInfo, { name: "e2e-stdio", version: "9.9.9" });
+  assertEquals(result.supportedVersions, [PROTOCOL_VERSION]);
   assertEquals(result.instructions, "fixture server");
   assertEquals(result.resultType, "complete");
+  assertEquals(result.cacheScope, "private");
+  assertEquals(result.ttlMs, 0);
+  assertEquals(
+    (result._meta as Record<string, unknown>)[SERVER_INFO_KEY],
+    SERVER_INFO,
+  );
 
   // The rest of the server still works through the same process.
-  const tools = responses.get(3);
+  const tools = responses.get(2);
   assertExists(tools?.result);
   assertEquals(
     (tools.result.tools as Array<{ name: string }>).map((t) => t.name),
@@ -246,6 +273,74 @@ Deno.test("stdio e2e - a spawned server answers server/discover", async () => {
       "unregister_lifecycle_resource",
     ],
   );
+  assertEquals(tools.result.resultType, "complete");
+  assertEquals(tools.result.cacheScope, "private");
+  assertEquals(tools.result.ttlMs, 0);
+  assertEquals(
+    (tools.result._meta as Record<string, unknown>)[SERVER_INFO_KEY],
+    SERVER_INFO,
+  );
+});
+
+Deno.test("stdio e2e - legacy initialize keeps tools/list on the 2025 wire shape", async () => {
+  const responses = await exchange([
+    ...HANDSHAKE,
+    request(2, "tools/list"),
+  ]);
+
+  const initialize = responses.get(1);
+  assertExists(initialize?.result);
+  assertEquals(initialize.result.protocolVersion, LEGACY_PROTOCOL_VERSION);
+
+  const tools = responses.get(2);
+  assertExists(tools?.result);
+  assertEquals(
+    (tools.result.tools as Array<{ name: string }>).map((tool) => tool.name),
+    [
+      "echo",
+      "register_duplicate_resource_batch",
+      "register_resource_batch",
+      "register_second_lifecycle_resource",
+      "unregister_lifecycle_resource",
+    ],
+  );
+  assertEquals(tools.result.resultType, undefined);
+  assertEquals(tools.result.cacheScope, undefined);
+  assertEquals(tools.result.ttlMs, undefined);
+  assertEquals(tools.result._meta, undefined);
+});
+
+Deno.test("stdio e2e - a modern discover probe can fall back to a fresh legacy server", async () => {
+  const responses = await exchangeSequential([
+    modernRequest(1, "server/discover"),
+    request(2, "initialize", {
+      protocolVersion: LEGACY_PROTOCOL_VERSION,
+      capabilities: {},
+      clientInfo: { name: "e2e-fallback", version: "1.0.0" },
+    }),
+    { jsonrpc: "2.0", method: "notifications/initialized" },
+    request(3, "tools/list"),
+  ]);
+
+  assertEquals(responses.get(1)?.result?.resultType, "complete");
+  assertEquals(
+    responses.get(2)?.result?.protocolVersion,
+    LEGACY_PROTOCOL_VERSION,
+  );
+
+  const tools = responses.get(3);
+  assertExists(tools?.result, "legacy fallback did not keep serving tools");
+  assertEquals(
+    (tools.result.tools as Array<{ name: string }>).map((tool) => tool.name),
+    [
+      "echo",
+      "register_duplicate_resource_batch",
+      "register_resource_batch",
+      "register_second_lifecycle_resource",
+      "unregister_lifecycle_resource",
+    ],
+  );
+  assertEquals(tools.result.resultType, undefined);
 });
 
 Deno.test("stdio e2e - a real batch notifies exactly once and a rejected duplicate adds none", async () => {

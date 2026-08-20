@@ -223,9 +223,10 @@ export interface McpAppOptions {
    * Multi Round-Trip Requests (spec 2026-07-28, SEP-2322).
    *
    * Configures how `requestState` is protected when a tool handler asks the
-   * client for input mid-call. Only consulted on the stateless transport with a
-   * negotiated `2026-07-28`: MRTR replaces the server-initiated request pattern
-   * that earlier revisions still use, so it has no meaning on the legacy path.
+   * client for input mid-call. Consulted by stateless HTTP and by the v2 stdio
+   * serving entry. On a legacy stdio connection the SDK fulfils the embedded
+   * requests through its compatibility shim, then re-enters the same verified
+   * handler; application code keeps one MRTR contract across both eras.
    *
    * Without `signingKey`, `requestState` travels unprotected and the server logs
    * a warning at startup. That is only acceptable when tampering with it can

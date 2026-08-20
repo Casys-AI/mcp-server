@@ -22,6 +22,14 @@ export type {
 } from "./replay-store.ts";
 export { MemoryMrtrReplayStore } from "./replay-store.ts";
 
+// Transport-neutral retry admission: integrity bindings + single-use replay gate.
+export type {
+  GuardMrtrRetryInput,
+  MrtrRetryBindings,
+  MrtrRetryGuardOutcome,
+} from "./retry-guard.ts";
+export { guardMrtrRetry } from "./retry-guard.ts";
+
 // requestState seal/verify (HMAC-SHA256 integrity protection)
 export type {
   RequestStatePayload,

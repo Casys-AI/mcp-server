@@ -62,7 +62,7 @@ export interface InputRequiredSignal {
 /**
  * Configuration for the MRTR subsystem in McpAppOptions.
  *
- * Wire this in to McpAppOptions.mrtr before calling startHttp().
+ * Wire this in to McpAppOptions.mrtr before calling start() or startHttp().
  */
 export interface MrtrOptions {
   /**

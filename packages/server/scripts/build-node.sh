@@ -32,6 +32,7 @@ cp "$ROOT_DIR/mod.ts" "$DIST_DIR/mod.ts"
 
 # Remove test files from dist
 find "$DIST_DIR" -name "*_test.ts" -o -name "*.test.ts" -o -name "*.bench.ts" | xargs rm -f
+rm -rf "$DIST_DIR/src/testdata"
 
 # Portable in-place sed: GNU sed wants `-i`, BSD/macOS sed wants `-i ''`.
 if sed --version >/dev/null 2>&1; then
@@ -54,15 +55,22 @@ find "$DIST_DIR" -name "*.ts" -exec sed "${SED_INPLACE[@]}" \
 # Read versions from deno.json (single source of truth — keep specs aligned).
 VERSION=$(grep '"version"' "$ROOT_DIR/deno.json" | sed 's/.*"version": *"\([^"]*\)".*/\1/')
 SDK_VERSION=$(grep '"@modelcontextprotocol/sdk"' "$ROOT_DIR/deno.json" | sed 's|.*sdk@\([^"]*\)".*|\1|')
+SERVER_VERSION=$(grep '"@modelcontextprotocol/server"' "$ROOT_DIR/deno.json" | sed 's|.*server@\([^"]*\)".*|\1|')
 # @modelcontextprotocol/ext-apps supplies the base McpUiToolMeta type that
 # src/types.ts extends; the npm package ships .ts, so consumers type-check
 # against it and need it declared as a runtime dependency.
 EXTAPPS_VERSION=$(grep '"@modelcontextprotocol/ext-apps"' "$ROOT_DIR/deno.json" | sed 's|.*ext-apps@\([^"]*\)".*|\1|')
 echo "[build-node] Version: $VERSION"
 echo "[build-node] MCP SDK version: $SDK_VERSION"
+echo "[build-node] MCP server version: $SERVER_VERSION"
 
 if [ -z "$SDK_VERSION" ]; then
   echo "[build-node] ERROR: failed to parse @modelcontextprotocol/sdk version from deno.json" >&2
+  exit 1
+fi
+
+if [ -z "$SERVER_VERSION" ]; then
+  echo "[build-node] ERROR: failed to parse @modelcontextprotocol/server version from deno.json" >&2
   exit 1
 fi
 
@@ -85,6 +93,7 @@ cat > "$DIST_DIR/package.json" <<PKGJSON
     "test": "tsx --test src/**/*_test.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/server": "$SERVER_VERSION",
     "@modelcontextprotocol/sdk": "$SDK_VERSION",
     "@modelcontextprotocol/ext-apps": "$EXTAPPS_VERSION",
     "hono": "^4.0.0",

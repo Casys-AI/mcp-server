@@ -9,7 +9,10 @@ Protocol servers in TypeScript.
 
 Composable middleware, OAuth2 auth, dual transport, observability, and
 everything you need to ship reliable MCP servers. Built on the official
-[@modelcontextprotocol/sdk](https://github.com/modelcontextprotocol/sdk).
+[`@modelcontextprotocol/server`](https://www.npmjs.com/package/@modelcontextprotocol/server)
+and
+[`@modelcontextprotocol/sdk`](https://github.com/modelcontextprotocol/typescript-sdk)
+packages.
 
 ```
 rate-limit → auth → custom middleware → scope-check → validation → backpressure → handler

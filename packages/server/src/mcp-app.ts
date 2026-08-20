@@ -4,28 +4,32 @@
  * High-performance MCP server with built-in concurrency control
  * and backpressure.
  *
- * Wraps the official @modelcontextprotocol/sdk with production-ready
- * middleware, auth, and observability features.
+ * Wraps the official MCP server packages with middleware, auth, and
+ * observability features.
  *
  * @module lib/server/mcp-app
  */
 
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   type CallToolRequest,
-  CallToolRequestSchema,
+  type CallToolResult,
   type ClientCapabilities,
-  ErrorCode,
   type Implementation,
-  type JSONRPCRequest,
-  ListResourcesRequestSchema,
-  ListResourceTemplatesRequestSchema,
-  ListToolsRequestSchema,
-  McpError,
+  type InputRequiredResult,
+  type ListResourcesResult,
+  type ListToolsResult,
+  ProtocolError,
+  ProtocolErrorCode,
   type ReadResourceRequest,
-  ReadResourceRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
+  Server,
+  type ServerCapabilities,
+  type ServerContext,
+} from "@modelcontextprotocol/server";
+import {
+  serveStdio,
+  type StdioServerHandle,
+} from "@modelcontextprotocol/server/stdio";
+import { ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { RequestQueue } from "./concurrency/request-queue.ts";
@@ -84,6 +88,7 @@ import {
 } from "./tasks/mod.ts";
 import {
   checkInputRequestCapabilities,
+  guardMrtrRetry,
   importStateKey,
   type InputRequestEntry,
   type InputRequiredSignal,
@@ -91,7 +96,6 @@ import {
   type MrtrReplayStore,
   paramsDigest,
   sealRequestState,
-  verifyRequestState,
 } from "./mrtr/mod.ts";
 import {
   buildAcknowledgedMessage,
@@ -120,7 +124,11 @@ import {
   noPrincipalError,
   taskOwnerKeyFor,
 } from "./http/request-guards.ts";
-import { isRecord, jsonRpcResponse } from "./http/wire.ts";
+import {
+  isRecord,
+  jsonRpcResponse,
+  MRTR_NO_AUTH_PRINCIPAL,
+} from "./http/wire.ts";
 
 /**
  * Tool definition with handler
@@ -423,7 +431,6 @@ export class McpApp {
    * `initialize` response.
    */
   public readonly name: string;
-  private mcpServer: McpServer;
   private requestQueue: RequestQueue;
   private rateLimiter: RateLimiter | null = null;
   private schemaValidator: SchemaValidator | null = null;
@@ -465,6 +472,12 @@ export class McpApp {
    * or in stdio mode.
    */
   private subscriptions: SubscriptionRegistry | null = null;
+
+  /** Era-aware stdio serving handle, present only while start() is active. */
+  private stdioHandle: StdioServerHandle | null = null;
+
+  /** Protocol instance pinned by the stdio era negotiator, when connected. */
+  private activeStdioServer: Server | null = null;
 
   /**
    * Imported HMAC key for sealing `requestState`, or `null` when the deployment
@@ -582,23 +595,6 @@ export class McpApp {
       );
     }
 
-    // Create SDK MCP server
-    this.mcpServer = new McpServer(
-      {
-        name: options.name,
-        version: options.version,
-      },
-      {
-        capabilities: {
-          tools: {},
-          ...(options.expectResources
-            ? { resources: { listChanged: true } }
-            : {}),
-        },
-        instructions: options.instructions,
-      },
-    );
-
     // Create request queue with concurrency control
     this.requestQueue = new RequestQueue({
       maxConcurrent: options.maxConcurrent ?? 10,
@@ -619,13 +615,59 @@ export class McpApp {
       this.schemaValidator = new SchemaValidator();
     }
 
-    // Setup MCP protocol handlers
-    this.setupHandlers();
+    // A stdio probe may be discarded before a legacy fallback is opened. The
+    // official serving entry therefore requires a factory, and every factory
+    // invocation must receive a fresh protocol instance. Registries and the
+    // middleware pipeline remain on McpApp; handlers close over those maps.
+    this.resourceHandlersInstalled = options.expectResources === true;
+  }
 
-    // Pre-declare resources capability so resources can be added after start()
-    if (options.expectResources) {
-      this.installResourceHandlers();
+  /** Build one unconnected SDK server for one negotiated stdio era. */
+  private createProtocolServer(): Server {
+    const cacheHint = {
+      ttlMs: this.cacheTtlMs,
+      cacheScope: this.options.cache?.scope ?? "private",
+    } as const;
+    // Tasks currently have an HTTP adapter only. Keep its extension out of
+    // stdio discovery until the same application port is served here; claiming
+    // it and answering every tasks/* call with MethodNotFound would make the
+    // capability declaration a lie. Other consumer-declared extensions remain
+    // transport-neutral.
+    const stdioExtensions = Object.fromEntries(
+      Object.entries(this.options.extensions ?? {}).filter(
+        ([id]) => id !== TASKS_EXTENSION_ID,
+      ),
+    );
+    const capabilities = {
+      // No listChanged promise: live tool registration does not currently emit
+      // tools/list_changed. The registry remains usable, but refresh is not a
+      // protocol guarantee until that notification is wired.
+      tools: {},
+      ...(Object.keys(stdioExtensions).length > 0
+        ? {
+          extensions: stdioExtensions as Record<string, object>,
+        }
+        : {}),
+    } as ServerCapabilities;
+    const server = new Server(
+      { name: this.options.name, version: this.options.version },
+      {
+        capabilities,
+        instructions: this.options.instructions,
+        cacheHints: {
+          "server/discover": cacheHint,
+          "tools/list": cacheHint,
+          "resources/list": cacheHint,
+          "resources/templates/list": cacheHint,
+          "resources/read": cacheHint,
+        },
+      },
+    );
+    this.setupHandlers(server);
+    if (this.resourceHandlersInstalled) {
+      this.installResourceHandlersOn(server);
     }
+    return server;
   }
 
   /**
@@ -644,29 +686,32 @@ export class McpApp {
           "Set expectResources: true or register resources before start().",
       );
     }
-    const server = this.mcpServer.server;
+    this.resourceHandlersInstalled = true;
+  }
 
+  /** Install resource handlers on one fresh protocol instance. */
+  private installResourceHandlersOn(server: Server): void {
     // Declare resources capability before transport connects
     server.registerCapabilities({ resources: { listChanged: true } });
 
     // resources/list — returns currently registered resources
-    server.setRequestHandler(ListResourcesRequestSchema, () => {
+    server.setRequestHandler("resources/list", () => {
       return {
         resources: Array.from(this.resources.values()).map((r) =>
           this.toResourceListing(r.resource)
         ),
-      };
+      } as unknown as ListResourcesResult;
     });
 
     // resources/read — serve resource content by URI
     server.setRequestHandler(
-      ReadResourceRequestSchema,
+      "resources/read",
       async (request: ReadResourceRequest) => {
         const uri = request.params.uri;
         const info = this.resources.get(uri);
         if (!info) {
-          throw new McpError(
-            ErrorCode.InvalidParams,
+          throw new ProtocolError(
+            ProtocolErrorCode.InvalidParams,
             `Resource not found: ${uri}`,
           );
         }
@@ -692,34 +737,33 @@ export class McpApp {
     // We currently expose concrete resources only. An explicit empty template
     // list is nevertheless required once the resources capability exists:
     // clients are entitled to ask which URI templates can be expanded.
-    server.setRequestHandler(ListResourceTemplatesRequestSchema, () => ({
+    server.setRequestHandler("resources/templates/list", () => ({
       resourceTemplates: [],
     }));
-
-    this.resourceHandlersInstalled = true;
     this.resourceLog("Resources capability installed");
   }
 
   /**
    * Setup MCP protocol request handlers
    */
-  private setupHandlers(): void {
-    const server = this.mcpServer.server;
-
+  private setupHandlers(server: Server): void {
     // Wire up "initialized" notification callback (post-handshake)
     server.oninitialized = () => {
       this.initializedCallback?.();
     };
 
     // tools/list handler
-    server.setRequestHandler(ListToolsRequestSchema, () => {
-      return { tools: this.buildToolListing() };
+    server.setRequestHandler("tools/list", () => {
+      return { tools: this.buildToolListing() } as unknown as ListToolsResult;
     });
 
     // tools/call handler (delegates to middleware pipeline)
     server.setRequestHandler(
-      CallToolRequestSchema,
-      async (request: CallToolRequest) => {
+      "tools/call",
+      async (
+        request: CallToolRequest,
+        ctx: ServerContext,
+      ): Promise<CallToolResult | InputRequiredResult> => {
         const toolName = request.params.name;
         const args = request.params.arguments || {};
 
@@ -728,15 +772,70 @@ export class McpApp {
         // hardest to correlate back to the host that caused it; `logLevel` is
         // read for the same reason it is on HTTP — the spec makes it
         // per-request, and a handler must stay silent without it.
-        const meta = request.params._meta;
-        const clientMeta: StatelessClientMeta | undefined = isRecord(meta)
-          ? {
-            ...readTraceContext(meta),
-            ...(readLogLevel(meta) !== undefined
-              ? { logLevel: readLogLevel(meta) }
-              : {}),
-          }
+        const meta = isRecord(request.params._meta)
+          ? request.params._meta
           : undefined;
+        const envelope = isRecord(ctx.mcpReq.envelope)
+          ? ctx.mcpReq.envelope
+          : undefined;
+        const clientInfo = envelope?.[STATELESS_CLIENT_INFO_KEY] as
+          | Implementation
+          | undefined ?? server.getClientVersion();
+        const clientCapabilities = envelope?.[
+          STATELESS_CLIENT_CAPABILITIES_KEY
+        ] as ClientCapabilities | undefined ??
+          server.getClientCapabilities();
+        const requestedLogLevel = envelope !== undefined
+          ? readLogLevel(envelope)
+          : undefined;
+        const traceContext = meta !== undefined
+          ? readTraceContext(meta)
+          : undefined;
+        const clientMeta: StatelessClientMeta | undefined =
+          clientInfo !== undefined || clientCapabilities !== undefined ||
+            requestedLogLevel !== undefined || traceContext !== undefined
+            ? {
+              ...(clientInfo !== undefined ? { clientInfo } : {}),
+              ...(clientCapabilities !== undefined
+                ? { clientCapabilities }
+                : {}),
+              ...(requestedLogLevel !== undefined
+                ? { logLevel: requestedLogLevel }
+                : {}),
+              ...(traceContext ?? {}),
+            }
+            : undefined;
+
+        // The v2 protocol layer lifts MRTR retry fields out of params before
+        // invoking the handler. Preserve Casys' method/argument/principal and
+        // single-use bindings on stdio just as the HTTP path does.
+        const ingressDigest = await paramsDigest({
+          arguments: args,
+          name: toolName,
+        });
+        if ((ctx.mcpReq.droppedInputResponseKeys?.length ?? 0) > 0) {
+          throw new ProtocolError(
+            ProtocolErrorCode.InvalidParams,
+            "inputResponses entries must be bare MCP result objects",
+            {
+              problem: "malformed_input_responses",
+              droppedKeys: ctx.mcpReq.droppedInputResponseKeys,
+              recovery:
+                "Send each inputResponses value as the bare result object, without a {method, result} wrapper.",
+            },
+          );
+        }
+        const inputResponses = ctx.mcpReq.inputResponses;
+        const echoedState = ctx.mcpReq.requestState<string>();
+        const mrtr = await this.prepareProtocolMrtrRetry(
+          inputResponses,
+          echoedState,
+          {
+            principal: MRTR_NO_AUTH_PRINCIPAL,
+            method: "tools/call",
+            paramsDigest: ingressDigest,
+          },
+        );
 
         let result: unknown;
         try {
@@ -747,60 +846,52 @@ export class McpApp {
             undefined,
             undefined,
             clientMeta,
+            mrtr,
           );
         } catch (error) {
-          return this.handleToolError(error, toolName);
+          return this.handleToolError(
+            error,
+            toolName,
+          ) as unknown as CallToolResult;
+        }
+
+        if (isRecord(result) && result["resultType"] === "input_required") {
+          const built = await this.buildInputRequiredResult(
+            result as unknown as InputRequiredSignal,
+            {
+              clientCapabilities,
+              principal: MRTR_NO_AUTH_PRINCIPAL,
+              method: "tools/call",
+              paramsDigest: ingressDigest,
+            },
+          );
+          if (!built.ok) {
+            throw new ProtocolError(
+              built.code,
+              built.message,
+              built.data,
+            );
+          }
+          return built.result as unknown as InputRequiredResult;
         }
 
         // Serialization errors are framework bugs, not tool errors —
         // let them propagate
-        return this.buildToolCallResult(toolName, result);
+        return this.buildToolCallResult(
+          toolName,
+          result,
+        ) as unknown as CallToolResult;
       },
     );
-
-    // `server/discover` over stdio (spec 2026-07-28, SEP-2575).
-    //
-    // The spec makes this RPC a MUST for every server and names stdio as a
-    // primary use: a client probes it for backward compatibility. That matters
-    // here precisely because the SDK's stdio handshake still negotiates
-    // 2025-11-25 — `server/discover` is then the only way for a peer to learn
-    // this server also speaks 2026-07-28 over HTTP.
-    //
-    // Routed through `fallbackRequestHandler` rather than `setRequestHandler`
-    // because the latter takes a Zod schema, and the method is absent from the
-    // SDK's type surface. Adding a Zod dependency to declare one schema would
-    // put a peer dependency in the public API for a single string comparison.
-    // Every other unknown method keeps its previous answer: MethodNotFound.
-    server.fallbackRequestHandler = (request: JSONRPCRequest) => {
-      if (request.method !== "server/discover") {
-        // Same text the SDK used for an unrouted method. It still reaches the
-        // wire as "MCP error -32601: Method not found" — `McpError` prefixes
-        // its own message and a handler cannot raise the code without it. The
-        // code is unchanged, which is what a peer switches on; the string
-        // difference is pinned by a test and noted in the changelog. Appending
-        // the method name on top of that would have been a second, gratuitous
-        // change to the same field.
-        throw new McpError(ErrorCode.MethodNotFound, "Method not found");
-      }
-      return Promise.resolve(this.buildDiscoverResult());
-    };
   }
 
   /**
-   * The `server/discover` result (spec 2026-07-28, SEP-2575).
+   * The stateless HTTP `server/discover` result (spec 2026-07-28, SEP-2575).
    *
-   * Single source of truth for both transports. They used to be one inline
-   * object on the HTTP path; a stdio copy would have been the second place to
-   * forget `instructions` or a new capability.
-   *
-   * Always stamped as 2026-07-28 regardless of what the transport negotiated.
-   * That is deliberate but not free: nothing gates the method, so a peer that
-   * negotiated `2025-11-25` over stdio can call it and receive an envelope it
-   * never agreed to. The alternative is worse — stamping the negotiated version
-   * would make the probe answer "2025" to the client asking whether this server
-   * speaks 2026, which is the one question it exists to answer. Treat
-   * `server/discover` as a cross-version exception: its result describes what
-   * the server supports, not what the current transport negotiated.
+   * The stdio adapter deliberately does not call this builder: the official v2
+   * serving entry owns discover, era selection, result stamping and its final
+   * wire shape. Keeping this method HTTP-specific prevents a custom payload
+   * from bypassing that authority again.
    */
   private buildDiscoverResult(): Record<string, unknown> {
     return this.stampResult(
@@ -1434,19 +1525,19 @@ export class McpApp {
    */
   private notifyResourceListChanged(): void {
     if (!this.started) return;
-    try {
-      if (this.subscriptions !== null) {
-        this.sendNotification("notifications/resources/list_changed");
-      } else {
-        this.mcpServer.sendResourceListChanged();
-      }
-    } catch (error) {
+    if (this.subscriptions !== null) {
+      this.sendNotification("notifications/resources/list_changed");
+      return;
+    }
+    const server = this.activeStdioServer;
+    if (server === null) return;
+    void server.sendResourceListChanged().catch((error) => {
       this.resourceLog(
         `[WARN] Resource list changed notification was not delivered: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
-    }
+    });
   }
 
   /**
@@ -1697,6 +1788,9 @@ export class McpApp {
   /**
    * Start the MCP server with stdio transport
    */
+  // Keep the established Promise API and rejection semantics even though the
+  // v2 serving entry returns its close handle synchronously.
+  // deno-lint-ignore require-await
   async start(): Promise<void> {
     // Guard FIRST. Resetting before the guard meant a concurrent start() during
     // stop() cleared `stopping` and rebuilt the store on its way to failing with
@@ -1714,8 +1808,20 @@ export class McpApp {
     // Build middleware pipeline before connecting transport
     this.buildPipeline();
 
-    const transport = new StdioServerTransport();
-    await this.mcpServer.server.connect(transport);
+    this.stdioHandle = serveStdio(() => {
+      const server = this.createProtocolServer();
+      this.activeStdioServer = server;
+      server.onclose = () => {
+        if (this.activeStdioServer === server) {
+          this.activeStdioServer = null;
+        }
+      };
+      return server;
+    }, {
+      onerror: (error) => {
+        this.log(`[ERROR] stdio transport: ${error.message}`);
+      },
+    });
 
     this.started = true;
 
@@ -1791,7 +1897,12 @@ export class McpApp {
       this.httpServer = null;
     }
 
-    await this.mcpServer.server.close();
+    if (this.stdioHandle) {
+      const handle = this.stdioHandle;
+      this.stdioHandle = null;
+      await handle.close();
+    }
+    this.activeStdioServer = null;
     this.started = false;
 
     this.log("Server stopped");
@@ -2459,8 +2570,6 @@ export class McpApp {
             ? params["requestState"]
             : undefined;
 
-          let retryVerified: boolean | undefined;
-
           // A retry carrying answers but no token cannot be verified, and the
           // server always issues a token when it has a key. So this combination
           // is either a confused client or an attempt to inject answers past the
@@ -2478,10 +2587,31 @@ export class McpApp {
             )
             : { key: null as CryptoKey | null };
           if ("error" in guardKey) return guardKey.error;
-          if (
-            echoedResponses !== undefined && echoedState === undefined &&
-            guardKey.key !== null
-          ) {
+          // Only a signed retry needs an authenticated principal. Ordinary
+          // calls and explicitly unprotected state retain their prior behavior.
+          let retryPrincipal = MRTR_NO_AUTH_PRINCIPAL;
+          if (echoedState !== undefined && guardKey.key !== null) {
+            const principal = callerPrincipal(httpAuthInfo);
+            if (principal === null) {
+              return noPrincipalError(id, statelessVersion);
+            }
+            retryPrincipal = principal;
+          }
+
+          const retryOutcome = await guardMrtrRetry({
+            ...(echoedResponses !== undefined
+              ? { inputResponses: echoedResponses }
+              : {}),
+            ...(echoedState !== undefined ? { requestState: echoedState } : {}),
+            key: guardKey.key,
+            replayStore: this.mrtrReplayStore,
+            bindings: {
+              principal: retryPrincipal,
+              method: "tools/call",
+              paramsDigest: ingressDigest,
+            },
+          });
+          if (retryOutcome.kind === "missing_state") {
             return jsonRpcResponse(
               {
                 jsonrpc: "2.0",
@@ -2498,129 +2628,65 @@ export class McpApp {
                 },
               },
               400,
-              {
-                "MCP-Protocol-Version": statelessVersion,
-              },
+              { "MCP-Protocol-Version": statelessVersion },
             );
           }
-
-          if (echoedState !== undefined) {
-            const key = guardKey.key;
-            if (key === null) {
-              // Unprotected mode: nothing to verify, and the handler is told so
-              // rather than being handed a false assurance.
-              retryVerified = false;
-            } else {
-              // On an authenticated server this binds the token to one user, so
-              // a token minted for A cannot be spent by B. On an UNAUTHENTICATED
-              // server every caller is "anonymous", and the binding protects
-              // nothing — correctly so: without auth there is no user boundary to
-              // cross, and any caller could invoke the tool directly anyway. The
-              // method and argument bindings still apply in both cases.
-              const principal = callerPrincipal(httpAuthInfo);
-              if (principal === null) {
-                return noPrincipalError(
-                  id,
-                  statelessVersion,
-                );
-              }
-              const verdict = await verifyRequestState(echoedState, key, {
-                principal,
-                method: "tools/call",
-                paramsDigest: ingressDigest,
-              });
-              if (!verdict.ok) {
-                // Attacker-controlled input that failed its integrity or binding
-                // checks. Rejected before the handler runs, and the reason is
-                // returned so a legitimate client can recover (e.g. re-elicit
-                // after an expiry) rather than guessing.
-                return jsonRpcResponse(
-                  {
-                    jsonrpc: "2.0",
-                    id,
-                    error: {
-                      code: JSONRPC_INVALID_PARAMS,
-                      message: `Invalid requestState: ${verdict.reason}`,
-                      data: { reason: verdict.reason },
-                    },
-                  },
-                  400,
-                );
-              }
-
-              const replayStore = this.mrtrReplayStore;
-              if (replayStore === null) {
-                return jsonRpcResponse(
-                  {
-                    jsonrpc: "2.0",
-                    id,
-                    error: {
-                      code: ErrorCode.InternalError,
-                      message: "MRTR replay protection is unavailable",
-                      data: {
-                        problem: "mrtr_replay_store_unavailable",
-                        recovery:
-                          "Configure mrtr.signingKey with a working replay store and retry the full interaction.",
-                      },
-                    },
-                  },
-                  500,
-                  { "MCP-Protocol-Version": statelessVersion },
-                );
-              }
-
-              let consumed: boolean;
-              try {
-                const storeResult = await replayStore.consume(
-                  verdict.payload.nonce,
-                  verdict.payload.exp,
-                );
-                if (storeResult !== true && storeResult !== false) {
-                  throw new Error(
-                    "mrtr.replayStore.consume() must return a boolean",
-                  );
-                }
-                consumed = storeResult;
-              } catch {
-                this.log(
-                  "[WARN] MRTR replay store unavailable; retry rejected before handler",
-                );
-                return jsonRpcResponse(
-                  {
-                    jsonrpc: "2.0",
-                    id,
-                    error: {
-                      code: ErrorCode.InternalError,
-                      message: "MRTR replay protection is unavailable",
-                      data: {
-                        problem: "mrtr_replay_store_unavailable",
-                        recovery:
-                          "Restore the shared replay store, then restart the interaction to obtain a fresh requestState.",
-                      },
-                    },
-                  },
-                  500,
-                  { "MCP-Protocol-Version": statelessVersion },
-                );
-              }
-              if (!consumed) {
-                return jsonRpcResponse(
-                  {
-                    jsonrpc: "2.0",
-                    id,
-                    error: {
-                      code: JSONRPC_INVALID_PARAMS,
-                      message: "Invalid requestState: replayed",
-                      data: { reason: "replayed" },
-                    },
-                  },
-                  400,
-                  { "MCP-Protocol-Version": statelessVersion },
-                );
-              }
-              retryVerified = true;
-            }
+          if (retryOutcome.kind === "invalid_state") {
+            return jsonRpcResponse(
+              {
+                jsonrpc: "2.0",
+                id,
+                error: {
+                  code: JSONRPC_INVALID_PARAMS,
+                  message: `Invalid requestState: ${retryOutcome.reason}`,
+                  data: { reason: retryOutcome.reason },
+                },
+              },
+              400,
+              { "MCP-Protocol-Version": statelessVersion },
+            );
           }
+          if (retryOutcome.kind === "replay_store_unavailable") {
+            if (retryOutcome.reason === "consume_failed") {
+              this.log(
+                "[WARN] MRTR replay store unavailable; retry rejected before handler",
+              );
+            }
+            return jsonRpcResponse(
+              {
+                jsonrpc: "2.0",
+                id,
+                error: {
+                  code: ErrorCode.InternalError,
+                  message: "MRTR replay protection is unavailable",
+                  data: {
+                    problem: "mrtr_replay_store_unavailable",
+                    recovery: retryOutcome.reason === "missing"
+                      ? "Configure mrtr.signingKey with a working replay store and retry the full interaction."
+                      : "Restore the shared replay store, then restart the interaction to obtain a fresh requestState.",
+                  },
+                },
+              },
+              500,
+              { "MCP-Protocol-Version": statelessVersion },
+            );
+          }
+          if (retryOutcome.kind === "replayed") {
+            return jsonRpcResponse(
+              {
+                jsonrpc: "2.0",
+                id,
+                error: {
+                  code: JSONRPC_INVALID_PARAMS,
+                  message: "Invalid requestState: replayed",
+                  data: { reason: "replayed" },
+                },
+              },
+              400,
+              { "MCP-Protocol-Version": statelessVersion },
+            );
+          }
+          const retryVerified = retryOutcome.retryVerified;
 
           try {
             const result = await this.executeToolCall(
@@ -3570,7 +3636,9 @@ export class McpApp {
    * @see {@link MCP_APPS_EXTENSION_ID} for the extension key
    */
   getClientMcpAppsCapability(): McpAppsClientCapability | undefined {
-    return getMcpAppsCapability(this.mcpServer.server.getClientCapabilities());
+    return getMcpAppsCapability(
+      this.activeStdioServer?.getClientCapabilities(),
+    );
   }
 
   /**
@@ -3745,12 +3813,14 @@ export class McpApp {
       }
     }
 
-    // For stdio mode, send via SDK transport
-    try {
-      this.mcpServer.server.notification({ method, params });
-    } catch {
-      // Transport may not support notifications yet (pre-initialized)
-    }
+    // For stdio mode, send via the one protocol instance pinned by the era
+    // negotiator. A probe instance may already be closed while its replacement
+    // is being built, so never route through the constructor-time template.
+    const server = this.activeStdioServer;
+    if (server === null) return;
+    void server.notification({ method, params }).catch(() => {
+      // Transport may not support notifications yet (pre-initialized).
+    });
   }
 
   /**
@@ -3788,8 +3858,9 @@ export class McpApp {
    * Apply the spec-2026-07-28 result envelope when — and only when — the peer
    * negotiated that revision.
    *
-   * Always applies on the stateless transport, which only accepts 2026-07-28.
-   * Stdio mode passes `undefined` and stays on the legacy shape.
+   * This helper applies on the custom stateless HTTP transport, which only
+   * accepts 2026-07-28. Stdio results are neutral here: the official v2 codec
+   * stamps modern responses and leaves a negotiated legacy connection clean.
    *
    * Omitting the envelope for a genuinely legacy peer is safe in the other
    * direction too: the spec instructs clients to read a missing `resultType` as
@@ -3814,6 +3885,104 @@ export class McpApp {
         version: this.options.version,
       }),
       resultType,
+    };
+  }
+
+  /**
+   * Validate one MRTR retry delivered through the v2 protocol server.
+   *
+   * The SDK owns era-specific lifting and legacy fulfilment; Casys owns the
+   * integrity bindings and nonce consumption of its sealed requestState.
+   * Protocol errors deliberately escape the tool-error wrapper so clients see
+   * a JSON-RPC error instead of a successful tools/call result with isError.
+   */
+  private async prepareProtocolMrtrRetry(
+    inputResponses: Record<string, unknown> | undefined,
+    requestState: string | undefined,
+    context: {
+      principal: string;
+      method: string;
+      paramsDigest: string;
+    },
+  ): Promise<{
+    inputResponses?: Record<string, unknown>;
+    retryVerified?: boolean;
+  }> {
+    const needsKey = inputResponses !== undefined || requestState !== undefined;
+    let key: CryptoKey | null = null;
+    if (needsKey) {
+      try {
+        key = await this.getMrtrKey();
+      } catch (error) {
+        throw new ProtocolError(
+          ProtocolErrorCode.InternalError,
+          "MRTR signing key is unavailable",
+          {
+            problem: "mrtr_key_unavailable",
+            detail: error instanceof Error ? error.message : String(error),
+            recovery:
+              "Check mrtr.signingKey. The import is retried on the next request, so a transient failure clears itself.",
+          },
+        );
+      }
+    }
+
+    const outcome = await guardMrtrRetry({
+      ...(inputResponses !== undefined ? { inputResponses } : {}),
+      ...(requestState !== undefined ? { requestState } : {}),
+      key,
+      replayStore: this.mrtrReplayStore,
+      bindings: context,
+    });
+
+    if (outcome.kind === "missing_state") {
+      throw new ProtocolError(
+        ProtocolErrorCode.InvalidParams,
+        "inputResponses supplied without the requestState issued with them",
+        {
+          problem: "missing_request_state",
+          recovery:
+            "Echo back the exact requestState string from the InputRequiredResult alongside inputResponses.",
+        },
+      );
+    }
+    if (outcome.kind === "invalid_state") {
+      throw new ProtocolError(
+        ProtocolErrorCode.InvalidParams,
+        `Invalid requestState: ${outcome.reason}`,
+        { reason: outcome.reason },
+      );
+    }
+    if (outcome.kind === "replay_store_unavailable") {
+      if (outcome.reason === "consume_failed") {
+        this.log(
+          "[WARN] MRTR replay store unavailable; retry rejected before handler",
+        );
+      }
+      throw new ProtocolError(
+        ProtocolErrorCode.InternalError,
+        "MRTR replay protection is unavailable",
+        {
+          problem: "mrtr_replay_store_unavailable",
+          recovery: outcome.reason === "missing"
+            ? "Configure mrtr.signingKey with a working replay store and retry the full interaction."
+            : "Restore the shared replay store, then restart the interaction to obtain a fresh requestState.",
+        },
+      );
+    }
+    if (outcome.kind === "replayed") {
+      throw new ProtocolError(
+        ProtocolErrorCode.InvalidParams,
+        "Invalid requestState: replayed",
+        { reason: "replayed" },
+      );
+    }
+
+    return {
+      ...(inputResponses !== undefined ? { inputResponses } : {}),
+      ...(outcome.retryVerified !== undefined
+        ? { retryVerified: outcome.retryVerified }
+        : {}),
     };
   }
 

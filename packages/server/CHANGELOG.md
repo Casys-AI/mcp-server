@@ -2,6 +2,34 @@
 
 All notable changes to `@casys/mcp-server` will be documented in this file.
 
+## [0.26.1] — 2026-08-21
+
+### Fixed
+
+- **MCP 2026-07-28 over stdio now uses the official era-aware serving path.**
+  Modern clients receive the required `resultType: "complete"` envelope on
+  `server/discover`, `tools/list`, and other completed results, while clients
+  that begin with legacy `initialize` retain their 2025-11-25 wire shape. The
+  server factory creates a fresh protocol instance for a modern probe and a
+  possible legacy fallback, so the fallback never reuses a discarded instance.
+  This restores all ERPNext tools in Claude Code and fixes
+  [mcp-erpnext#22](https://github.com/Casys-AI/mcp-erpnext/issues/22).
+
+- **MRTR retries now have one transport-neutral admission policy.** stdio and
+  HTTP share the same signed-state bindings and atomic replay check before
+  application dispatch. Modern stdio consumes the v2 retry fields directly;
+  legacy stdio uses the SDK compatibility shim and re-enters the same verified
+  handler. Malformed lifted responses are rejected before their nonce can be
+  spent.
+
+- stdio discovery no longer advertises the HTTP-only Tasks extension or
+  `tools.listChanged` until those operations are actually served. Resource
+  list-change notifications continue to be emitted when resources are enabled.
+
+- The npm build now declares `@modelcontextprotocol/server` and excludes stdio
+  test fixtures, so the published Node distribution resolves the v2 runtime it
+  imports.
+
 ## [0.26.0] — 2026-08-11
 
 ### Added

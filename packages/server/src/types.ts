@@ -7,7 +7,6 @@
  * @module lib/server/types
  */
 
-import type { McpUiToolMeta as McpUiToolMetaBase } from "@modelcontextprotocol/ext-apps";
 import type {
   ClientCapabilities,
   Implementation,
@@ -256,10 +255,10 @@ export interface McpAppOptions {
 /**
  * MCP Apps UI metadata for tools (SEP-1865 + PML extensions)
  *
- * Extends the base `McpUiToolMeta` from `@modelcontextprotocol/ext-apps`
- * (the official MCP Apps contract) with PML-specific `emits`/`accepts`
- * fields for cross-UI sync rules. The server narrows/extends the spec type;
- * the contract itself is owned upstream by the protocol, not by this repo.
+ * Mirrors the structural fields of the official MCP Apps `McpUiToolMeta`
+ * contract and adds PML-specific `emits`/`accepts` fields for cross-UI sync
+ * rules. Keeping this public declaration structural avoids leaking the
+ * upstream package's internal declaration-module layout into Node consumers.
  *
  * @example
  * ```typescript
@@ -277,13 +276,24 @@ export interface McpAppOptions {
  * };
  * ```
  */
-export interface McpUiToolMeta extends McpUiToolMetaBase {
+export interface McpUiToolMeta {
   /**
    * Resource URI for the UI. MUST use ui:// scheme.
    * Narrows the optional base field to required for server tools.
    * @example "ui://mcp-std/table-viewer"
    */
   resourceUri: string;
+
+  /**
+   * Who can access this tool. Defaults to both the model and the app.
+   */
+  visibility?: Array<"model" | "app">;
+
+  /** CSP belongs on the UI resource, not on tool metadata. */
+  csp?: never;
+
+  /** Permissions belong on the UI resource, not on tool metadata. */
+  permissions?: never;
 
   /**
    * Events this UI can emit (PML extension for sync rules)

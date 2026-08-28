@@ -60,17 +60,38 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           cd packages/server
-          bash scripts/build-node.sh
-          cd dist-node
-          npm install
-          npx tsx ../scripts/smoke-node.mjs
-          PKG_NAME=$(node -p "require('./package.json').name")
-          PKG_VERSION=$(node -p "require('./package.json').version")
+          deno task build:npm
+
+          PACK_DIR=$(mktemp -d)
+          TARBALL_NAME=$(npm pack ./dist-node --pack-destination "$PACK_DIR" --json | node -p 'JSON.parse(require("fs").readFileSync(0, "utf8"))[0].filename')
+          TARBALL="$PACK_DIR/$TARBALL_NAME"
+          tar -tzf "$TARBALL" | rg '^package/LICENSE$'
+
+          CONSUMER_DIR=$(mktemp -d)
+          (
+            cd "$CONSUMER_DIR"
+            npm init --yes >/dev/null
+            npm pkg set type=module
+            npm install --ignore-scripts --no-audit --no-fund "$TARBALL" typescript@5.9.3 @types/node@22
+          )
+
+          npx --yes node@20 scripts/smoke-node.mjs "$CONSUMER_DIR/node_modules/@casys/mcp-server/esm/mod.js"
+          node scripts/smoke-node.mjs "$CONSUMER_DIR/node_modules/@casys/mcp-server/esm/mod.js"
+          cp scripts/smoke-node-consumer.ts "$CONSUMER_DIR/smoke-node-consumer.ts"
+          (
+            cd "$CONSUMER_DIR"
+            node --input-type=module --eval 'const pkg = await import("@casys/mcp-server"); if (typeof pkg.McpApp !== "function") throw new Error("package export missing")'
+            npx tsc --noEmit --strict --target ES2022 --module NodeNext --moduleResolution NodeNext --lib ES2022,DOM,DOM.Iterable smoke-node-consumer.ts
+          )
+
+          npm publish ./dist-node --dry-run --access public
+          PKG_NAME=$(node -p "require('./dist-node/package.json').name")
+          PKG_VERSION=$(node -p "require('./dist-node/package.json').version")
           if npm view "${PKG_NAME}@${PKG_VERSION}" version >/dev/null 2>&1; then
             echo "Already published: ${PKG_NAME}@${PKG_VERSION} — skipping"
             exit 0
           fi
-          npm publish --access public
+          npm publish ./dist-node --access public
 
   publish-npm-compose:
     runs-on: ubuntu-latest

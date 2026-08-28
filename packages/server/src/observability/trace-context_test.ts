@@ -205,7 +205,10 @@ Deno.test("tracestate - an empty value is not a valid member", () => {
 Deno.test("tracestate - only SP and HTAB separate list members", () => {
   // `String.trim()` would also eat CR/LF/FF/VT, none of which are legal here.
   // Accepting them means accepting a malformed list.
-  assertEquals(parseTraceParent(SAMPLED, "a=1,\nb=2")?.traceState?.get("b"), undefined);
+  assertEquals(
+    parseTraceParent(SAMPLED, "a=1,\nb=2")?.traceState?.get("b"),
+    undefined,
+  );
   assertEquals(parseTraceParent(SAMPLED, "\ta=1 ")?.traceState?.get("a"), "1");
 });
 

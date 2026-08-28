@@ -83,7 +83,6 @@ trace.setGlobalTracerProvider(capturingProvider);
 // `setGlobalTracerProvider` leaves spans landing in the first buffer. Hence one
 // provider and one buffer, cleared per test.
 
-
 /** Clear the buffer and return the span opened by the next tool call. */
 function reset(): void {
   captured.length = 0;

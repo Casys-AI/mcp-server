@@ -1,16 +1,19 @@
 import { createServer } from "node:http";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 
-const distEntry = pathToFileURL(resolve(process.argv[2] ?? "mod.ts")).href;
+const distEntry = pathToFileURL(
+  resolve(process.argv[2] ?? "dist-node/esm/mod.js"),
+).href;
 const {
   buildClientIdMetadataDocument,
   CallbackServer,
   createStaticTokenAuthProvider,
   FileTokenStore,
+  loadAuthConfig,
   McpApp,
   MemoryMrtrReplayStore,
   MemoryTokenStore,
@@ -72,6 +75,28 @@ if (document.client_id !== "https://client.example.com/oauth/client.json") {
 
 const dir = await mkdtemp(join(tmpdir(), "casys-node-smoke-"));
 try {
+  const authConfigPath = join(dir, "auth.yaml");
+  await writeFile(
+    authConfigPath,
+    [
+      "auth:",
+      "  provider: github",
+      "  audience: https://node-smoke.example/audience",
+      "  resource: https://node-smoke.example/resource",
+      "  scopesSupported:",
+      "    - read",
+      "    - write",
+      "",
+    ].join("\n"),
+  );
+  const authConfig = await loadAuthConfig(authConfigPath);
+  if (
+    authConfig?.provider !== "github" ||
+    authConfig.scopesSupported?.join(" ") !== "read write"
+  ) {
+    throw new Error("Node build did not load the vendored YAML config");
+  }
+
   const store = new FileTokenStore(dir);
   await store.set("https://mcp.example.com", {
     serverUrl: "https://mcp.example.com",
@@ -148,6 +173,8 @@ console.log("node client-auth smoke ok");
     maxConcurrent: 2,
     logger: () => {},
     resourceCsp: { allowInline: true },
+    transport: "stateless",
+    auth: { provider: staticCredentials },
   });
   app.registerTools([], {});
   app.registerResource(
@@ -172,6 +199,7 @@ console.log("node client-auth smoke ok");
     const res = await fetch("http://127.0.0.1:38988/mcp", {
       method: "POST",
       headers: {
+        authorization: "Bearer node-token-b",
         "content-type": "application/json",
         accept: "application/json, text/event-stream",
         "MCP-Protocol-Version": "2026-07-28",
@@ -198,11 +226,68 @@ console.log("node client-auth smoke ok");
     }
     await res.body?.cancel();
 
+    // The identity-aware provider must also drive the real HTTP scope gate in
+    // the compiled package, not just expose distinct verifyToken() results.
+    let scopedHandlerCalls = 0;
+    app.registerToolLive(
+      {
+        name: "node_write",
+        description: "Node package scope smoke",
+        inputSchema: { type: "object" },
+        requiredScopes: ["write"],
+      },
+      () => {
+        scopedHandlerCalls++;
+        return "allowed";
+      },
+    );
+    const callScopedTool = (token, id) =>
+      fetch("http://127.0.0.1:38988/mcp", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+          "MCP-Protocol-Version": "2026-07-28",
+          "Mcp-Method": "tools/call",
+          "Mcp-Name": "node_write",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id,
+          method: "tools/call",
+          params: {
+            name: "node_write",
+            arguments: {},
+            _meta: {
+              "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+              "io.modelcontextprotocol/clientCapabilities": {},
+            },
+          },
+        }),
+      });
+
+    const deniedScope = await callScopedTool("node-token-a", 5);
+    if (deniedScope.status !== 403 || scopedHandlerCalls !== 0) {
+      throw new Error("Node HTTP scope gate did not reject the read token");
+    }
+    await deniedScope.body?.cancel();
+    const allowedScope = await callScopedTool("node-token-b", 6);
+    if (allowedScope.status !== 200 || scopedHandlerCalls !== 1) {
+      throw new Error("Node HTTP scope gate did not accept the write token");
+    }
+    await allowedScope.body?.cancel();
+    const unknownToken = await callScopedTool("unknown-token", 7);
+    if (unknownToken.status !== 401 || scopedHandlerCalls !== 1) {
+      throw new Error("Node HTTP auth gate did not reject an unknown token");
+    }
+    await unknownToken.body?.cancel();
+
     // A binary resource exercises the Node copy of the content validation and
     // confirms CSP does not decode or mutate base64 blobs.
     const resource = await fetch("http://127.0.0.1:38988/mcp", {
       method: "POST",
       headers: {
+        authorization: "Bearer node-token-b",
         "content-type": "application/json",
         "MCP-Protocol-Version": "2026-07-28",
         "Mcp-Method": "resources/read",
@@ -242,6 +327,7 @@ console.log("node client-auth smoke ok");
     const list = await fetch("http://127.0.0.1:38988/mcp", {
       method: "POST",
       headers: {
+        authorization: "Bearer node-token-b",
         "content-type": "application/json",
         "MCP-Protocol-Version": "2026-07-28",
         "Mcp-Method": "resources/list",
@@ -272,7 +358,10 @@ console.log("node client-auth smoke ok");
     // smoke test is the right place to catch a silent regression of it.
     const legacy = await fetch("http://127.0.0.1:38988/mcp", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        authorization: "Bearer node-token-b",
+        "content-type": "application/json",
+      },
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: 2,

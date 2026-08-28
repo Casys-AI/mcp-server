@@ -35,7 +35,8 @@ let serverTracer: Tracer | null = null;
  * uppercase produces a trace id that will not match the same trace elsewhere in
  * the pipeline: a silently broken join is worse than a dropped header.
  */
-const TRACEPARENT = /^([0-9a-f]{2})-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})/;
+const TRACEPARENT =
+  /^([0-9a-f]{2})-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})/;
 
 /** `00-` + 32 + `-` + 16 + `-` + 2 = 55. */
 const TRACEPARENT_PREFIX_LENGTH = 55;

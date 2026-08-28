@@ -46,7 +46,7 @@ stack.
 # Deno (primary target — JSR)
 deno add jsr:@casys/mcp-server
 
-# Node (secondary — npm, via build-node compilation)
+# Node (secondary — npm, native ESM build)
 npm install @casys/mcp-server
 ```
 
@@ -54,9 +54,9 @@ npm install @casys/mcp-server
 
 `@casys/mcp-server` is **Deno-first**. The canonical deployment path is Deno 2.x
 running on [Deno Deploy](https://deno.com/deploy) or self-hosted Deno, with a
-Node 20+ distribution as a secondary target via `scripts/build-node.sh` (which
-swaps the HTTP runtime adapter and remaps `@std/*` imports to their npm
-equivalents).
+Node 20+ distribution as a secondary target. The npm package contains compiled
+ESM JavaScript and TypeScript declarations; its runtime selector loads the Node
+HTTP adapter without evaluating the Deno adapter.
 
 | Runtime                                       |      Status      |
 | --------------------------------------------- | :--------------: |

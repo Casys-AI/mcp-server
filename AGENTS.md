@@ -59,9 +59,9 @@ class and will be removed in v1.0.)
   metrics (`metrics.ts`).
 - **`src/security/`** — CSP header generation, HMAC channel auth for PostMessage
   (MCP Apps).
-- **`src/runtime/`** — Runtime abstraction layer. `runtime.ts` uses
-  `Deno.serve`, `runtime.node.ts` uses `node:http`. The Node build script swaps
-  them.
+- **`src/runtime/`** — Runtime abstraction layer. `runtime.ts` selects the host
+  adapter at load time; `runtime.deno.ts` uses `Deno.serve`, while
+  `runtime.node.ts` uses `node:http`.
 - **`src/client-auth/`** — Client-side OAuth2 flow (callback server, token
   stores).
 - **`src/ui/`** — MCP Apps viewer discovery and utilities.
@@ -75,17 +75,18 @@ class and will be removed in v1.0.)
   project to work.
 - **Test convention**: `*_test.ts` files colocated with source. Uses Deno's
   native test runner with `@std/assert`.
-- **Node.js compatibility**: `scripts/build-node.sh` copies source to
-  `dist-node/`, swaps the runtime adapter, and remaps Deno imports to npm
-  equivalents. The HTTP layer uses Hono for portable routing.
+- **Node.js compatibility**: `scripts/build-node.sh` delegates to the dnt build,
+  which emits native ESM JavaScript and declarations in `dist-node/`. The same
+  runtime selector loads the Node adapter; the HTTP layer uses Hono for portable
+  routing.
 - **Dual transport**: STDIO for local/CLI usage, HTTP (Streamable HTTP + SSE)
   for remote. Auth only applies to HTTP transport.
 - **Publishing**: On push to `main`, `.github/workflows/publish.yml` publishes
   every workspace member to JSR (`npx jsr publish` skips already-published
   versions) and four of them to npm (`server`, `compose`, `bridge`, and `view`
-  via dnt). Each npm job is idempotent: it queries `npm view <pkg>@<ver>`
-  before publishing, so repeated runs without a version bump exit cleanly
-  instead of masking auth/build/network failures behind `|| echo`.
+  via dnt). Each npm job is idempotent: it queries `npm view <pkg>@<ver>` before
+  publishing, so repeated runs without a version bump exit cleanly instead of
+  masking auth/build/network failures behind `|| echo`.
 
 ## Release process
 

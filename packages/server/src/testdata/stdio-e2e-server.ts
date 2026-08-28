@@ -49,6 +49,16 @@ app.registerTool(
   (args) => args.value ?? "empty",
 );
 
+app.registerTool(
+  {
+    name: "scoped_local",
+    description: "Prove OAuth scopes do not apply to trusted local stdio",
+    inputSchema: { type: "object" },
+    requiredScopes: ["admin"],
+  },
+  () => "trusted-local",
+);
+
 app.registerResource(
   {
     uri: RESOURCE_URI,

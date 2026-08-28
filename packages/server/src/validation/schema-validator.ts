@@ -74,6 +74,21 @@ export interface ValidationResult {
 }
 
 /**
+ * One immutable, compiled input-schema policy.
+ *
+ * McpApp stores this beside the tool handler so an in-flight call keeps the
+ * schema it entered with even if live registration later replaces or removes
+ * the public tool name.
+ */
+export interface CompiledSchemaValidator {
+  validate(args: Record<string, unknown>): ValidationResult;
+  validateOrThrow(
+    toolName: string,
+    args: Record<string, unknown>,
+  ): void;
+}
+
+/**
  * Schema validator with compiled schema caching
  *
  * @example
@@ -96,7 +111,7 @@ export interface ValidationResult {
  */
 export class SchemaValidator {
   private ajv: any;
-  private validators = new Map<string, AjvValidateFunction>();
+  private validators = new Map<string, CompiledSchemaValidator>();
 
   constructor() {
     this.ajv = new Ajv({
@@ -113,10 +128,54 @@ export class SchemaValidator {
    * @param toolName - Name of the tool
    * @param schema - JSON Schema for tool arguments
    */
-  addSchema(toolName: string, schema: Record<string, unknown>): void {
-    // Compile and cache the validator
-    const validate = this.ajv.compile(schema);
-    this.validators.set(toolName, validate);
+  addSchema(
+    toolName: string,
+    schema: Record<string, unknown>,
+  ): CompiledSchemaValidator {
+    // Compilation happens before the map update. A malformed replacement
+    // therefore leaves the previously cached schema intact.
+    const compiled = this.compileSchema(schema);
+    this.validators.set(toolName, compiled);
+    return compiled;
+  }
+
+  /**
+   * Compile a schema into a standalone validation snapshot.
+   *
+   * The returned object closes over one Ajv function rather than looking up a
+   * mutable tool name. This is useful for request snapshots and remains safe to
+   * retain after the name is unregistered from this cache.
+   */
+  compileSchema(
+    schema: Record<string, unknown>,
+  ): CompiledSchemaValidator {
+    const validate = this.ajv.compile(schema) as AjvValidateFunction;
+    const run = (args: Record<string, unknown>): ValidationResult => {
+      const valid = validate(args);
+
+      if (valid) {
+        return { valid: true, errors: [] };
+      }
+
+      return {
+        valid: false,
+        errors: this.formatErrors(validate.errors || []),
+      };
+    };
+
+    return Object.freeze({
+      validate: run,
+      validateOrThrow: (
+        toolName: string,
+        args: Record<string, unknown>,
+      ): void => {
+        const result = run(args);
+        if (!result.valid) {
+          const messages = result.errors.map((e) => e.message).join("; ");
+          throw new Error(`Invalid arguments for ${toolName}: ${messages}`);
+        }
+      },
+    });
   }
 
   /**
@@ -141,22 +200,13 @@ export class SchemaValidator {
    * @returns Validation result with errors if invalid
    */
   validate(toolName: string, args: Record<string, unknown>): ValidationResult {
-    const validate = this.validators.get(toolName);
+    const compiled = this.validators.get(toolName);
 
-    if (!validate) {
+    if (!compiled) {
       // No schema registered - pass through
       return { valid: true, errors: [] };
     }
-
-    const valid = validate(args);
-
-    if (valid) {
-      return { valid: true, errors: [] };
-    }
-
-    // Format errors
-    const errors = this.formatErrors(validate.errors || []);
-    return { valid: false, errors };
+    return compiled.validate(args);
   }
 
   /**
@@ -165,12 +215,8 @@ export class SchemaValidator {
    * @throws Error with formatted validation message
    */
   validateOrThrow(toolName: string, args: Record<string, unknown>): void {
-    const result = this.validate(toolName, args);
-
-    if (!result.valid) {
-      const messages = result.errors.map((e) => e.message).join("; ");
-      throw new Error(`Invalid arguments for ${toolName}: ${messages}`);
-    }
+    const compiled = this.validators.get(toolName);
+    if (compiled) compiled.validateOrThrow(toolName, args);
   }
 
   /**

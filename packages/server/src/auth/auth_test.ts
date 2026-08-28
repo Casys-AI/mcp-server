@@ -682,6 +682,7 @@ Deno.test("HTTP + Auth - no auth config means tools work without token", async (
 Deno.test("HTTP + Auth - scope enforcement 403", async () => {
   const expectedResourceMetadataUrl =
     "https://mock.example.com/.well-known/oauth-protected-resource";
+  let handlerCalls = 0;
   const server = new McpApp({
     name: "test-scopes",
     version: "1.0.0",
@@ -699,7 +700,10 @@ Deno.test("HTTP + Auth - scope enforcement 403", async () => {
       inputSchema: { type: "object" },
       requiredScopes: ["admin"],
     },
-    () => "admin result",
+    () => {
+      handlerCalls++;
+      return "admin result";
+    },
   );
 
   const listener = Deno.listen({ port: 0 });
@@ -741,6 +745,7 @@ Deno.test("HTTP + Auth - scope enforcement 403", async () => {
     const body = await res.json();
     assertEquals(body.error.code, -31403);
     assert(body.error.message.includes("admin"));
+    assertEquals(handlerCalls, 0);
   } finally {
     await http.shutdown();
   }

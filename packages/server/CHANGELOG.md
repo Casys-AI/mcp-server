@@ -2,6 +2,24 @@
 
 All notable changes to `@casys/mcp-server` will be documented in this file.
 
+## [Unreleased]
+
+### Security
+
+- HTTP scope authorization now follows live tool registration. A tool added or
+  replaced with `registerToolLive()` is checked against its current
+  `requiredScopes` even when the server started with no scoped tools. Each call
+  binds one tool definition for authorization, input validation, handler
+  dispatch, and result metadata, so a concurrent replacement cannot mix old
+  scopes or schemas with a new handler. Scoped HTTP tools also fail closed when
+  no auth provider is configured; stdio remains the trusted local transport.
+
+### Fixed
+
+- Live registration now copies the caller's scope array and validates schemas
+  before replacing registry state. Unregistering a tool also removes its cached
+  schema, allowing a later tool with the same name to start cleanly.
+
 ## [0.26.1] — 2026-08-21
 
 ### Fixed

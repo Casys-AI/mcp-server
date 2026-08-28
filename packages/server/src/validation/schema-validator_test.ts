@@ -125,6 +125,30 @@ Deno.test("SchemaValidator - hasSchema and removeSchema", () => {
   assertEquals(validator.count, 0);
 });
 
+Deno.test("SchemaValidator - compiled snapshot survives replacement and removal", () => {
+  const validator = new SchemaValidator();
+  const original = validator.addSchema("live_tool", {
+    type: "object",
+    properties: { safe: { type: "string" } },
+    additionalProperties: false,
+  });
+
+  validator.addSchema("live_tool", { type: "object" });
+  assertEquals(
+    validator.validate("live_tool", { privileged: true }).valid,
+    true,
+  );
+  assertEquals(original.validate({ privileged: true }).valid, false);
+
+  validator.removeSchema("live_tool");
+  assertEquals(original.validate({ privileged: true }).valid, false);
+  assertThrows(
+    () => original.validateOrThrow("live_tool", { privileged: true }),
+    Error,
+    "Unknown property: privileged",
+  );
+});
+
 Deno.test("SchemaValidator - clear removes all schemas", () => {
   const validator = new SchemaValidator();
 

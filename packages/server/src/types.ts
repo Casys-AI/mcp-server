@@ -589,7 +589,9 @@ export interface MCPTool {
 
   /**
    * Required OAuth scopes to call this tool.
-   * Only enforced when auth is configured on the server.
+   * Enforced for HTTP calls. A scoped HTTP tool fails closed when the server has
+   * no auth provider or the authenticated caller lacks one of these scopes.
+   * STDIO is a trusted local transport and does not apply OAuth scope checks.
    * If empty or undefined, no scope check is performed.
    */
   requiredScopes?: string[];

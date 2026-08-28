@@ -270,6 +270,7 @@ Deno.test("stdio e2e - modern discover and tools/list carry the 2026 result enve
       "register_duplicate_resource_batch",
       "register_resource_batch",
       "register_second_lifecycle_resource",
+      "scoped_local",
       "unregister_lifecycle_resource",
     ],
   );
@@ -280,6 +281,24 @@ Deno.test("stdio e2e - modern discover and tools/list carry the 2026 result enve
     (tools.result._meta as Record<string, unknown>)[SERVER_INFO_KEY],
     SERVER_INFO,
   );
+});
+
+Deno.test("stdio e2e - scoped tools remain available on the trusted local transport", async () => {
+  const responses = await exchange([
+    modernRequest(1, "tools/call", {
+      name: "scoped_local",
+      arguments: {},
+    }),
+  ]);
+
+  const call = responses.get(1);
+  assertExists(call?.result, "scoped stdio tool got no result");
+  assertEquals(call.error, undefined);
+  assertEquals(
+    (call.result.content as Array<{ text: string }>)[0].text,
+    "trusted-local",
+  );
+  assertEquals(call.result.resultType, "complete");
 });
 
 Deno.test("stdio e2e - legacy initialize keeps tools/list on the 2025 wire shape", async () => {
@@ -301,6 +320,7 @@ Deno.test("stdio e2e - legacy initialize keeps tools/list on the 2025 wire shape
       "register_duplicate_resource_batch",
       "register_resource_batch",
       "register_second_lifecycle_resource",
+      "scoped_local",
       "unregister_lifecycle_resource",
     ],
   );
@@ -337,6 +357,7 @@ Deno.test("stdio e2e - a modern discover probe can fall back to a fresh legacy s
       "register_duplicate_resource_batch",
       "register_resource_batch",
       "register_second_lifecycle_resource",
+      "scoped_local",
       "unregister_lifecycle_resource",
     ],
   );

@@ -34,7 +34,10 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { RequestQueue } from "./concurrency/request-queue.ts";
 import { RateLimiter } from "./concurrency/rate-limiter.ts";
-import { SchemaValidator } from "./validation/schema-validator.ts";
+import {
+  type CompiledSchemaValidator,
+  SchemaValidator,
+} from "./validation/schema-validator.ts";
 import { createMiddlewareRunner } from "./middleware/runner.ts";
 import { createRateLimitMiddleware } from "./middleware/rate-limit.ts";
 import { createValidationMiddleware } from "./middleware/validation.ts";
@@ -131,10 +134,30 @@ import {
 } from "./http/wire.ts";
 
 /**
- * Tool definition with handler
+ * Private per-call binding to one exact tool definition.
+ *
+ * Live registration can replace a tool while another call is waiting in auth
+ * or backpressure. Scope enforcement and handler dispatch must use the same
+ * snapshot or a request admitted for the old tool could execute the new one.
+ */
+const BOUND_TOOL = Symbol("McpApp.boundTool");
+const COMPILED_INPUT_SCHEMA = Symbol("McpApp.compiledInputSchema");
+
+/**
+ * Tool definition with its executable policies.
  */
 interface ToolWithHandler extends MCPTool {
   handler: ToolHandler;
+  [COMPILED_INPUT_SCHEMA]?: CompiledSchemaValidator;
+}
+
+type ToolExecutionContext = MiddlewareContext & {
+  [BOUND_TOOL]?: ToolWithHandler;
+};
+
+interface ToolExecutionResult {
+  result: MiddlewareResult;
+  tool?: ToolWithHandler;
 }
 
 /**
@@ -838,8 +861,9 @@ export class McpApp {
         );
 
         let result: unknown;
+        let executedTool: ToolWithHandler | undefined;
         try {
-          result = await this.executeToolCall(
+          const execution = await this.executeToolCall(
             toolName,
             args,
             undefined,
@@ -848,6 +872,8 @@ export class McpApp {
             clientMeta,
             mrtr,
           );
+          result = execution.result;
+          executedTool = execution.tool;
         } catch (error) {
           return this.handleToolError(
             error,
@@ -880,6 +906,7 @@ export class McpApp {
         return this.buildToolCallResult(
           toolName,
           result,
+          executedTool,
         ) as unknown as CallToolResult;
       },
     );
@@ -932,22 +959,7 @@ export class McpApp {
         throw new Error(`No handler provided for tool: ${tool.name}`);
       }
 
-      // Validate annotations BEFORE inserting: a throw must not leave the tool
-      // half-registered. Registration is the right place to fail — a conforming
-      // client drops the whole tool from `tools/list` over a malformed
-      // annotation, so a typo would otherwise surface as a tool that silently
-      // does not exist (AX: fast fail early).
-      this.indexMirroredParams(tool);
-
-      this.tools.set(tool.name, {
-        ...tool,
-        handler,
-      });
-
-      // Register schema for validation if enabled
-      if (this.schemaValidator) {
-        this.schemaValidator.addSchema(tool.name, tool.inputSchema);
-      }
+      this.commitToolRegistration(tool, handler);
     }
 
     this.log(`Registered ${tools.length} tools`);
@@ -970,7 +982,7 @@ export class McpApp {
    * Throws *before* the caller inserts the tool, so a rejected definition cannot
    * leave a half-registered tool behind.
    */
-  private indexMirroredParams(tool: MCPTool): void {
+  private collectToolMirroredParams(tool: MCPTool): MirroredParam[] {
     const invalid: string[] = [];
     const mirrored = collectMirroredParams(
       tool.inputSchema,
@@ -982,6 +994,41 @@ export class McpApp {
           invalid.map((r) => `  - ${r}`).join("\n"),
       );
     }
+    return mirrored;
+  }
+
+  /**
+   * Validate and atomically commit one tool definition.
+   *
+   * Schema compilation and mirrored-header validation happen before any public
+   * registry state changes. Re-registering an invalid live definition therefore
+   * leaves the previous handler, scopes, schema and header policy intact.
+   */
+  private commitToolRegistration(tool: MCPTool, handler: ToolHandler): void {
+    const mirrored = this.collectToolMirroredParams(tool);
+    const requiredScopes = tool.requiredScopes === undefined
+      ? undefined
+      : (Object.freeze([...tool.requiredScopes]) as unknown as string[]);
+
+    const stored: ToolWithHandler = {
+      ...tool,
+      ...(requiredScopes !== undefined ? { requiredScopes } : {}),
+      handler,
+    };
+
+    // Ajv compiles before updating its name cache. If compilation throws, the
+    // previous schema and every other registration surface remain unchanged.
+    // The returned object is also retained on the tool snapshot so an in-flight
+    // call never resolves validation through a later registration by name.
+    const compiledInputSchema = this.schemaValidator?.addSchema(
+      tool.name,
+      tool.inputSchema,
+    );
+    if (compiledInputSchema) {
+      stored[COMPILED_INPUT_SCHEMA] = compiledInputSchema;
+    }
+
+    this.tools.set(tool.name, stored);
     // Replace wholesale: re-registering a tool without annotations must clear
     // whatever a previous definition left behind.
     if (mirrored.length > 0) this.mirroredParams.set(tool.name, mirrored);
@@ -995,16 +1042,7 @@ export class McpApp {
           "Call registerTool() before start() or startHttp().",
       );
     }
-    this.indexMirroredParams(tool);
-    this.tools.set(tool.name, {
-      ...tool,
-      handler,
-    });
-
-    // Register schema for validation if enabled
-    if (this.schemaValidator) {
-      this.schemaValidator.addSchema(tool.name, tool.inputSchema);
-    }
+    this.commitToolRegistration(tool, handler);
 
     this.log(`Registered tool: ${tool.name}`);
   }
@@ -1022,15 +1060,7 @@ export class McpApp {
    * @param handler - Tool handler function
    */
   registerToolLive(tool: MCPTool, handler: ToolHandler): void {
-    this.indexMirroredParams(tool);
-    this.tools.set(tool.name, {
-      ...tool,
-      handler,
-    });
-
-    if (this.schemaValidator) {
-      this.schemaValidator.addSchema(tool.name, tool.inputSchema);
-    }
+    this.commitToolRegistration(tool, handler);
 
     this.log(`Live-registered tool: ${tool.name} (total: ${this.tools.size})`);
   }
@@ -1073,6 +1103,7 @@ export class McpApp {
     // Stale mirror metadata would make the server demand `Mcp-Param-*` headers
     // for a tool that no longer exists.
     this.mirroredParams.delete(toolName);
+    this.schemaValidator?.removeSchema(toolName);
     if (deleted) {
       this.log(
         `Unregistered tool: ${toolName} (remaining: ${this.tools.size})`,
@@ -1142,32 +1173,36 @@ export class McpApp {
     // 3. Custom middlewares (logging, tracing, etc.)
     pipeline.push(...this.customMiddlewares);
 
-    // 4. Scope enforcement (if any tool has requiredScopes)
-    const toolScopes = new Map<string, string[]>();
-    for (const [name, tool] of this.tools) {
-      if (tool.requiredScopes?.length) {
-        toolScopes.set(name, tool.requiredScopes);
-      }
-    }
-    if (toolScopes.size > 0) {
-      pipeline.push(createScopeMiddleware(toolScopes));
-    }
+    // 4. Scope enforcement is always installed. A server may start without a
+    // scoped tool and add one through registerToolLive() later. Resolve scopes
+    // from the exact definition bound at call ingress, not from a startup map or
+    // a second live-registry lookup, so authorization and handler dispatch cannot
+    // disagree across a concurrent re-registration.
+    pipeline.push(
+      createScopeMiddleware((ctx) =>
+        (ctx as ToolExecutionContext)[BOUND_TOOL]?.requiredScopes
+      ),
+    );
 
     // 5. Schema validation (if enabled)
     if (this.schemaValidator) {
-      pipeline.push(createValidationMiddleware(this.schemaValidator));
+      pipeline.push(createValidationMiddleware(
+        this.schemaValidator,
+        (ctx) =>
+          (ctx as ToolExecutionContext)[BOUND_TOOL]?.[COMPILED_INPUT_SCHEMA],
+      ));
     }
 
     // 6. Backpressure (always)
     pipeline.push(createBackpressureMiddleware(this.requestQueue));
 
     this.middlewareRunner = createMiddlewareRunner(pipeline, (ctx) => {
-      const tool = this.tools.get(ctx.toolName);
+      const tool = (ctx as ToolExecutionContext)[BOUND_TOOL];
       if (!tool) {
         throw new Error(`Unknown tool: ${ctx.toolName}`);
       }
       return Promise.resolve(tool.handler(ctx.args, {
-        toolName: ctx.toolName,
+        toolName: tool.name,
         ...(ctx.request ? { request: ctx.request } : {}),
         ...(typeof ctx.sessionId === "string"
           ? { sessionId: ctx.sessionId }
@@ -1209,14 +1244,14 @@ export class McpApp {
       inputResponses?: Record<string, unknown>;
       retryVerified?: boolean;
     },
-  ): Promise<MiddlewareResult> {
+  ): Promise<ToolExecutionResult> {
     if (!this.middlewareRunner) {
       throw new Error(
         "[McpApp] Pipeline not built. Call start() or startHttp() first.",
       );
     }
 
-    const ctx: MiddlewareContext = {
+    const ctx: ToolExecutionContext = {
       toolName,
       args,
       request,
@@ -1240,6 +1275,10 @@ export class McpApp {
       ...(mrtr?.retryVerified !== undefined
         ? { retryVerified: mrtr.retryVerified }
         : {}),
+      // One stable registry entry for this entire call. In-flight calls keep
+      // the handler and authorization policy they entered with even if a live
+      // registration replaces or removes the public name while they are queued.
+      [BOUND_TOOL]: this.tools.get(toolName),
     };
 
     // OTel span + metrics
@@ -1268,7 +1307,7 @@ export class McpApp {
       const durationMs = performance.now() - start;
       this.serverMetrics.recordToolCall(toolName, true, durationMs);
       endToolCallSpan(span, true, durationMs);
-      return result;
+      return { result, tool: ctx[BOUND_TOOL] };
     } catch (error) {
       const durationMs = performance.now() - start;
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -2689,7 +2728,7 @@ export class McpApp {
           const retryVerified = retryOutcome.retryVerified;
 
           try {
-            const result = await this.executeToolCall(
+            const execution = await this.executeToolCall(
               toolName,
               args,
               c.req.raw,
@@ -2703,6 +2742,7 @@ export class McpApp {
                 ...(retryVerified !== undefined ? { retryVerified } : {}),
               },
             );
+            const { result, tool: executedTool } = execution;
             // MRTR: the handler is asking the client for input rather than
             // returning a result. Checked BEFORE the task branch and before
             // stampResult, which would overwrite resultType with "complete".
@@ -2815,7 +2855,8 @@ export class McpApp {
                   owner,
                   // Same conversion the synchronous path uses, so a handler's
                   // return value produces an identical result either way.
-                  (raw) => this.buildToolCallResult(toolName, raw),
+                  (raw) =>
+                    this.buildToolCallResult(toolName, raw, executedTool),
                 );
               } catch (spawnError) {
                 // Narrowed to the actual shutdown condition. A blanket catch
@@ -2869,7 +2910,7 @@ export class McpApp {
               jsonrpc: "2.0",
               id,
               result: this.stampResult(
-                this.buildToolCallResult(toolName, result),
+                this.buildToolCallResult(toolName, result, executedTool),
                 statelessVersion,
               ),
             });
@@ -4464,13 +4505,17 @@ export class McpApp {
   private buildToolCallResult(
     toolName: string,
     result: unknown,
+    executedTool?: ToolWithHandler,
   ): Record<string, unknown> {
     // Proxy/gateway pattern — pass through as-is
     if (this.isPreformattedResult(result)) {
       return canonicaliseWireResult(result as Record<string, unknown>);
     }
 
-    const tool = this.tools.get(toolName);
+    // Result metadata belongs to the same definition whose handler produced the
+    // value. A live replacement may already occupy this name by the time an
+    // asynchronous handler or task completes.
+    const tool = executedTool ?? this.tools.get(toolName);
 
     // StructuredToolResult: separate content (for LLM) and structuredContent (for viewer)
     if (this.isStructuredToolResult(result)) {

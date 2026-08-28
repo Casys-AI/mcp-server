@@ -60,6 +60,7 @@ export { RateLimiter } from "./src/concurrency/rate-limiter.ts";
 // Schema validation
 export { SchemaValidator } from "./src/validation/schema-validator.ts";
 export type {
+  CompiledSchemaValidator,
   ValidationError,
   ValidationResult,
 } from "./src/validation/schema-validator.ts";

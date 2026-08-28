@@ -65,7 +65,7 @@ jobs:
           PACK_DIR=$(mktemp -d)
           TARBALL_NAME=$(npm pack ./dist-node --pack-destination "$PACK_DIR" --json | node -p 'JSON.parse(require("fs").readFileSync(0, "utf8"))[0].filename')
           TARBALL="$PACK_DIR/$TARBALL_NAME"
-          tar -tzf "$TARBALL" | rg '^package/LICENSE$'
+          tar -tzf "$TARBALL" | grep -Fx 'package/LICENSE' >/dev/null
 
           CONSUMER_DIR=$(mktemp -d)
           (

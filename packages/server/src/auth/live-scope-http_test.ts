@@ -11,6 +11,7 @@
 import { assertEquals, assertStringIncludes, assertThrows } from "@std/assert";
 import { McpApp } from "../mcp-app.ts";
 import { AuthProvider } from "./provider.ts";
+import { createStaticTokenAuthProvider } from "./static-token-provider.ts";
 import {
   type AuthInfo,
   httpsUrl,
@@ -140,6 +141,59 @@ Deno.test("live scoped tool denies insufficient scope and allows sufficient scop
     const allowed = await callTool(port, "live_admin", "admin-token", {}, 2);
     assertEquals(allowed.status, 200);
     assertStringIncludes(await resultText(allowed), '"reached": true');
+    assertEquals(handlerCalls, 1);
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("identity-aware static credentials enforce their own scopes over HTTP", async () => {
+  const app = new McpApp({
+    name: "static-credential-scopes",
+    version: "1.0.0",
+    logger: () => {},
+    transport: "stateless",
+    auth: {
+      provider: createStaticTokenAuthProvider(
+        [
+          { token: "reader-token", subject: "reader", scopes: ["read"] },
+          { token: "admin-token", subject: "admin", scopes: ["admin"] },
+        ],
+        { resource: "https://auth-test.example" },
+      ),
+    },
+  });
+  const port = allocatePort();
+  const http = await app.startHttp({ port, onListen: () => {} });
+  let handlerCalls = 0;
+
+  try {
+    app.registerToolLive(
+      {
+        name: "static_admin",
+        description: "Admin-only tool backed by static credentials",
+        inputSchema: { type: "object" },
+        requiredScopes: ["admin"],
+      },
+      () => {
+        handlerCalls++;
+        return "allowed";
+      },
+    );
+
+    const denied = await callTool(port, "static_admin", "reader-token");
+    assertEquals(denied.status, 403);
+    assertEquals(handlerCalls, 0);
+
+    const allowed = await callTool(
+      port,
+      "static_admin",
+      "admin-token",
+      {},
+      2,
+    );
+    assertEquals(allowed.status, 200);
+    assertEquals(await resultText(allowed), "allowed");
     assertEquals(handlerCalls, 1);
   } finally {
     await http.shutdown();

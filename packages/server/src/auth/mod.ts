@@ -86,4 +86,7 @@ export {
   createStaticTokenAuthProvider,
   StaticTokenAuthProvider,
 } from "./static-token-provider.ts";
-export type { StaticTokenAuthProviderOptions } from "./static-token-provider.ts";
+export type {
+  StaticTokenAuthProviderOptions,
+  StaticTokenCredential,
+} from "./static-token-provider.ts";

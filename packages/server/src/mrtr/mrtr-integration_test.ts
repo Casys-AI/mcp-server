@@ -15,6 +15,8 @@ import {
   assertStringIncludes,
   assertThrows,
 } from "@std/assert";
+import type { AuthProvider } from "../auth/provider.ts";
+import { createStaticTokenAuthProvider } from "../auth/static-token-provider.ts";
 import { McpApp } from "../mcp-app.ts";
 import type { ToolHandler } from "../types.ts";
 import { MemoryMrtrReplayStore, type MrtrReplayStore } from "./replay-store.ts";
@@ -39,6 +41,7 @@ function buildServer(
   opts: {
     signingKey?: string;
     replayStore?: MrtrReplayStore;
+    authProvider?: AuthProvider;
   } = {},
 ) {
   const seen: Seen = {};
@@ -47,6 +50,9 @@ function buildServer(
     version: "1.0.0",
     logger: () => {},
     transport: "stateless",
+    ...(opts.authProvider !== undefined
+      ? { auth: { provider: opts.authProvider } }
+      : {}),
     ...(opts.signingKey !== undefined
       ? {
         mrtr: {
@@ -139,15 +145,19 @@ function call(
   extra: Record<string, unknown> = {},
   caps: Record<string, unknown> = WITH_ELICITATION,
   id = 1,
+  token?: string,
 ) {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "MCP-Protocol-Version": V,
+    "Mcp-Method": "tools/call",
+    "Mcp-Name": toolName,
+  };
+  if (token !== undefined) headers.Authorization = `Bearer ${token}`;
+
   return fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "MCP-Protocol-Version": V,
-      "Mcp-Method": "tools/call",
-      "Mcp-Name": toolName,
-    },
+    headers,
     body: JSON.stringify({
       jsonrpc: "2.0",
       id,
@@ -214,6 +224,95 @@ Deno.test("mrtr - the retry round-trips and reaches the handler", async () => {
     assertStringIncludes(retry.result.content[0].text, "octocat");
     // Read from params, not params._meta — the silent-undefined trap.
     assertExists(seen.inputResponses);
+    assertEquals(seen.retryVerified, true);
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("mrtr - identity-aware static credentials reject a different principal", async () => {
+  const authProvider = createStaticTokenAuthProvider(
+    [
+      { token: "token-a", subject: "alice", scopes: ["read"] },
+      { token: "token-b", subject: "automation", scopes: ["read"] },
+    ],
+    { resource: "https://mcp.example.com/mcp" },
+  );
+  const { server, seen } = buildServer({ signingKey: KEY, authProvider });
+  const { http, url } = await start(server);
+  try {
+    const firstResponse = await call(
+      url,
+      "ask",
+      {},
+      WITH_ELICITATION,
+      1,
+      "token-a",
+    );
+    assertEquals(firstResponse.status, 200);
+    const first = await firstResponse.json();
+    const requestState = first.result.requestState as string;
+
+    const retry = await call(
+      url,
+      "ask",
+      {
+        requestState,
+        inputResponses: {
+          github_login: { action: "accept", content: { name: "octocat" } },
+        },
+      },
+      WITH_ELICITATION,
+      2,
+      "token-b",
+    );
+    const retryData = await retry.json();
+
+    assertEquals(retry.status, 400);
+    assertEquals(retryData.error.code, -32602);
+    assertEquals(retryData.error.data.reason, "wrong_principal");
+    assertEquals(seen.calls, 1);
+  } finally {
+    await http.shutdown();
+  }
+});
+
+Deno.test("mrtr - string static allowlists retain shared authority", async () => {
+  const authProvider = createStaticTokenAuthProvider(
+    ["token-a", "token-b"],
+    { resource: "https://mcp.example.com/mcp" },
+  );
+  const { server, seen } = buildServer({ signingKey: KEY, authProvider });
+  const { http, url } = await start(server);
+  try {
+    const first = await (await call(
+      url,
+      "ask",
+      {},
+      WITH_ELICITATION,
+      1,
+      "token-a",
+    )).json();
+    const requestState = first.result.requestState as string;
+
+    const retry = await call(
+      url,
+      "ask",
+      {
+        requestState,
+        inputResponses: {
+          github_login: { action: "accept", content: { name: "octocat" } },
+        },
+      },
+      WITH_ELICITATION,
+      2,
+      "token-b",
+    );
+    const retryData = await retry.json();
+
+    assertEquals(retry.status, 200);
+    assertEquals(retryData.result.resultType, "complete");
+    assertEquals(seen.calls, 2);
     assertEquals(seen.retryVerified, true);
   } finally {
     await http.shutdown();

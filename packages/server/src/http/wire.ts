@@ -13,8 +13,9 @@
 /**
  * Sentinel used when there is no authentication at all.
  *
- * Deliberately not a plausible subject value: the NUL prefix cannot appear in a
- * JWT `sub`, so it can never collide with a real principal.
+ * Deliberately not a plausible subject value. Authenticated callers are also
+ * checked against this exact value before MRTR or task state is accepted, so a
+ * custom provider cannot create an authority collision by returning it.
  */
 export const MRTR_NO_AUTH_PRINCIPAL = "\u0000unauthenticated";
 

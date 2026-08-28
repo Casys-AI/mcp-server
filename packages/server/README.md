@@ -145,6 +145,11 @@ await server.startHttp({ port: 3000 });
 // GET  /mcp      → 405 Method Not Allowed (stateless transport)
 ```
 
+See the
+[HTTP security guide](https://github.com/Casys-AI/mcp-server/blob/main/docs/guides/securing-your-http-server.md)
+to choose between a shared static allowlist, identity-aware static credentials,
+and OIDC/JWT.
+
 **Secure-by-default HTTP options:**
 
 ```typescript

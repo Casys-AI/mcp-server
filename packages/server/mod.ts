@@ -191,7 +191,10 @@ export {
   createStaticTokenAuthProvider,
   StaticTokenAuthProvider,
 } from "./src/auth/mod.ts";
-export type { StaticTokenAuthProviderOptions } from "./src/auth/mod.ts";
+export type {
+  StaticTokenAuthProviderOptions,
+  StaticTokenCredential,
+} from "./src/auth/mod.ts";
 
 // Client Auth — OAuth client flow + CIMD
 export {

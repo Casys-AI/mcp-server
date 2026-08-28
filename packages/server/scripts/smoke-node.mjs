@@ -9,11 +9,40 @@ const distEntry = pathToFileURL(resolve(process.argv[2] ?? "mod.ts")).href;
 const {
   buildClientIdMetadataDocument,
   CallbackServer,
+  createStaticTokenAuthProvider,
   FileTokenStore,
   McpApp,
   MemoryMrtrReplayStore,
   MemoryTokenStore,
 } = await import(distEntry);
+
+const staticCredentials = createStaticTokenAuthProvider(
+  [
+    { token: "node-token-a", subject: "alice", scopes: ["read"] },
+    {
+      token: "node-token-b",
+      subject: "automation",
+      scopes: ["read", "write"],
+    },
+  ],
+  { resource: "https://mcp.example.com" },
+);
+const [nodeAlice, nodeAutomation, nodeUnknown] = await Promise.all([
+  staticCredentials.verifyToken("node-token-a"),
+  staticCredentials.verifyToken("node-token-b"),
+  staticCredentials.verifyToken("unknown-token"),
+]);
+if (
+  nodeAlice?.subject !== "alice" ||
+  nodeAutomation?.subject !== "automation" ||
+  nodeAlice === nodeAutomation ||
+  nodeAutomation?.scopes.join(" ") !== "read write" ||
+  !Object.isFrozen(nodeAlice) ||
+  !Object.isFrozen(nodeAlice.scopes) ||
+  nodeUnknown !== null
+) {
+  throw new Error("identity-aware static credentials failed in Node build");
+}
 
 const replayStore = new MemoryMrtrReplayStore();
 const smokeNonce = "a".repeat(32);

@@ -4,6 +4,14 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Static bearer tokens can now opt into identity-aware credentials with a frozen
+  `subject` and scope set per token. The existing `string[]` allowlist retains
+  its shared-authority semantics, while credential mode rejects unusable
+  subjects, ambiguous mixed or duplicate mappings, and metadata that omits a
+  granted scope without exposing raw bearer tokens.
+
 ### Security
 
 - HTTP scope authorization now follows live tool registration. A tool added or

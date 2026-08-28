@@ -27,15 +27,17 @@ import { jsonRpcResponse, MRTR_NO_AUTH_PRINCIPAL } from "./wire.ts";
  * 2. **Authenticated with a subject** — the binding separates callers, which is
  *    the case it exists for.
  * 3. **Authenticated without a usable subject** — `AuthInfo.subject` falls back to
- *    `"unknown"` for a valid token carrying no `sub` claim. Sealing against that
- *    would put every such caller under one identity: a token minted for one could
- *    be spent by another, while the code reads as though the binding were
- *    enforced. That is worse than no auth, because it is invisible. Throws.
+ *    `"unknown"` for a valid token carrying no `sub` claim. The reserved no-auth
+ *    sentinel is also invalid for authenticated callers. Sealing against either
+ *    would hide an authority collision. Returns `null` so the caller fails closed.
  */
 export function callerPrincipal(authInfo: AuthInfo | undefined): string | null {
   if (authInfo === undefined) return MRTR_NO_AUTH_PRINCIPAL;
   const subject = authInfo.subject;
-  if (subject === undefined || subject === "" || subject === "unknown") {
+  if (
+    subject === undefined || subject === "" || subject === "unknown" ||
+    subject === MRTR_NO_AUTH_PRINCIPAL
+  ) {
     // `null`, not a throw: the task handlers call this outside any try/catch, so
     // a throw would surface through the POST-level catch as -32700 "Parse error"
     // — a diagnosis pointing nowhere near a misconfigured auth provider. The

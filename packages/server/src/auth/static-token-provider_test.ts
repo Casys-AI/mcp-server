@@ -4,7 +4,12 @@
  * @module lib/server/auth/static-token-provider_test
  */
 
-import { assertEquals, assertThrows } from "@std/assert";
+import {
+  assert,
+  assertEquals,
+  assertStrictEquals,
+  assertThrows,
+} from "@std/assert";
 import { httpsUrl } from "./types.ts";
 import {
   createStaticTokenAuthProvider,
@@ -61,15 +66,183 @@ Deno.test("StaticTokenAuthProvider - multiple tokens all valid", async () => {
   const provider = createStaticTokenAuthProvider(["token-a", "token-b"], {
     resource: "https://mcp.example.com",
   });
-  assertEquals(
-    (await provider.verifyToken("token-a"))?.subject,
-    "static-token-user",
-  );
-  assertEquals(
-    (await provider.verifyToken("token-b"))?.subject,
-    "static-token-user",
-  );
+  const tokenA = await provider.verifyToken("token-a");
+  const tokenB = await provider.verifyToken("token-b");
+  assertEquals(tokenA?.subject, "static-token-user");
+  assertEquals(tokenB?.subject, "static-token-user");
+  // Backwards compatibility: string allowlists intentionally share authority.
+  assertStrictEquals(tokenA, tokenB);
   assertEquals(await provider.verifyToken("token-c"), null);
+});
+
+Deno.test("StaticTokenAuthProvider - credentials return distinct frozen identities and scopes", async () => {
+  const aliceScopes = ["erp:read"];
+  const provider = createStaticTokenAuthProvider(
+    [
+      { token: "token-a", subject: "alice", scopes: aliceScopes },
+      {
+        token: "token-b",
+        subject: "automation",
+        scopes: ["erp:read", "erp:write"],
+      },
+    ],
+    { resource: "https://mcp.example.com" },
+  );
+
+  // Caller-owned arrays cannot mutate the stored authority after construction.
+  aliceScopes.push("erp:write");
+
+  const alice = await provider.verifyToken("token-a");
+  const automation = await provider.verifyToken("token-b");
+  assert(alice !== null);
+  assert(automation !== null);
+  assert(alice !== automation);
+  assertEquals(alice, { subject: "alice", scopes: ["erp:read"] });
+  assertEquals(automation, {
+    subject: "automation",
+    scopes: ["erp:read", "erp:write"],
+  });
+  assertEquals(Object.isFrozen(alice), true);
+  assertEquals(Object.isFrozen(alice.scopes), true);
+  assertThrows(() => alice.scopes.push("admin"));
+  assertEquals(await provider.verifyToken("unknown-token"), null);
+  assertEquals(provider.getResourceMetadata().scopes_supported, [
+    "erp:read",
+    "erp:write",
+  ]);
+});
+
+Deno.test("StaticTokenAuthProvider - credential subjects are trimmed and may repeat for rotation", async () => {
+  const provider = createStaticTokenAuthProvider(
+    [
+      { token: "old-token", subject: " alice " },
+      { token: "new-token", subject: "alice" },
+    ],
+    { resource: "https://mcp.example.com" },
+  );
+  assertEquals((await provider.verifyToken("old-token"))?.subject, "alice");
+  assertEquals((await provider.verifyToken("new-token"))?.subject, "alice");
+});
+
+Deno.test("StaticTokenAuthProvider - rejects unusable credential subjects", () => {
+  for (
+    const subject of [
+      "",
+      "   ",
+      "unknown",
+      " unknown ",
+      "\u0000unauthenticated",
+      "alice\nadmin",
+    ]
+  ) {
+    assertThrows(
+      () =>
+        createStaticTokenAuthProvider(
+          [{ token: "secret-token", subject }],
+          { resource: "https://mcp.example.com" },
+        ),
+      Error,
+      "non-reserved subject without control characters",
+    );
+  }
+});
+
+Deno.test("StaticTokenAuthProvider - rejects mixed and empty credential entries", () => {
+  assertThrows(
+    () =>
+      createStaticTokenAuthProvider(
+        [
+          "legacy-token",
+          { token: "identity-token", subject: "alice" },
+        ] as unknown as readonly string[],
+        { resource: "https://mcp.example.com" },
+      ),
+    Error,
+    "either all token strings or all credential objects",
+  );
+  assertThrows(
+    () =>
+      createStaticTokenAuthProvider(
+        [{ token: " ", subject: "alice" }],
+        { resource: "https://mcp.example.com" },
+      ),
+    Error,
+    "non-empty token",
+  );
+  assertThrows(
+    () =>
+      createStaticTokenAuthProvider(
+        [{ token: "token-a", subject: "alice", scopes: [" "] }],
+        { resource: "https://mcp.example.com" },
+      ),
+    Error,
+    "invalid scope",
+  );
+});
+
+Deno.test("StaticTokenAuthProvider - duplicate credential errors never expose the token", () => {
+  const secret = "raw-bearer-secret-must-not-leak";
+  const error = assertThrows(
+    () =>
+      createStaticTokenAuthProvider(
+        [
+          { token: secret, subject: "alice" },
+          { token: ` ${secret} `, subject: "automation" },
+        ],
+        { resource: "https://mcp.example.com" },
+      ),
+    Error,
+    "duplicate token mapping",
+  );
+  assertEquals(error.message.includes(secret), false);
+});
+
+Deno.test("StaticTokenAuthProvider - identity credentials reject shared authority options", () => {
+  assertThrows(
+    () =>
+      createStaticTokenAuthProvider(
+        [{ token: "token-a", subject: "alice" }],
+        { resource: "https://mcp.example.com", subject: "shared" },
+      ),
+    Error,
+    "cannot be combined",
+  );
+  assertThrows(
+    () =>
+      createStaticTokenAuthProvider(
+        [{ token: "token-a", subject: "alice" }],
+        { resource: "https://mcp.example.com", scopes: ["shared"] },
+      ),
+    Error,
+    "cannot be combined",
+  );
+});
+
+Deno.test("StaticTokenAuthProvider - identity metadata override must cover granted scopes", () => {
+  assertThrows(
+    () =>
+      createStaticTokenAuthProvider(
+        [{ token: "token-a", subject: "alice", scopes: ["read"] }],
+        {
+          resource: "https://mcp.example.com",
+          scopesSupported: ["write"],
+        },
+      ),
+    Error,
+    "must include every scope",
+  );
+
+  const provider = createStaticTokenAuthProvider(
+    [{ token: "token-a", subject: "alice", scopes: ["read"] }],
+    {
+      resource: "https://mcp.example.com",
+      scopesSupported: ["read", "write"],
+    },
+  );
+  assertEquals(provider.getResourceMetadata().scopes_supported, [
+    "read",
+    "write",
+  ]);
 });
 
 Deno.test("StaticTokenAuthProvider - defaults: subject and scopes", async () => {

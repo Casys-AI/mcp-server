@@ -99,6 +99,12 @@ server.registerTool(
 await server.start();
 ```
 
+Provider repositories that expose a native stdio CLI should test their actual
+documented command, transport flags, protocol eras, stdout discipline, and EOF
+cleanup. Use the
+[native stdio provider testing guide](https://github.com/Casys-AI/mcp-server/blob/main/docs/guides/native-stdio-provider-testing.md)
+as a test-only adoption kit.
+
 ### HTTP Server with Auth
 
 ```typescript

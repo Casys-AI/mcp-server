@@ -20,6 +20,13 @@ All notable changes to `@casys/mcp-server` will be documented in this file.
   before replacing registry state. Unregistering a tool also removes its cached
   schema, allowing a later tool with the same name to start cleanly.
 
+### Documentation
+
+- Added a test-only native stdio adoption kit for provider repositories. It
+  covers real-command launch, HTTP/stdio flag contracts, modern and legacy
+  protocol probes, JSON-only stdout, bounded EOF cleanup, and dynamic resource
+  lifecycle checks without adding a runtime API or shared CLI parser.
+
 ## [0.26.1] — 2026-08-21
 
 ### Fixed

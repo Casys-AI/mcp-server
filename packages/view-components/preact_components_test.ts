@@ -5,6 +5,7 @@ import {
   Card,
   CollectionCard,
   DataTable,
+  ElementLimit,
   InlineCode,
   installMcpViewTheme,
   LimitGauge,
@@ -20,6 +21,7 @@ Deno.test("Preact components entry exposes presentation without an MCP Apps runt
   assertEquals(typeof Card, "function");
   assertEquals(typeof CollectionCard, "function");
   assertEquals(typeof DataTable, "function");
+  assertEquals(typeof ElementLimit, "function");
   assertEquals(typeof PathBar, "function");
   assertEquals(typeof Row, "function");
   assertEquals(typeof LimitGauge, "function");

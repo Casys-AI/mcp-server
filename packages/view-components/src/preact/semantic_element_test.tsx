@@ -7,6 +7,7 @@ import {
   CollectionCard,
   ElementBody,
   ElementIdent,
+  ElementLimit,
   ElementProvenance,
   ElementReading,
   ElementVerdict,
@@ -177,6 +178,40 @@ Deno.test({
           "Basisrun-42",
         );
       }
+    });
+  },
+});
+
+Deno.test({
+  name: "ElementLimit renders only the caller-declared bound",
+  permissions: { read: true, env: true, run: true },
+  async fn() {
+    await withDom((root) => {
+      render(
+        <SemanticElement
+          reference={{ domain: "requirements", kind: "requirement", id: "force.max" }}
+          density="row"
+          ident={<ElementIdent label="Maximum force" />}
+          reading={
+            <ElementLimit
+              label="Authored limit"
+              operator="≤"
+              value="35"
+              unit="N"
+              detail="declared"
+            />
+          }
+        />,
+        root,
+      );
+
+      const element = root.firstElementChild;
+      const limit = root.querySelector(".mcp-view-element-limit");
+      assertEquals(limit?.getAttribute("data-element-slot"), "reading");
+      assertEquals(limit?.textContent, "Authored limit≤35Ndeclared");
+      assertEquals(element?.hasAttribute("data-tone"), false);
+      assertEquals(root.querySelector(".mcp-view-limit-gauge"), null);
+      assertEquals(root.querySelector("meter"), null);
     });
   },
 });

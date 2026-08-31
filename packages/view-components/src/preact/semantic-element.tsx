@@ -115,6 +115,37 @@ export function ElementReading({
   );
 }
 
+export interface ElementLimitProps {
+  readonly operator: ComponentChildren;
+  readonly value: ComponentChildren;
+  readonly label?: ComponentChildren;
+  readonly unit?: ComponentChildren;
+  readonly detail?: ComponentChildren;
+  readonly className?: string;
+}
+
+/** Caller-declared limit statement; never infers a range, measurement, or verdict. */
+export function ElementLimit({
+  operator,
+  value,
+  label,
+  unit,
+  detail,
+  className,
+}: ElementLimitProps): JSX.Element {
+  return (
+    <div class={classes("mcp-view-element-limit", className)} data-element-slot="reading">
+      {isPresent(label) && <span class="mcp-view-element-limit-label">{label}</span>}
+      <span class="mcp-view-element-limit-statement">
+        <span class="mcp-view-element-limit-operator">{operator}</span>
+        <strong class="mcp-view-element-limit-value">{value}</strong>
+        {isPresent(unit) && <span class="mcp-view-element-limit-unit">{unit}</span>}
+      </span>
+      {isPresent(detail) && <small class="mcp-view-element-limit-detail">{detail}</small>}
+    </div>
+  );
+}
+
 export interface ElementVerdictProps {
   readonly value: ComponentChildren;
   readonly label?: ComponentChildren;
@@ -183,7 +214,9 @@ export interface SemanticElementProps {
   readonly selected?: boolean;
   /** Every semantic object must provide a resolved identity slot. */
   readonly ident: VNode<ElementIdentProps>;
-  readonly reading?: VNode<ElementReadingProps> | readonly VNode<ElementReadingProps>[];
+  readonly reading?:
+    | VNode<ElementReadingProps | ElementLimitProps>
+    | readonly VNode<ElementReadingProps | ElementLimitProps>[];
   readonly body?: VNode<ElementBodyProps> | readonly VNode<ElementBodyProps>[];
   readonly verdict?: VNode<ElementVerdictProps>;
   readonly provenance?: VNode<ElementProvenanceProps>;

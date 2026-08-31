@@ -794,6 +794,8 @@ button.mcp-view-artifact-row:focus-visible {
 .mcp-view-element-ident-detail,
 .mcp-view-element-reading-label,
 .mcp-view-element-reading-detail,
+.mcp-view-element-limit-label,
+.mcp-view-element-limit-detail,
 .mcp-view-element-verdict-label,
 .mcp-view-element-provenance-label {
   color: var(--mcp-view-quiet);
@@ -808,6 +810,38 @@ button.mcp-view-artifact-row:focus-visible {
 }
 .mcp-view-element-reading-value { font-size: 0.8rem; }
 .mcp-view-element-reading-unit { color: var(--mcp-view-muted); font-size: 0.65rem; }
+.mcp-view-element-limit {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+  padding-inline-start: 0.55rem;
+  border-inline-start: 1px solid var(--mcp-view-border);
+}
+.mcp-view-element-limit-statement {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.28rem;
+  min-width: 0;
+}
+.mcp-view-element-limit-operator {
+  display: inline-grid;
+  min-width: 1.2rem;
+  min-height: 1.2rem;
+  place-items: center;
+  padding-inline: 0.18rem;
+  border: 1px solid var(--mcp-view-border);
+  border-radius: var(--mcp-view-radius-sm);
+  background: var(--mcp-view-subtle);
+  color: var(--mcp-view-muted);
+  font-size: 0.68rem;
+  line-height: 1;
+}
+.mcp-view-element-limit-value,
+.mcp-view-element-limit-unit {
+  font-variant-numeric: tabular-nums;
+}
+.mcp-view-element-limit-value { font-size: 0.95rem; }
+.mcp-view-element-limit-unit { color: var(--mcp-view-muted); font-size: 0.65rem; }
 .mcp-view-element-body { min-width: 0; }
 
 .mcp-view-element-verdict { display: grid; gap: 0.08rem; min-width: 0; }
@@ -847,13 +881,16 @@ button.mcp-view-artifact-row:focus-visible {
 .mcp-view-semantic-element[data-density="chip"] .mcp-view-element-ident-detail,
 .mcp-view-semantic-element[data-density="chip"] .mcp-view-element-reading-label,
 .mcp-view-semantic-element[data-density="chip"] .mcp-view-element-reading-detail,
+.mcp-view-semantic-element[data-density="chip"] .mcp-view-element-limit-label,
+.mcp-view-semantic-element[data-density="chip"] .mcp-view-element-limit-detail,
 .mcp-view-semantic-element[data-density="chip"] .mcp-view-element-verdict-label,
 .mcp-view-semantic-element[data-density="chip"] .mcp-view-element-body,
 .mcp-view-semantic-element[data-density="chip"] .mcp-view-element-provenance {
   display: none;
 }
 .mcp-view-semantic-element[data-density="chip"] .mcp-view-element-ident-label,
-.mcp-view-semantic-element[data-density="chip"] .mcp-view-element-reading-value {
+.mcp-view-semantic-element[data-density="chip"] .mcp-view-element-reading-value,
+.mcp-view-semantic-element[data-density="chip"] .mcp-view-element-limit-value {
   font-size: 0.68rem;
 }
 .mcp-view-semantic-element[data-density="row"] .mcp-view-element-provenance {
@@ -875,10 +912,18 @@ button.mcp-view-artifact-row:focus-visible {
   padding-block: 0.65rem;
   border-block: 1px solid var(--mcp-view-border);
 }
+.mcp-view-semantic-element[data-density="card"] .mcp-view-element-limit {
+  grid-column: 1 / -1;
+  padding-block: 0.65rem;
+  border-block: 1px solid var(--mcp-view-border);
+}
 .mcp-view-semantic-element[data-density="card"] .mcp-view-element-body {
   grid-column: 1 / -1;
 }
 .mcp-view-semantic-element[data-density="card"] .mcp-view-element-reading-value {
+  font-size: 1.35rem;
+}
+.mcp-view-semantic-element[data-density="card"] .mcp-view-element-limit-value {
   font-size: 1.35rem;
 }
 .mcp-view-semantic-element[data-density="card"] .mcp-view-element-provenance {
@@ -894,7 +939,9 @@ button.mcp-view-artifact-row:focus-visible {
 .mcp-view-metric-value,
 .mcp-view-state > strong,
 .mcp-view-element-reading-value,
-.mcp-view-element-reading-unit {
+.mcp-view-element-reading-unit,
+.mcp-view-element-limit-value,
+.mcp-view-element-limit-unit {
   font-family: var(--mcp-view-font-heading);
 }
 
@@ -924,6 +971,9 @@ button.mcp-view-artifact-row:focus-visible {
 .mcp-view-element-ident-detail,
 .mcp-view-element-reading-label,
 .mcp-view-element-reading-detail,
+.mcp-view-element-limit-label,
+.mcp-view-element-limit-detail,
+.mcp-view-element-limit-operator,
 .mcp-view-element-verdict-label,
 .mcp-view-element-verdict-value,
 .mcp-view-element-provenance {

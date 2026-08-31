@@ -56,6 +56,8 @@ Deno.test("shared theme exposes offline heading body and mono typography roles",
   assertStringIncludes(MCP_VIEW_THEME_CSS, "font-family: var(--mcp-view-font-body);");
   assertStringIncludes(MCP_VIEW_THEME_CSS, ".mcp-view-card-title,");
   assertStringIncludes(MCP_VIEW_THEME_CSS, ".mcp-view-element-reading-value,");
+  assertStringIncludes(MCP_VIEW_THEME_CSS, ".mcp-view-element-limit {");
+  assertStringIncludes(MCP_VIEW_THEME_CSS, ".mcp-view-element-limit-operator {");
   assertStringIncludes(MCP_VIEW_THEME_CSS, "font-family: var(--mcp-view-font-heading);");
   assertStringIncludes(MCP_VIEW_THEME_CSS, ".mcp-view-card-eyebrow,");
   assertStringIncludes(MCP_VIEW_THEME_CSS, ".mcp-view-element-provenance {");

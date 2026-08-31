@@ -33,6 +33,7 @@ import {
   CollectionCard,
   ElementBody,
   ElementIdent,
+  ElementLimit,
   ElementProvenance,
   ElementReading,
   InlineCode,
@@ -66,7 +67,8 @@ Semantic composition:
 - `SemanticList` for a bounded, optionally scrollable group of row-density semantic objects
 - `CollectionCard` composing `Card` and `SemanticList` into one outer-border collection
 - required `ElementIdent`
-- optional `ElementReading`, `ElementBody`, `ElementVerdict`, and `ElementProvenance`
+- optional `ElementReading` or caller-declared `ElementLimit`, plus `ElementBody`, `ElementVerdict`,
+  and `ElementProvenance`
 
 `viewer` is deliberately not a `SemanticElement` density. It is the provider's whole-view App,
 usually composed from one `card` plus an optional `PathBar`.
@@ -85,6 +87,9 @@ usually composed from one `card` plus an optional `PathBar`.
 The semantic reference is structured but never dereferenced by the component. Likewise, `LimitGauge`
 never derives whether a value passes a limit, and `ArtifactRow` never claims a digest was verified
 unless the caller supplies that recorded status.
+
+Use `ElementLimit` when the record contains only an authored bound. It displays the supplied
+operator, value, and unit without inventing a measurement, range, satisfaction state, or verdict.
 
 ## Theme
 

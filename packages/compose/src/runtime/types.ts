@@ -8,7 +8,7 @@
  */
 
 import type { UiLayout } from "../core/types/layout.ts";
-import type { UiSyncRule } from "../core/types/sync-rules.ts";
+import type { UiPortSyncRule, UiSyncRule } from "../core/types/sync-rules.ts";
 import type { CompositeUiDescriptor } from "../core/types/descriptor.ts";
 import type { ReadResourceResult } from "@modelcontextprotocol/sdk/types.js";
 import type { ComposedDashboardPanel } from "./host-dashboard-types.ts";
@@ -285,7 +285,7 @@ export interface TemplateSource {
 }
 
 /**
- * Dashboard template (read from YAML, no runtime args).
+ * Dashboard template (canonical JSON or legacy YAML, no runtime args).
  *
  * Defines which MCP servers to start, which tools to call,
  * and how to arrange the resulting UIs.
@@ -312,6 +312,7 @@ export interface DashboardTemplate {
   orchestration: {
     layout: UiLayout;
     sync?: UiSyncRule[];
+    portSync?: UiPortSyncRule[];
     sharedContext?: string[];
   };
 }

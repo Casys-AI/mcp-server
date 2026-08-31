@@ -53,6 +53,27 @@ Deno.test("buildCompositeUi - defaults to stack layout without orchestration", (
 
   assertEquals(result.layout, "stack");
   assertEquals(result.sync, []);
+  assertEquals(result.portSync, []);
+});
+
+Deno.test("buildCompositeUi - preserves dynamic component-port sync policies", () => {
+  const resources: CollectedUiResource[] = [
+    { source: "cad", resourceUri: "ui://cad/result", slot: 0 },
+    { source: "fea", resourceUri: "ui://fea/result", slot: 1 },
+  ];
+
+  const result = buildCompositeUi(resources, {
+    layout: "split",
+    portSync: [{
+      event: "semantic.selection.changed",
+      action: "semantic.selection.apply",
+    }],
+  });
+
+  assertEquals(result.portSync, [{
+    event: "semantic.selection.changed",
+    action: "semantic.selection.apply",
+  }]);
 });
 
 Deno.test("buildCompositeUi - preserves broadcast marker '*'", () => {

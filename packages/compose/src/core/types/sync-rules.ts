@@ -45,6 +45,21 @@ export interface UiSyncRule {
 }
 
 /**
+ * Dynamic routing policy resolved from the event ports of active components.
+ *
+ * Every active component that advertises `event` can publish to every other
+ * active component that advertises `action`. The host chooses the policy;
+ * matching names alone never create a route.
+ */
+export interface UiPortSyncRule {
+  /** Event advertised by source components. */
+  event: string;
+
+  /** Action advertised by target components. */
+  action: string;
+}
+
+/**
  * Resolved sync rule with slot indices instead of tool names.
  *
  * Used in `CompositeUiDescriptor` for client-side event routing.

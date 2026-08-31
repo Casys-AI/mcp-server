@@ -7,7 +7,7 @@
  * @module sdk/composition-validator
  */
 
-import type { UiSyncRule } from "../core/types/sync-rules.ts";
+import type { UiPortSyncRule, UiSyncRule } from "../core/types/sync-rules.ts";
 import { validateSyncRules } from "../core/sync/validator.ts";
 import type { UiMetaUi } from "./ui-meta-builder.ts";
 
@@ -21,6 +21,7 @@ export type CompositionIssueCode =
   | "CIRCULAR_SYNC_RULE"
   | "ORPHAN_EMIT"
   | "ORPHAN_ACCEPT"
+  | "PORT_SYNC_NO_COMPATIBLE_PEER"
   | "SYNC_EVENT_NOT_EMITTED"
   | "SYNC_ACTION_NOT_ACCEPTED";
 
@@ -85,6 +86,7 @@ interface ToolWithMeta {
  *
  * @param tools - Tool definitions with `_meta.ui` (from `uiMeta()`)
  * @param syncRules - Sync rules to validate against
+ * @param portSyncRules - Dynamic policies resolved from active component ports
  * @returns Validation result with issues
  *
  * @example
@@ -110,6 +112,7 @@ interface ToolWithMeta {
 export function validateComposition(
   tools: ToolWithMeta[],
   syncRules: UiSyncRule[],
+  portSyncRules: UiPortSyncRule[] = [],
 ): CompositionValidationResult {
   const issues: CompositionIssue[] = [];
 
@@ -183,6 +186,39 @@ export function validateComposition(
     } else {
       if (!routedAccepts.has(rule.to)) routedAccepts.set(rule.to, new Set());
       routedAccepts.get(rule.to)!.add(rule.action);
+    }
+  }
+
+  // Dynamic policies connect every declaring source to every distinct
+  // declaring target at runtime. Tool metadata makes that topology
+  // inspectable before an iframe is opened; the component catalog confirms
+  // it again during the Apps handshake.
+  for (let i = 0; i < portSyncRules.length; i++) {
+    const rule = portSyncRules[i];
+    const sources = tools.filter((tool) => tool._meta.ui.emits?.includes(rule.event));
+    const targets = tools.filter((tool) => tool._meta.ui.accepts?.includes(rule.action));
+    const hasCompatiblePeer = sources.some((source) =>
+      targets.some((target) => target.name !== source.name)
+    );
+    if (!hasCompatiblePeer) {
+      issues.push({
+        code: "PORT_SYNC_NO_COMPATIBLE_PEER",
+        message:
+          `Port sync[${i}] has no distinct tools declaring "${rule.event}" → "${rule.action}"`,
+        event: rule.event,
+        path: `portSync[${i}]`,
+      });
+      continue;
+    }
+    for (const source of sources) {
+      if (!targets.some((target) => target.name !== source.name)) continue;
+      if (!routedEmits.has(source.name)) routedEmits.set(source.name, new Set());
+      routedEmits.get(source.name)!.add(rule.event);
+    }
+    for (const target of targets) {
+      if (!sources.some((source) => source.name !== target.name)) continue;
+      if (!routedAccepts.has(target.name)) routedAccepts.set(target.name, new Set());
+      routedAccepts.get(target.name)!.add(rule.action);
     }
   }
 

@@ -16,7 +16,13 @@ function registry(cleanups: string[] = []) {
   return defineComponentRegistry({
     components: {
       "test.status": defineViewComponent({
-        descriptor: { title: "Status" },
+        descriptor: {
+          title: "Status",
+          events: {
+            emits: ["semantic.selection.changed"],
+            accepts: ["semantic.selection.apply"],
+          },
+        },
         mount(target, context) {
           target.textContent = String((context.data as { status: string }).status);
           return () => {
@@ -42,7 +48,13 @@ Deno.test("component registry advertises descriptors and a default surface, neve
   const value = advertisedComponentCatalog(registry());
   assertEquals(value, {
     components: {
-      "test.status": { title: "Status" },
+      "test.status": {
+        title: "Status",
+        events: {
+          emits: ["semantic.selection.changed"],
+          accepts: ["semantic.selection.apply"],
+        },
+      },
       "test.metrics": { title: "Metrics", description: "Typed values" },
     },
     defaultSurface: {
@@ -62,7 +74,13 @@ Deno.test("component-only registries advertise no artificial standalone surface"
   }));
   assertEquals(value, {
     components: {
-      "test.status": { title: "Status" },
+      "test.status": {
+        title: "Status",
+        events: {
+          emits: ["semantic.selection.changed"],
+          accepts: ["semantic.selection.apply"],
+        },
+      },
       "test.metrics": { title: "Metrics", description: "Typed values" },
     },
   });
@@ -72,6 +90,30 @@ Deno.test("component-only registries advertise no artificial standalone surface"
       {},
     ),
     undefined,
+  );
+});
+
+Deno.test("component descriptors reject malformed or duplicate Compose event ports", () => {
+  assertThrows(
+    () =>
+      defineViewComponent({
+        descriptor: { title: "Broken", events: { emits: ["  "] } },
+        mount() {},
+      }),
+    TypeError,
+    "non-empty",
+  );
+  assertThrows(
+    () =>
+      defineViewComponent({
+        descriptor: {
+          title: "Duplicate",
+          events: { accepts: ["semantic.selection.apply", "semantic.selection.apply"] },
+        },
+        mount() {},
+      }),
+    TypeError,
+    "Duplicate",
   );
 });
 

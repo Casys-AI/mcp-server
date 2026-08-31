@@ -1,6 +1,6 @@
 {
   "name": "@casys/mcp-compose",
-  "version": "0.8.1",
+  "version": "0.9.0",
   "exports": {
     ".": "./mod.ts",
     "./core": "./src/core/mod.ts",
@@ -10,7 +10,7 @@
     "./deploy": "./src/deploy/mod.ts"
   },
   "publish": {
-    "include": ["mod.ts", "src/**/*.ts", "README.md", "LICENSE"],
+    "include": ["mod.ts", "src/**/*.ts", "README.md", "CHANGELOG.md", "LICENSE"],
     "exclude": ["**/*_test.ts", "tests/", "_reference/"]
   },
   "tasks": {

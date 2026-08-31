@@ -27,6 +27,7 @@ await emptyDir("./dist-node");
 await build({
   entryPoints: [
     "./mod.ts",
+    { name: "./contracts", path: "./contracts.ts" },
     { name: "./preact", path: "./preact.ts" },
     { name: "./preact/components", path: "./preact-components.ts" },
     { name: "./react", path: "./react.ts" },
@@ -70,6 +71,11 @@ pkg.exports = {
     types: "./esm/mod.d.ts",
     import: "./esm/mod.js",
     require: "./script/mod.js",
+  },
+  "./contracts": {
+    types: "./esm/contracts.d.ts",
+    import: "./esm/contracts.js",
+    require: "./script/contracts.js",
   },
   "./react": {
     types: "./esm/react.d.ts",
@@ -162,6 +168,10 @@ async function smokeTestPackageImport(): Promise<void> {
           "}",
           "if (typeof mod.installMcpViewTheme !== 'function') {",
           "  throw new Error('installMcpViewTheme export missing');",
+          "}",
+          "const contracts = await import('@casys/mcp-view/contracts');",
+          "if (contracts.SEMANTIC_SELECTION_SCHEMA !== 'io.casys.semantic-selection/1.0') {",
+          "  throw new Error('composition contracts export missing');",
           "}",
           "const react = await import('@casys/mcp-view/react');",
           "if (typeof react.defineReactView !== 'function') {",

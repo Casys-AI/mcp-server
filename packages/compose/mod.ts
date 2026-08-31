@@ -49,10 +49,13 @@ export type {
   SurfaceLayoutType,
   UiLayout,
   UiOrchestration,
+  UiPortSyncRule,
   UiSyncRule,
   UnresolvedComponentSurface,
   ValidationIssue,
   ValidationResult,
+  ViewComponentDescriptor,
+  ViewComponentEventPorts,
 } from "./src/core/types/mod.ts";
 
 export { ErrorCode, isValidLayout, UI_LAYOUT_PRESETS } from "./src/core/types/mod.ts";

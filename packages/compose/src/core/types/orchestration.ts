@@ -5,7 +5,7 @@
  */
 
 import type { UiLayout } from "./layout.ts";
-import type { UiSyncRule } from "./sync-rules.ts";
+import type { UiPortSyncRule, UiSyncRule } from "./sync-rules.ts";
 
 /**
  * Declarative UI orchestration configuration.
@@ -29,6 +29,9 @@ export interface UiOrchestration {
 
   /** Sync rules for cross-UI event routing. When omitted, UIs operate independently. */
   sync?: UiSyncRule[];
+
+  /** Policies dynamically connected through active mcp-view component ports. */
+  portSync?: UiPortSyncRule[];
 
   /**
    * Keys to extract from collected UI contexts for shared injection.

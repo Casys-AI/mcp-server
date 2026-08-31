@@ -50,6 +50,12 @@ viewer-to-viewer plane. Local navigation, component state, tools, and domain act
 the child App. A surface remount must clean up component listeners and renderer resources
 deterministically.
 
+Each component may advertise event ports in its serializable descriptor. They make the App
+inspectable and dynamically connectable, but never create a route on their own. The host supplies an
+explicit port policy, and the viewer continues to own the behavior behind each port. The shared
+semantic-selection payload is structural and versioned; product-owned domain vocabularies and
+recorded cross-domain bindings remain outside this SDK.
+
 ## Adoption
 
 Modelica, Build123d, CalculiX, and SysON are reference consumers. Together they prove metrics,

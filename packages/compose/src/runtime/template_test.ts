@@ -5,7 +5,7 @@
  */
 
 import { assertEquals } from "@std/assert";
-import { injectArgs, parseTemplate, validateTemplate } from "./template.ts";
+import { injectArgs, parseTemplate, parseTemplateJson, validateTemplate } from "./template.ts";
 import { RuntimeErrorCode } from "./types.ts";
 import type { DashboardTemplate, McpManifest, RuntimeError } from "./types.ts";
 
@@ -55,6 +55,9 @@ sources:
           sql: "SELECT * FROM sales"
 orchestration:
   layout: split
+  portSync:
+    - event: semantic.selection.changed
+      action: semantic.selection.apply
   sharedContext:
     - customer_id
   `);
@@ -64,7 +67,30 @@ orchestration:
   assertEquals(template.sources[0].manifest, "postgres");
   assertEquals(template.sources[0].calls[0].tool, "query");
   assertEquals(template.orchestration.layout, "split");
+  assertEquals(template.orchestration.portSync, [{
+    event: "semantic.selection.changed",
+    action: "semantic.selection.apply",
+  }]);
   assertEquals(template.orchestration.sharedContext, ["customer_id"]);
+});
+
+Deno.test("parseTemplateJson - preserves the agent-facing composition manifest", () => {
+  const template = parseTemplateJson(JSON.stringify({
+    name: "Engineering viewers",
+    sources: [{ manifest: "mcp-build123d", calls: [{ tool: "render" }] }],
+    orchestration: {
+      layout: "split",
+      portSync: [{
+        event: "semantic.selection.changed",
+        action: "semantic.selection.apply",
+      }],
+    },
+  }));
+
+  assertEquals(template.orchestration.portSync, [{
+    event: "semantic.selection.changed",
+    action: "semantic.selection.apply",
+  }]);
 });
 
 Deno.test("parseTemplate - invalid YAML throws TEMPLATE_PARSE_ERROR", () => {
@@ -131,6 +157,19 @@ Deno.test("validateTemplate - invalid layout detected", () => {
   const result = validateTemplate(template, manifests);
   assertEquals(result.valid, false);
   assertEquals(result.errors.some((e) => e.includes("layout")), true);
+});
+
+Deno.test("validateTemplate - malformed component port policies are rejected", () => {
+  const manifests = makeManifests({ name: "server-a", tools: ["tool-1"] });
+  const template = makeTemplate({
+    orchestration: {
+      layout: "split",
+      portSync: [{ event: "  ", action: "semantic.selection.apply" }],
+    },
+  });
+  const result = validateTemplate(template, manifests);
+  assertEquals(result.valid, false);
+  assertEquals(result.errors, ["orchestration.portSync[0].event must be a non-empty string"]);
 });
 
 Deno.test("validateTemplate - empty sources detected", () => {

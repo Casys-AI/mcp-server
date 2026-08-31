@@ -181,6 +181,31 @@ standalone default is used when one exists, otherwise resolution returns `surfac
 keys resolve explicitly instead of silently disappearing. Legacy Apps continue unchanged.
 `ui/compose/event` remains the cross-view event plane.
 
+Components may also advertise event ports. A host can declare one stable policy and let Compose
+resolve it against the components active in the current session:
+
+```json
+{
+  "orchestration": {
+    "layout": "split",
+    "portSync": [{
+      "event": "semantic.selection.changed",
+      "action": "semantic.selection.apply"
+    }]
+  }
+}
+```
+
+`portSync` is dynamic in topology, not in meaning. It routes only when the source surface currently
+contains a component declaring the event and the target surface contains a distinct component
+declaring the action. The payload is forwarded unchanged; Compose performs no identifier mapping.
+Explicit `sync` rules remain available for named one-off routes.
+
+For preflight, put the same `emits` / `accepts` names in the tool's `_meta.ui` or Compose manifest.
+`validateComposition(tools, sync, portSync)` can then prove that at least one distinct source/target
+pair exists before the Apps are opened. The runtime component catalog confirms the actual mounted
+surface during `ui/initialize`.
+
 See [`ADR 0005`](docs/decision-records/0005-component-surfaces-and-a2ui-boundary.md) for the
 contract and A2UI boundary.
 
@@ -197,6 +222,15 @@ const result = validateSyncRules(
 );
 // result.valid === false
 // result.issues[0].code === "ORPHAN_SYNC_REFERENCE"
+```
+
+For a dynamic port policy, validate the pre-open tool manifests as well:
+
+```ts
+const result = validateComposition(tools, [], [{
+  event: "semantic.selection.changed",
+  action: "semantic.selection.apply",
+}]);
 ```
 
 ## Collector API
@@ -284,7 +318,7 @@ import { composeDashboardFromFiles } from "@casys/mcp-compose/runtime";
 
 const result = await composeDashboardFromFiles(
   "./manifests/", // directory of .json manifest files
-  "./dashboards/sales.yaml", // YAML template
+  "./dashboards/sales.json", // canonical agent-facing JSON manifest
   { customer_id: "CUST-001" }, // runtime args (replaces {{placeholders}})
 );
 await Deno.writeTextFile("dashboard.html", result.html);
@@ -297,7 +331,7 @@ the same template/manifests and call `composeAndServeDashboard()` instead:
 import { composeAndServeDashboard, loadManifests, loadTemplate } from "@casys/mcp-compose/runtime";
 
 const manifests = await loadManifests("./manifests");
-const template = await loadTemplate("./dashboards/sales.yaml");
+const template = await loadTemplate("./dashboards/sales.json");
 const dashboard = await composeAndServeDashboard(
   { manifests, template },
   { open: true },

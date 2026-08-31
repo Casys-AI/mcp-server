@@ -5,7 +5,7 @@
  */
 
 import type { UiLayout } from "./layout.ts";
-import type { ResolvedSyncRule } from "./sync-rules.ts";
+import type { ResolvedSyncRule, UiPortSyncRule } from "./sync-rules.ts";
 import type { CollectedUiResource } from "./resources.ts";
 
 /**
@@ -43,6 +43,9 @@ export interface CompositeUiDescriptor {
 
   /** Resolved sync rules (tool names replaced with slot indices). */
   sync: ResolvedSyncRule[];
+
+  /** Dynamic policies resolved from the currently active component ports. */
+  portSync: UiPortSyncRule[];
 
   /** Shared context injected into all child UIs. */
   sharedContext?: Record<string, unknown>;

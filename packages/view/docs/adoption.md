@@ -36,11 +36,13 @@ A viewer defines:
 
 1. stable component keys such as `modelica.metrics` or `build123d.canvas`;
 2. a serializable descriptor for every key;
-3. optionally one `defaultSurface`, which is the complete standalone viewer; omit it when the App is
+3. optional event ports on that descriptor when the component participates in a declared Compose
+   protocol;
+4. optionally one `defaultSurface`, which is the complete standalone viewer; omit it when the App is
    intentionally a Compose-only palette;
-4. mount functions that receive validated domain data, JSON-only props, local App context, and host
+5. mount functions that receive validated domain data, JSON-only props, local App context, and host
    context;
-5. deterministic cleanup for timers, listeners, renderer roots, and GPU resources.
+6. deterministic cleanup for timers, listeners, renderer roots, and GPU resources.
 
 Compose may select, order, repeat, and configure only advertised components. It does not inspect the
 iframe DOM, inject application code, or infer a compact/detail mode from pixel dimensions.
@@ -60,7 +62,8 @@ event routes.
    omit it deliberately.
 5. Mount the negotiated surface from the App host context, falling back to `defaultSurface` when
    present and to the explicit `surface-required` state otherwise.
-6. Preserve existing cross-view events and local navigation; do not invent events to prove the API.
+6. Preserve existing cross-view events and local navigation. Declare their ports, and use the shared
+   semantic-selection contract only where an exact local or host-provided recorded binding exists.
 7. Run the repository checks, rebuild the single-file HTML, then exercise both standalone and
    Compose paths with a real tool result.
 

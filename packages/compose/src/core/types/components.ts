@@ -28,9 +28,15 @@ export interface ComponentSurface {
   readonly components: readonly ComponentSurfaceItem[];
 }
 
+export interface ViewComponentEventPorts {
+  readonly emits?: readonly string[];
+  readonly accepts?: readonly string[];
+}
+
 export interface ViewComponentDescriptor {
   readonly title: string;
   readonly description?: string;
+  readonly events?: ViewComponentEventPorts;
 }
 
 export interface AdvertisedComponentCatalog {

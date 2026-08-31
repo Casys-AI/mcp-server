@@ -456,10 +456,8 @@ Deno.test("generated event bus negotiates component surfaces, updates dimensions
     ],
     {
       layout: "split",
-      sync: [{
-        from: "thermal",
+      portSync: [{
         event: "requirement.select",
-        to: "architecture",
         action: "requirement.highlight",
       }],
     },
@@ -495,7 +493,10 @@ Deno.test("generated event bus negotiates component surfaces, updates dimensions
         experimental: {
           "io.casys.mcp.view-components/v1": {
             components: {
-              "modelica.status": { title: "Status" },
+              "modelica.status": {
+                title: "Status",
+                events: { emits: ["requirement.select"] },
+              },
               "modelica.metrics": { title: "Metrics" },
               "modelica.provenance": { title: "Provenance" },
             },
@@ -516,7 +517,24 @@ Deno.test("generated event bus negotiates component surfaces, updates dimensions
     jsonrpc: "2.0",
     id: "architecture-init",
     method: "ui/initialize",
-    params: { appCapabilities: {} },
+    params: {
+      appCapabilities: {
+        experimental: {
+          "io.casys.mcp.view-components/v1": {
+            components: {
+              "syson.diagram": {
+                title: "Diagram",
+                events: { accepts: ["requirement.highlight"] },
+              },
+            },
+            defaultSurface: {
+              layout: { type: "stack" },
+              components: [{ id: "diagram", component: "syson.diagram" }],
+            },
+          },
+        },
+      },
+    },
   });
 
   const handshake = findPost(thermal, (message) => message.id === "thermal-init");
@@ -569,6 +587,68 @@ Deno.test("generated event bus negotiates component surfaces, updates dimensions
       sourceSlot: 0,
       sharedContext: {},
     },
+  );
+});
+
+Deno.test("generated event bus does not dynamically route to undeclared component ports", () => {
+  const descriptor = buildCompositeUi(
+    [
+      { source: "cad", resourceUri: "ui://cad/result", slot: 0 },
+      { source: "fea", resourceUri: "ui://fea/result", slot: 1 },
+    ],
+    {
+      layout: "split",
+      portSync: [{
+        event: "semantic.selection.changed",
+        action: "semantic.selection.apply",
+      }],
+    },
+  );
+  const cad = new FakeChildWindow();
+  const fea = new FakeChildWindow();
+  const harness = createHarness(
+    generateEventBusScript(descriptor, resolveRendererSlots(descriptor)),
+    [
+      { dataset: { slot: "0" }, contentWindow: cad },
+      { dataset: { slot: "1" }, contentWindow: fea },
+    ],
+    () => Promise.reject(new Error("not used")),
+  );
+  for (
+    const [viewer, name, events] of [
+      [cad, "cad.scene", { emits: ["semantic.selection.changed"] }],
+      [fea, "calculix.results", { accepts: ["another.action"] }],
+    ] as const
+  ) {
+    harness.emit(viewer, {
+      jsonrpc: "2.0",
+      id: `${name}-init`,
+      method: "ui/initialize",
+      params: {
+        appCapabilities: {
+          experimental: {
+            "io.casys.mcp.view-components/v1": {
+              components: { [name]: { title: name, events } },
+              defaultSurface: {
+                layout: { type: "stack" },
+                components: [{ id: name, component: name }],
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  harness.emit(cad, {
+    jsonrpc: "2.0",
+    method: "ui/compose/event",
+    params: { event: "semantic.selection.changed", data: { id: "face-12" } },
+  });
+
+  assertEquals(
+    findPost(fea, (message) => message.method === "ui/compose/event"),
+    undefined,
   );
 });
 

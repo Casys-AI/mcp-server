@@ -68,6 +68,10 @@ the shared `Card`, `Badge`, `MetricGrid`, `KeyValueList`, `DataTable`, `Button`,
   safe renderer-neutral primitives; `defineCustomComponent()` keeps specialized rendering local.
 - `ctx.events.emit()` / `ctx.events.on()` exchange validated `ui/compose/event` messages with a
   compatible parent. This channel is optional and distinct from standard model-context messages.
+- component descriptors may declare `events.emits` / `events.accepts`; these are discoverable ports,
+  not implicit routes;
+- `defineSemanticSelection()`, `emitSemanticSelection()`, and `onSemanticSelection()` provide a
+  versioned structural semantic-reference contract without owning product domain values or mappings.
 - `installMcpViewTheme()` installs the shared ERPNext-derived visual tokens and component classes
   once per document. The Preact surface runtime does this by default.
 
@@ -204,7 +208,7 @@ The type surface is designed so each of the above can be added without breaking 
 `@casys/mcp-view/scaffold` is an executable subpath, not part of the iframe runtime API:
 
 ```sh
-deno run -A jsr:@casys/mcp-view@0.7.0/scaffold result-viewer <target> [--force]
+deno run -A jsr:@casys/mcp-view@0.8.0/scaffold result-viewer <target> [--force]
 ```
 
 It emits a small vanilla project with an inline-HTML bundling script and no domain brand or remote

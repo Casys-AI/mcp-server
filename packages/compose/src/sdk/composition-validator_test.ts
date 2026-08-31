@@ -46,6 +46,47 @@ Deno.test("validateComposition - empty inputs are valid", () => {
   assertEquals(result.issues.length, 0);
 });
 
+Deno.test("validateComposition - dynamic port policy covers compatible tool manifests", () => {
+  const tools = [
+    tool("cad", {
+      resourceUri: "ui://cad/results",
+      emits: ["semantic.selection.changed"],
+    }),
+    tool("calculix", {
+      resourceUri: "ui://calculix/results",
+      accepts: ["semantic.selection.apply"],
+    }),
+  ];
+
+  const result = validateComposition(tools, [], [{
+    event: "semantic.selection.changed",
+    action: "semantic.selection.apply",
+  }]);
+
+  assertEquals(result, { valid: true, issues: [] });
+});
+
+Deno.test("validateComposition - dynamic port policy requires a distinct compatible peer", () => {
+  const tools = [
+    tool("cad", {
+      resourceUri: "ui://cad/results",
+      emits: ["semantic.selection.changed"],
+      accepts: ["semantic.selection.apply"],
+    }),
+  ];
+
+  const result = validateComposition(tools, [], [{
+    event: "semantic.selection.changed",
+    action: "semantic.selection.apply",
+  }]);
+
+  assertEquals(result.valid, false);
+  assertEquals(
+    result.issues.some((issue) => issue.code === "PORT_SYNC_NO_COMPATIBLE_PEER"),
+    true,
+  );
+});
+
 // --- Orphan emits ---
 
 Deno.test("validateComposition - detects orphan emits (no sync rule routes them)", () => {

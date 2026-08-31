@@ -8,7 +8,7 @@ export type { UiLayout } from "./layout.ts";
 export { isLayoutAreas, isLayoutPreset, isValidLayout, UI_LAYOUT_PRESETS } from "./layout.ts";
 export type { UiLayoutAreas, UiLayoutGap, UiLayoutPreset } from "./layout.ts";
 
-export type { ResolvedSyncRule, UiSyncRule } from "./sync-rules.ts";
+export type { ResolvedSyncRule, UiPortSyncRule, UiSyncRule } from "./sync-rules.ts";
 
 export type { UiOrchestration } from "./orchestration.ts";
 
@@ -26,6 +26,7 @@ export type {
   SurfaceLayoutType,
   UnresolvedComponentSurface,
   ViewComponentDescriptor,
+  ViewComponentEventPorts,
 } from "./components.ts";
 
 export type { CompositeUiDescriptor } from "./descriptor.ts";

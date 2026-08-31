@@ -4,6 +4,7 @@ import { assertEquals, assertStringIncludes } from "@std/assert";
 import { render } from "preact";
 import type { ComposedSemanticRef } from "@casys/mcp-view-contracts";
 import {
+  CollectionCard,
   ElementBody,
   ElementIdent,
   ElementProvenance,
@@ -46,6 +47,50 @@ Deno.test({
       assertEquals(list?.getAttribute("aria-label"), "Simulation runs");
       assertEquals(list?.getAttribute("data-scrollable"), "true");
       assertEquals(list?.querySelectorAll(".mcp-view-semantic-element").length, 2);
+    });
+  },
+});
+
+Deno.test({
+  name: "CollectionCard hosts a SemanticList inside one Card",
+  permissions: { read: true, env: true, run: true },
+  async fn() {
+    await withDom((root) => {
+      render(
+        <CollectionCard
+          label="Simulation runs"
+          eyebrow="MCP / TEST"
+          title="Runs"
+          actions={<span>3</span>}
+          scrollable
+          className="domain-collection"
+        >
+          <SemanticElement
+            reference={REFERENCE}
+            density="row"
+            ident={<ElementIdent label="Run A" />}
+          />
+        </CollectionCard>,
+        root,
+      );
+
+      const card = root.firstElementChild;
+      assertEquals(card?.tagName.toLowerCase(), "section");
+      assertEquals(card?.classList.contains("mcp-view-card"), true);
+      assertEquals(card?.classList.contains("mcp-view-collection-card"), true);
+      assertEquals(card?.classList.contains("domain-collection"), true);
+      assertEquals(root.querySelectorAll(".mcp-view-card").length, 1);
+      assertEquals(root.querySelector(".mcp-view-card-eyebrow")?.textContent, "MCP / TEST");
+      assertEquals(root.querySelector(".mcp-view-card-title")?.textContent, "Runs");
+      assertEquals(root.querySelector(".mcp-view-card-actions")?.textContent, "3");
+
+      const list = card?.querySelector(":scope > .mcp-view-semantic-list");
+      assertEquals(list?.parentElement, card);
+      assertEquals(list?.getAttribute("role"), "group");
+      assertEquals(list?.getAttribute("aria-label"), "Simulation runs");
+      assertEquals(list?.getAttribute("data-scrollable"), "true");
+      assertEquals(root.querySelectorAll(".mcp-view-semantic-list").length, 1);
+      assertEquals(list?.querySelectorAll(".mcp-view-semantic-element").length, 1);
     });
   },
 });

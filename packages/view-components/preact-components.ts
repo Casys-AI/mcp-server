@@ -66,6 +66,7 @@ export type {
 } from "./src/preact/structural.tsx";
 
 export {
+  CollectionCard,
   ElementBody,
   ElementIdent,
   ElementProvenance,
@@ -75,6 +76,7 @@ export {
   SemanticList,
 } from "./src/preact/semantic-element.tsx";
 export type {
+  CollectionCardProps,
   ElementBodyProps,
   ElementIdentProps,
   ElementProvenanceProps,

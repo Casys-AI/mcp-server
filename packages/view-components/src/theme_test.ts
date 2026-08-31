@@ -25,6 +25,9 @@ Deno.test("shared theme exposes the MCP View v2 component vocabulary", () => {
       ".mcp-view-limit-gauge",
       ".mcp-view-artifact-row",
       ".mcp-view-semantic-element",
+      ".mcp-view-collection-card",
+      ".mcp-view-collection-card > .mcp-view-card-header",
+      ".mcp-view-collection-card > .mcp-view-semantic-list",
       '[data-density="chip"]',
       '[data-density="row"]',
       '[data-density="card"]',
@@ -79,6 +82,31 @@ Deno.test("shared theme exposes offline heading body and mono typography roles",
   assertFalse(neutralBadge.includes("var(--mcp-view-success)"));
   assertFalse(MCP_VIEW_THEME_CSS.includes(".mcp-view-badge:not([data-tone])"));
   assertStringIncludes(MCP_VIEW_THEME_CSS, '.mcp-view-badge[data-tone="success"]');
+});
+
+Deno.test("collection card keeps one outer border by flattening the nested list", () => {
+  const cardStart = MCP_VIEW_THEME_CSS.indexOf(".mcp-view-collection-card {");
+  const cardEnd = MCP_VIEW_THEME_CSS.indexOf("}", cardStart);
+  const collectionCard = MCP_VIEW_THEME_CSS.slice(cardStart, cardEnd);
+  assertStringIncludes(collectionCard, "padding: 0;");
+  assertStringIncludes(collectionCard, "overflow: hidden;");
+  assertFalse(collectionCard.includes("box-shadow"));
+
+  const headerStart = MCP_VIEW_THEME_CSS.indexOf(
+    ".mcp-view-collection-card > .mcp-view-card-header {",
+  );
+  const headerEnd = MCP_VIEW_THEME_CSS.indexOf("}", headerStart);
+  const header = MCP_VIEW_THEME_CSS.slice(headerStart, headerEnd);
+  assertStringIncludes(header, "border-bottom: 1px solid var(--mcp-view-border);");
+  assertStringIncludes(header, "padding:");
+
+  const listStart = MCP_VIEW_THEME_CSS.indexOf(
+    ".mcp-view-collection-card > .mcp-view-semantic-list {",
+  );
+  const listEnd = MCP_VIEW_THEME_CSS.indexOf("}", listStart);
+  const nestedList = MCP_VIEW_THEME_CSS.slice(listStart, listEnd);
+  assertStringIncludes(nestedList, "border: 0;");
+  assertStringIncludes(nestedList, "border-radius: 0;");
 });
 
 Deno.test("shared theme has readable explicit light and dark fallbacks", () => {

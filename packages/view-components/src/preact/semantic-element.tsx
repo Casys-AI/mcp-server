@@ -3,7 +3,7 @@
 
 import type { ComposedSemanticRef } from "@casys/mcp-view-contracts";
 import type { ComponentChildren, JSX, VNode } from "preact";
-import type { PresentationTone } from "./components.tsx";
+import { Card, type CardProps, type PresentationTone } from "./components.tsx";
 
 export type SemanticElementDensity = "chip" | "row" | "card";
 
@@ -30,6 +30,35 @@ export function SemanticList({
     >
       {children}
     </div>
+  );
+}
+
+export interface CollectionCardProps
+  extends
+    Pick<CardProps, "title" | "eyebrow" | "actions" | "className" | "children">,
+    Pick<SemanticListProps, "label" | "scrollable"> {}
+
+/** Card-hosted SemanticList that keeps a single outer border. */
+export function CollectionCard({
+  label,
+  title,
+  eyebrow,
+  actions,
+  scrollable = false,
+  className,
+  children,
+}: CollectionCardProps): JSX.Element {
+  return (
+    <Card
+      title={title}
+      eyebrow={eyebrow}
+      actions={actions}
+      className={classes("mcp-view-collection-card", className)}
+    >
+      <SemanticList label={label} scrollable={scrollable}>
+        {children}
+      </SemanticList>
+    </Card>
   );
 }
 

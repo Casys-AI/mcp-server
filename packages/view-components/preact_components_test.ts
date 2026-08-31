@@ -3,6 +3,7 @@ import {
   Badge,
   BadgeGroup,
   Card,
+  CollectionCard,
   DataTable,
   InlineCode,
   installMcpViewTheme,
@@ -17,6 +18,7 @@ Deno.test("Preact components entry exposes presentation without an MCP Apps runt
   assertEquals(typeof Badge, "function");
   assertEquals(typeof BadgeGroup, "function");
   assertEquals(typeof Card, "function");
+  assertEquals(typeof CollectionCard, "function");
   assertEquals(typeof DataTable, "function");
   assertEquals(typeof PathBar, "function");
   assertEquals(typeof Row, "function");

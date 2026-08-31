@@ -740,6 +740,19 @@ button.mcp-view-artifact-row:focus-visible {
 .mcp-view-semantic-list > .mcp-view-semantic-element[data-density="row"]:last-child {
   border-block-end: 0;
 }
+.mcp-view-collection-card {
+  padding: 0;
+  overflow: hidden;
+}
+.mcp-view-collection-card > .mcp-view-card-header {
+  margin-bottom: 0;
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid var(--mcp-view-border);
+}
+.mcp-view-collection-card > .mcp-view-semantic-list {
+  border: 0;
+  border-radius: 0;
+}
 .mcp-view-semantic-element[data-density="card"] {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

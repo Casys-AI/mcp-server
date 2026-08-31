@@ -7,6 +7,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Add a strict App-owned JSON manifest for exact `ui://` resources, result/session schemas, and
+  advertised component catalogs. The contract excludes provider endpoints, credentials, tool
+  arguments, and host routing policy, and keeps `viewer.session.apply` paired with a versioned
+  session schema.
+
 ## [0.8.0] - 2026-08-31
 
 ### Added

@@ -8,6 +8,13 @@
  */
 
 export type { CompositeUiHost, HostConfig } from "./types.ts";
+export { MCP_COMPOSE_HOST_GATEWAY_KEY } from "./component-actions.ts";
+export type {
+  HostComponentAction,
+  HostComponentActionGateway,
+  HostComponentActionRejectionReason,
+  HostComponentActionResult,
+} from "./component-actions.ts";
 export {
   CASYS_COMPONENT_CATALOG_CAPABILITY_KEY,
   CASYS_SURFACE_CONTEXT_KEY,

@@ -102,8 +102,45 @@ React, Preact, Three.js, or any other renderer. The public contract stays JSON-o
 layout, instance IDs, safe props, and event routes.
 
 When present, the default surface is the standalone viewer, not a second implementation. A composed
-dashboard can select, order, and repeat advertised components in YAML while the owning MCP App keeps
-domain rendering, local state, and actions.
+dashboard can select, order, and repeat advertised components in its JSON composition while the
+owning MCP App keeps domain rendering, local state, and actions.
+
+### App-owned JSON manifest
+
+An App can publish the same presentation contract as versioned JSON without exposing provider
+endpoints, credentials, tool arguments, or host routing policy. The manifest pins the App version,
+its exact `ui://` resources, supported result/session schemas, and the component catalog advertised
+at runtime:
+
+```ts
+import {
+  defineViewAppManifest,
+  VIEWER_SESSION_APPLY_ACTION,
+} from "@casys/mcp-view/contracts";
+
+export const manifest = defineViewAppManifest({
+  schemaVersion: "io.casys.mcp.view-app-manifest/1.0",
+  app: { id: "io.casys.modelica.results", title: "Modelica results", version: "0.6.0" },
+  resources: [{
+    uri: "ui://mcp-modelica/results-viewer",
+    resultSchemas: ["io.casys.modelica.run/2.0"],
+    sessionSchemas: ["io.casys.thread.modelica-viewer-session/1.0"],
+    components: {
+      components: {
+        "modelica.metrics": {
+          title: "Simulation metrics",
+          events: { accepts: [VIEWER_SESSION_APPLY_ACTION] },
+        },
+      },
+    },
+  }],
+});
+```
+
+Declaring `viewer.session.apply` and `sessionSchemas` is inseparable. The action carries a versioned
+read projection; it is not a substitute for `ui/notifications/tool-result`, which remains tied to a
+real tool execution lifecycle. The Compose host decides when and where to deliver a compatible
+session.
 
 ### Preact surface runtime and shared visual language
 

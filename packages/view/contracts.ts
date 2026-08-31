@@ -6,6 +6,14 @@
  */
 
 export {
+  defineViewAppManifest,
+  parseViewAppManifestJson,
+  VIEW_APP_MANIFEST_SCHEMA,
+  VIEWER_SESSION_APPLY_ACTION,
+} from "./src/app-manifest.ts";
+export type { ViewAppManifest, ViewAppManifestResource } from "./src/app-manifest.ts";
+
+export {
   defineSemanticSelection,
   parseSemanticSelection,
   SEMANTIC_SELECTION_APPLY_ACTION,
@@ -15,9 +23,17 @@ export {
   validateSemanticSelection,
 } from "./src/composition-contracts.ts";
 export type {
+  AdvertisedComponentCatalog,
+  ComponentSurface,
+  ComponentSurfaceItem,
+  ComponentSurfaceLayout,
   ComposedSemanticRef,
+  JsonValue,
   SemanticSelection,
   SemanticSelectionInput,
   SemanticSelectionMode,
+  SurfaceGap,
+  SurfaceLayoutType,
+  ViewComponentDescriptor,
   ViewComponentEventPorts,
 } from "./src/composition-contracts.ts";

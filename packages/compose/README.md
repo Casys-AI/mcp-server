@@ -201,6 +201,31 @@ contains a component declaring the event and the target surface contains a disti
 declaring the action. The payload is forwarded unchanged; Compose performs no identifier mapping.
 Explicit `sync` rules remain available for named one-off routes.
 
+### Host-originated component actions
+
+The generated parent installs a typed `mcpComposeHost` gateway while its event bus is alive. A
+loopback host or session relay can use it to replace a viewer's read model after an SSE event without
+pretending that another MCP tool ran:
+
+```ts
+import type { HostComponentActionGateway } from "@casys/mcp-compose";
+
+const gateway = (window as Window & {
+  mcpComposeHost?: HostComponentActionGateway;
+}).mcpComposeHost;
+
+const result = gateway?.publishComponentAction({
+  componentId: "cad-viewer",
+  action: "viewer.session.apply",
+  payload: nextRecordedSession,
+});
+```
+
+Delivery is direct to one stable composed instance and only when exactly one component in its active
+surface declares the action in `events.accepts`. Unknown, inactive, or ambiguous targets fail closed.
+Host actions do not enter static `sync`, dynamic `portSync`, or the MCP proxy, and their payload is
+forwarded without semantic transformation.
+
 For preflight, put the same `emits` / `accepts` names in the tool's `_meta.ui` or Compose manifest.
 `validateComposition(tools, sync, portSync)` can then prove that at least one distinct source/target
 pair exists before the Apps are opened. The runtime component catalog confirms the actual mounted

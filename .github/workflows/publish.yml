@@ -12,9 +12,8 @@ on:
 jobs:
   publish-jsr:
     # The view-family npm job performs the immutable-version content guard.
-    # Keep JSR behind it so no package can bypass that guard. Publish the
-    # already-registered core first so bootstrapping a new split package name
-    # cannot hold back a valid core release.
+    # Keep JSR behind it so a stale core version cannot publish only the two
+    # new split packages on either registry.
     needs: publish-npm-view-family
     runs-on: ubuntu-latest
     permissions:
@@ -22,9 +21,6 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v5
-      - name: Publish MCP View core to JSR
-        working-directory: packages/view
-        run: npx jsr publish
       - name: Publish all packages to JSR
         run: npx jsr publish
         # Publishes all workspace members whose version isn't already on JSR.

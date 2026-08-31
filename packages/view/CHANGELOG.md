@@ -7,6 +7,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-08-31
+
+### Changed
+
+- Point the documented result-viewer scaffold at the released `@casys/mcp-view-components` 0.2.0
+  component kit.
+
 ## [0.9.0] - 2026-08-31
 
 ### Changed

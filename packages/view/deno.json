@@ -1,6 +1,6 @@
 {
   "name": "@casys/mcp-view",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "license": "MIT",
   "exports": {
     ".": "./mod.ts",

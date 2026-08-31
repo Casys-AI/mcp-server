@@ -109,7 +109,7 @@ session.
 The project generator intentionally uses Deno filesystem APIs and `deno fmt`. Run it from JSR:
 
 ```sh
-deno run -A jsr:@casys/mcp-view-components@0.1.0/scaffold result-viewer ./result-viewer
+deno run -A jsr:@casys/mcp-view-components@0.2.0/scaffold result-viewer ./result-viewer
 ```
 
 The npm package contains only the runtime and presentation entry points. It does not export or ship

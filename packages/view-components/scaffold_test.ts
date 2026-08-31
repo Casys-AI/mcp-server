@@ -41,7 +41,7 @@ Deno.test("result-viewer scaffold creates a standalone component project", async
     assertStringIncludes(generatedConfig, '"@casys/mcp-view": "jsr:@casys/mcp-view@0.9.0"');
     assertStringIncludes(
       generatedConfig,
-      '"@casys/mcp-view-components": "jsr:@casys/mcp-view-components@0.1.0"',
+      '"@casys/mcp-view-components": "jsr:@casys/mcp-view-components@0.2.0"',
     );
     assertStringIncludes(generatedConfig, '"minimumDependencyAge"');
     assertStringIncludes(generatedConfig, '"jsr:@casys/mcp-view-components"');
@@ -51,7 +51,7 @@ Deno.test("result-viewer scaffold creates a standalone component project", async
       configPath,
       generatedConfig
         .replace("jsr:@casys/mcp-view@0.9.0", coreModule)
-        .replace("jsr:@casys/mcp-view-components@0.1.0", componentsModule),
+        .replace("jsr:@casys/mcp-view-components@0.2.0", componentsModule),
     );
 
     await Deno.writeTextFile(

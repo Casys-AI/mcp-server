@@ -5,7 +5,7 @@ code in this repository.
 
 ## Project Overview
 
-This is a **monorepo** containing 4 packages that form the Casys MCP Platform:
+This is a **monorepo** containing 6 packages that form the Casys MCP Platform:
 
 - **`@casys/mcp-server`** (`packages/server/`) — A production-grade framework
   for building MCP (Model Context Protocol) servers in TypeScript. Think "Hono
@@ -18,11 +18,17 @@ This is a **monorepo** containing 4 packages that form the Casys MCP Platform:
   (`createMcpApp`, `defineView`): lets authors build SPAs with internal routing
   instead of the `ui/message` anti-pattern. Thin wrapper over
   `@modelcontextprotocol/ext-apps`' `App` class. **Browser-side (iframe).**
+- **`@casys/mcp-view-contracts`** (`packages/view-contracts/`) — Strict,
+  dependency-free App/resource manifests and composition/session contracts.
+  **Runtime-neutral.**
+- **`@casys/mcp-view-components`** (`packages/view-components/`) — Optional
+  component surfaces, ERPNext-derived roles and theme, Preact bindings, and
+  scaffold. **Browser-side (iframe or native Preact).**
 - **`@casys/mcp-bridge`** (`packages/bridge/`) — Bridge layer for connecting MCP
   servers to external systems and protocols. **Server-side.**
 
-The server/compose/bridge packages target Deno + Node (dual-publish); view
-targets browsers via bundler (esbuild recommended — see
+The server/compose/bridge packages target Deno + Node (dual-publish); view and
+view-components target browsers via bundler (esbuild recommended — see
 `packages/view/examples/basic/build.ts`).
 
 All packages are published to both **JSR** (`jsr:@casys/<package>`) and **npm**
@@ -47,6 +53,8 @@ mcp-server/                  # repo root (Deno workspace)
 │   │   ├── deno.json        # compilerOptions.lib includes "dom"
 │   │   ├── src/
 │   │   └── examples/basic/  # vanilla SPA demo + esbuild script
+│   ├── view-contracts/      # dependency-free shared contracts
+│   ├── view-components/     # optional presentation runtime and Preact kit
 │   └── bridge/              # @casys/mcp-bridge (server-side)
 │       ├── mod.ts
 │       ├── deno.json
@@ -63,7 +71,9 @@ deno task test
 # Run tests for a specific package
 cd packages/server && deno task test
 cd packages/compose && deno task test
+cd packages/view-contracts && deno task test
 cd packages/view && deno task test
+cd packages/view-components && deno task test
 cd packages/bridge && deno task test
 
 # Run a single test file within a package
@@ -134,6 +144,10 @@ Thin wrapper over `@modelcontextprotocol/ext-apps` `App` class. Browser-only:
 `dom.asynciterable`. See ADRs `docs/decision-records/0001` (Deno-first) and
 `packages/compose/docs/decision-records/0002`, `0003` (positioning + non-goals).
 
+The component catalog, theme, Preact runtime, and scaffold are not part of this
+package. They live in `@casys/mcp-view-components`. The `/contracts` subpath is
+only a compatibility re-export of `@casys/mcp-view-contracts`.
+
 ### `@casys/mcp-bridge` (`packages/bridge/`)
 
 Bridge layer for connecting MCP servers to external systems and protocols.
@@ -150,10 +164,10 @@ Bridge layer for connecting MCP servers to external systems and protocols.
   routing.
 - **Dual transport**: STDIO for local/CLI usage, HTTP (Streamable HTTP + SSE)
   for remote. Auth only applies to HTTP transport.
-- **Publishing**: On push to `main`, CI publishes all 4 packages to JSR (via
-  `npx jsr publish`) and npm (via the Node build script for
-  server/compose/bridge; view ships ESM-only). Version for each package is in
-  its own `deno.json`.
-- **Browser/server split**: only `@casys/mcp-view` uses `lib: dom`. Other
+- **Publishing**: On push to `main`, CI publishes all 6 packages to JSR (via
+  `npx jsr publish`) and npm through package-specific dnt builds. Version for
+  each package is in its own `deno.json`.
+- **Browser/server split**: `@casys/mcp-view` and `@casys/mcp-view-components`
+  use `lib: dom`; `@casys/mcp-view-contracts` explicitly does not. Server-side
   packages MUST NOT add DOM globals — doing so invites `document.getElementById`
   calls in server code that crash at runtime under Deno Deploy.

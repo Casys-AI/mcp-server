@@ -1,9 +1,87 @@
-/** DOM-free contracts shared by MCP App servers and their viewers. */
+/** Dependency-free composition contracts shared by MCP App servers and viewers. */
+
+export const CASYS_COMPONENT_CATALOG_CAPABILITY_KEY = "io.casys.mcp.view-components/v1";
+export const CASYS_SURFACE_CONTEXT_KEY = "io.casys.mcp.surface/v1";
 
 /** Compose event names a component can emit or accept when a host connects it. */
 export interface ViewComponentEventPorts {
   readonly emits?: readonly string[];
   readonly accepts?: readonly string[];
+}
+
+/** Layout modes available to serializable component surfaces. */
+export type SurfaceLayoutType = "stack" | "row" | "grid";
+
+/** Spacing scale accepted by serializable component surfaces. */
+export type SurfaceGap = "none" | "xs" | "sm" | "md" | "lg";
+
+/** JSON-only value accepted by public manifests, surfaces, and actions. */
+export type JsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | readonly JsonValue[]
+  | { readonly [key: string]: JsonValue };
+
+/** Serializable layout for an App-owned component surface. */
+export interface ComponentSurfaceLayout {
+  readonly type: SurfaceLayoutType;
+  readonly columns?: number;
+  readonly gap?: SurfaceGap;
+}
+
+/** One component instance in an App-owned component surface. */
+export interface ComponentSurfaceItem {
+  readonly id: string;
+  readonly component: string;
+  readonly area?: string;
+  readonly props?: Readonly<Record<string, JsonValue>>;
+}
+
+/** Serializable surface selected by a host or used as an App default. */
+export interface ComponentSurface {
+  readonly layout: ComponentSurfaceLayout;
+  readonly components: readonly ComponentSurfaceItem[];
+}
+
+/** Metadata a component advertises to a composition host. */
+export interface ViewComponentDescriptor {
+  readonly title: string;
+  readonly description?: string;
+  readonly events?: ViewComponentEventPorts;
+}
+
+/** Serializable catalog advertised during the MCP Apps initialize handshake. */
+export interface AdvertisedComponentCatalog {
+  readonly components: Readonly<Record<string, ViewComponentDescriptor>>;
+  readonly defaultSurface?: ComponentSurface;
+}
+
+/** Host-selected component surface context. Whole-view resources may omit it. */
+export interface SurfaceContext {
+  readonly instanceId: string;
+  readonly status: "ready" | "legacy" | "unresolved";
+  readonly source?: "requested" | "default";
+  readonly surface?: ComponentSurface;
+  readonly reason?:
+    | "component-catalog-unavailable"
+    | "surface-required"
+    | "unknown-components";
+  readonly missingComponents?: readonly string[];
+  readonly eventChannel?: "ui/compose/event";
+}
+
+/** Read the optional Casys surface context without importing a browser or MCP SDK type. */
+export function readSurfaceContext(hostContext: unknown): SurfaceContext | undefined {
+  if (!isRecord(hostContext)) return undefined;
+  const value = hostContext[CASYS_SURFACE_CONTEXT_KEY];
+  if (!isRecord(value)) return undefined;
+  if (
+    typeof value.instanceId !== "string" ||
+    !["ready", "legacy", "unresolved"].includes(String(value.status ?? ""))
+  ) return undefined;
+  return value as unknown as SurfaceContext;
 }
 
 export const SEMANTIC_SELECTION_SCHEMA = "io.casys.semantic-selection/1.0" as const;

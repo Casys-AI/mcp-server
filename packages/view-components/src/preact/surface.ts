@@ -2,10 +2,17 @@
 
 import { createElement, type FunctionComponent, render } from "preact";
 
-import { createMcpApp, defineView } from "../app.ts";
+import {
+  type AppContext,
+  createMcpApp,
+  defineView,
+  readResultData,
+  type ResultData,
+} from "@casys/mcp-view";
 import {
   activeComponentSurface,
-  advertisedComponentCatalog,
+  applySurfaceContext,
+  componentCatalogCapabilities,
   defineViewComponent,
   mountComponentSurface,
   type MountedComponentSurface,
@@ -13,9 +20,7 @@ import {
   type ViewComponentDescriptor,
   type ViewComponentRegistry,
 } from "../components.ts";
-import { readResultData, type ResultData } from "../results.ts";
 import { installMcpViewTheme } from "../theme.ts";
-import type { AppContext } from "../types.ts";
 import type { JsonValue } from "../components.ts";
 
 export interface PreactSurfaceAppState<TData> {
@@ -82,7 +87,7 @@ export function definePreactComponent<
 
 export type SurfaceMessageKind = "loading" | "empty" | "error" | "surface-required";
 
-export interface PreactSurfaceAppOptions<TData extends ResultData> {
+export interface PreactSurfaceAppOptions<TData extends ResultData, TSession = never> {
   readonly root: HTMLElement;
   readonly info: { readonly name: string; readonly version: string };
   readonly registry: ViewComponentRegistry<
@@ -90,6 +95,11 @@ export interface PreactSurfaceAppOptions<TData extends ResultData> {
     PreactSurfaceContext<TData>
   >;
   readonly validate?: (value: unknown) => value is TData;
+  /** App-owned validator for the versioned `viewer.session.apply` envelope. */
+  readonly validateSession?: (value: unknown) => value is TSession;
+  /** Convert one validated recorded session into the same data model as a tool result. */
+  readonly mapSessionToData?: (session: TSession) => TData | Promise<TData>;
+  readonly onInvalidSession?: (value: unknown) => void;
   readonly loadingLabel?: string;
   readonly emptyLabel?: string;
   readonly surfaceRequiredLabel?: string;
@@ -107,9 +117,18 @@ export interface PreactSurfaceAppOptions<TData extends ResultData> {
  * latter case, a host-selected surface is required and no artificial
  * standalone composition is invented.
  */
-export async function startPreactSurfaceApp<TData extends ResultData>(
-  options: PreactSurfaceAppOptions<TData>,
+export async function startPreactSurfaceApp<TData extends ResultData, TSession = never>(
+  options: PreactSurfaceAppOptions<TData, TSession>,
 ): Promise<void> {
+  const sessionEnabled = options.validateSession !== undefined ||
+    options.mapSessionToData !== undefined;
+  if (sessionEnabled && (!options.validateSession || !options.mapSessionToData)) {
+    throw new TypeError(
+      "startPreactSurfaceApp requires both validateSession and mapSessionToData",
+    );
+  }
+  const validateSession = options.validateSession;
+  const mapSessionToData = options.mapSessionToData;
   if (options.theme !== false) installMcpViewTheme();
   const state: PreactSurfaceAppState<TData> = {};
   let mounted: MountedComponentSurface | undefined;
@@ -183,7 +202,7 @@ export async function startPreactSurfaceApp<TData extends ResultData>(
     onLeave: disposeSurface,
   });
 
-  const handle = await createMcpApp<PreactSurfaceAppState<TData>>({
+  const handle = await createMcpApp<PreactSurfaceAppState<TData>, TSession>({
     info: options.info,
     root: options.root,
     views: {
@@ -197,7 +216,23 @@ export async function startPreactSurfaceApp<TData extends ResultData>(
     },
     initialView: "loading",
     initialState: state,
-    componentCatalog: advertisedComponentCatalog(options.registry),
+    ...(validateSession && mapSessionToData
+      ? {
+        viewerSession: {
+          validate: validateSession,
+          onSession: async (session, _payload, app) => {
+            const data = await mapSessionToData(session);
+            state.currentData = data;
+            await app.navigate("surface", data);
+          },
+          onInvalid: (payload) => options.onInvalidSession?.(payload.data),
+          onError: reportError,
+        },
+      }
+      : {}),
+    capabilities: {
+      experimental: componentCatalogCapabilities(options.registry),
+    },
     onToolInputPartial: async (_params, app) => {
       state.currentData = undefined;
       await app.navigate("loading");
@@ -216,11 +251,13 @@ export async function startPreactSurfaceApp<TData extends ResultData>(
   });
 
   const onHostContextChanged = (): void => {
+    applySurfaceContext(handle.ctx.hostContext, document.documentElement);
     const data = state.currentData;
     if (!data || handle.currentView !== "surface") return;
     void handle.navigate("surface", data).catch(reportError);
   };
   handle.ctx.app.addEventListener("hostcontextchanged", onHostContextChanged);
+  applySurfaceContext(handle.ctx.hostContext, document.documentElement);
   removeHostContextListener = () => {
     handle.ctx.app.removeEventListener("hostcontextchanged", onHostContextChanged);
   };

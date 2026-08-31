@@ -20,6 +20,12 @@ if (!VERSION) {
     "[build-npm] failed to read version from packages/view/deno.json",
   );
 }
+const contractsDenoJson = JSON.parse(
+  await Deno.readTextFile(new URL("../../view-contracts/deno.json", import.meta.url)),
+) as { version?: string };
+if (!contractsDenoJson.version) {
+  throw new Error("[build-npm] failed to read packages/view-contracts version");
+}
 console.log(`[build-npm] Version: ${VERSION}`);
 
 await emptyDir("./dist-node");
@@ -28,8 +34,6 @@ await build({
   entryPoints: [
     "./mod.ts",
     { name: "./contracts", path: "./contracts.ts" },
-    { name: "./preact", path: "./preact.ts" },
-    { name: "./preact/components", path: "./preact-components.ts" },
     { name: "./react", path: "./react.ts" },
   ],
   outDir: "./dist-node",
@@ -82,17 +86,9 @@ pkg.exports = {
     import: "./esm/react.js",
     require: "./script/react.js",
   },
-  "./preact": {
-    types: "./esm/preact.d.ts",
-    import: "./esm/preact.js",
-    require: "./script/preact.js",
-  },
-  "./preact/components": {
-    types: "./esm/preact-components.d.ts",
-    import: "./esm/preact-components.js",
-    require: "./script/preact-components.js",
-  },
 };
+pkg.dependencies ??= {};
+pkg.dependencies["@casys/mcp-view-contracts"] = `^${contractsDenoJson.version}`;
 
 // dnt sees the optional React entry point and initially records its imports as
 // hard dependencies. Keep the base package renderer-neutral: npm consumers
@@ -115,13 +111,6 @@ for (const dependency of optionalReactPeers) {
   pkg.peerDependencies[dependency] = version;
   pkg.peerDependenciesMeta[dependency] = { optional: true };
 }
-const preactVersion = pkg.dependencies?.preact;
-if (!preactVersion) {
-  throw new Error("[build-npm] expected dnt dependency preact");
-}
-delete pkg.dependencies.preact;
-pkg.peerDependencies.preact = preactVersion;
-pkg.peerDependenciesMeta.preact = { optional: true };
 await Deno.writeTextFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
 
 for (const asset of ["README.md", "LICENSE", "CHANGELOG.md"] as const) {
@@ -153,9 +142,15 @@ async function smokeTestPackageImport(): Promise<void> {
       `${packageScope}/mcp-view`,
       { type: "dir" },
     );
+    await Deno.symlink(
+      new URL("../../view-contracts/dist-node", import.meta.url).pathname,
+      `${packageScope}/mcp-view-contracts`,
+      { type: "dir" },
+    );
     const command = new Deno.Command("node", {
       cwd: tempConsumer,
       args: [
+        "--preserve-symlinks",
         "--input-type=module",
         "--eval",
         [
@@ -166,33 +161,17 @@ async function smokeTestPackageImport(): Promise<void> {
           "if (typeof mod.defineView !== 'function') {",
           "  throw new Error('defineView export missing');",
           "}",
-          "if (typeof mod.installMcpViewTheme !== 'function') {",
-          "  throw new Error('installMcpViewTheme export missing');",
+          "if ('installMcpViewTheme' in mod || 'defineComponentRegistry' in mod) {",
+          "  throw new Error('core root leaks component or theme exports');",
           "}",
           "const contracts = await import('@casys/mcp-view/contracts');",
-          "if (contracts.SEMANTIC_SELECTION_SCHEMA !== 'io.casys.semantic-selection/1.0') {",
+          "if (contracts.SEMANTIC_SELECTION_SCHEMA !== 'io.casys.semantic-selection/1.0' ||",
+          "    typeof contracts.defineViewAppManifest !== 'function') {",
           "  throw new Error('composition contracts export missing');",
           "}",
           "const react = await import('@casys/mcp-view/react');",
           "if (typeof react.defineReactView !== 'function') {",
           "  throw new Error('defineReactView export missing');",
-          "}",
-          "const preact = await import('@casys/mcp-view/preact');",
-          "if (typeof preact.definePreactComponent !== 'function') {",
-          "  throw new Error('definePreactComponent export missing');",
-          "}",
-          "if (typeof preact.Card !== 'function' || typeof preact.DataTable !== 'function') {",
-          "  throw new Error('Preact presentation kit exports missing');",
-          "}",
-          "const components = await import('@casys/mcp-view/preact/components');",
-          "if (typeof components.Card !== 'function' || typeof components.DataTable !== 'function') {",
-          "  throw new Error('Preact components-only exports missing');",
-          "}",
-          "if (typeof components.installMcpViewTheme !== 'function') {",
-          "  throw new Error('Preact presentation theme export missing');",
-          "}",
-          "if ('startPreactSurfaceApp' in components || 'createMcpApp' in components) {",
-          "  throw new Error('Preact components-only entry leaks MCP Apps runtime exports');",
           "}",
         ].join("\n"),
       ],

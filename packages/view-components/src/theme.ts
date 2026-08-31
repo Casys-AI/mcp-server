@@ -1,4 +1,4 @@
-/** Shared visual language for composable MCP views. */
+/** Shared visual language for composable MCP App components. */
 
 export const MCP_VIEW_THEME_STYLE_ID = "mcp-view-theme";
 
@@ -10,6 +10,30 @@ export const MCP_VIEW_THEME_STYLE_ID = "mcp-view-theme";
 export const MCP_VIEW_THEME_CSS: string = String.raw`
 :root {
   color-scheme: light dark;
+  --mcp-view-text: var(--color-text-primary, #29241f);
+  --mcp-view-muted: var(--color-text-secondary, #6f665e);
+  --mcp-view-border: var(--color-border, rgba(75, 64, 54, 0.18));
+  --mcp-view-panel: var(--color-background-secondary, rgba(255, 253, 250, 0.96));
+  --mcp-view-subtle: rgba(91, 76, 63, 0.065);
+  --mcp-view-accent: var(--color-accent, #9a5b23);
+  --mcp-view-success: var(--color-success, #28764c);
+  --mcp-view-warning: var(--color-warning, #936316);
+  --mcp-view-danger: var(--color-danger, #b43b35);
+  --mcp-view-radius: 0.75rem;
+  --mcp-view-gap: 0.65rem;
+  color: var(--mcp-view-text);
+  font-family: var(
+    --font-sans,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif
+  );
+}
+
+:root[data-theme="dark"] {
   --mcp-view-text: var(--color-text-primary, #f4efe7);
   --mcp-view-muted: var(--color-text-secondary, #a99c8f);
   --mcp-view-border: var(--color-border, rgba(150, 135, 120, 0.24));
@@ -19,10 +43,20 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
   --mcp-view-success: var(--color-success, #62d99a);
   --mcp-view-warning: var(--color-warning, #f6c453);
   --mcp-view-danger: var(--color-danger, #ef7b72);
-  --mcp-view-radius: 0.75rem;
-  --mcp-view-gap: 0.65rem;
-  color: var(--mcp-view-text);
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --mcp-view-text: var(--color-text-primary, #f4efe7);
+    --mcp-view-muted: var(--color-text-secondary, #a99c8f);
+    --mcp-view-border: var(--color-border, rgba(150, 135, 120, 0.24));
+    --mcp-view-panel: var(--color-background-secondary, rgba(34, 30, 26, 0.92));
+    --mcp-view-subtle: rgba(128, 112, 95, 0.09);
+    --mcp-view-accent: var(--color-accent, #e49a53);
+    --mcp-view-success: var(--color-success, #62d99a);
+    --mcp-view-warning: var(--color-warning, #f6c453);
+    --mcp-view-danger: var(--color-danger, #ef7b72);
+  }
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -45,7 +79,7 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
   border: 1px solid var(--mcp-view-border);
   border-radius: var(--mcp-view-radius);
   background: var(--mcp-view-panel);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
 .mcp-view-card-title {
@@ -149,11 +183,6 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
 .mcp-view-badge[data-tone="info"] {
   background: color-mix(in srgb, var(--mcp-view-accent) 15%, transparent);
   color: var(--mcp-view-accent);
-}
-
-.mcp-view-badge:not([data-tone]) {
-  background: color-mix(in srgb, var(--mcp-view-success) 15%, transparent);
-  color: var(--mcp-view-success);
 }
 
 .mcp-view-badge[data-tone="success"] {

@@ -11,6 +11,10 @@ on:
 
 jobs:
   publish-jsr:
+    # The view-family npm job performs the immutable-version content guard.
+    # Keep JSR behind it so a stale core version cannot publish only the two
+    # new split packages on either registry.
+    needs: publish-npm-view-family
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -197,7 +201,7 @@ jobs:
           fi
           npm publish --access public
 
-  publish-npm-view:
+  publish-npm-view-family:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -230,17 +234,190 @@ jobs:
             exit 1
           fi
           echo "npm authenticated as ${WHO}"
-      - name: Build and publish @casys/mcp-view to npm
+      - name: Build, verify, and publish the view package family
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          cd packages/view
-          deno run -A scripts/build-npm.ts
-          cd dist-node
-          PKG_NAME=$(node -p "require('./package.json').name")
-          PKG_VERSION=$(node -p "require('./package.json').version")
-          if npm view "${PKG_NAME}@${PKG_VERSION}" version >/dev/null 2>&1; then
-            echo "Already published: ${PKG_NAME}@${PKG_VERSION} — skipping"
-            exit 0
+          (cd packages/view-contracts && deno task build:npm)
+          (cd packages/view && deno task build:npm)
+          (cd packages/view-components && deno task build:npm)
+
+          PACK_DIR=$(mktemp -d)
+          CONTRACTS_TARBALL=$(npm pack ./packages/view-contracts/dist-node --pack-destination "$PACK_DIR" --json | node -p 'require("path").join(process.argv[1], JSON.parse(require("fs").readFileSync(0, "utf8"))[0].filename)' "$PACK_DIR")
+          VIEW_TARBALL=$(npm pack ./packages/view/dist-node --pack-destination "$PACK_DIR" --json | node -p 'require("path").join(process.argv[1], JSON.parse(require("fs").readFileSync(0, "utf8"))[0].filename)' "$PACK_DIR")
+          COMPONENTS_TARBALL=$(npm pack ./packages/view-components/dist-node --pack-destination "$PACK_DIR" --json | node -p 'require("path").join(process.argv[1], JSON.parse(require("fs").readFileSync(0, "utf8"))[0].filename)' "$PACK_DIR")
+
+          for TARBALL in "$CONTRACTS_TARBALL" "$VIEW_TARBALL" "$COMPONENTS_TARBALL"; do
+            tar -tzf "$TARBALL" | grep -Fx 'package/LICENSE' >/dev/null
+            tar -tzf "$TARBALL" | grep -Fx 'package/README.md' >/dev/null
+          done
+          if tar -tzf "$COMPONENTS_TARBALL" | grep -E '^package/(esm|script|src)/.*scaffold' >/dev/null; then
+            echo "::error::The npm components tarball must not ship the Deno-only scaffold"
+            exit 1
           fi
-          npm publish --access public
+
+          CORE_CONSUMER_DIR=$(mktemp -d)
+          (
+            cd "$CORE_CONSUMER_DIR"
+            npm init --yes >/dev/null
+            npm pkg set type=module
+            npm install --ignore-scripts --no-audit --no-fund \
+              "$CONTRACTS_TARBALL" "$VIEW_TARBALL"
+            node --input-type=module --eval '
+              import { readFileSync } from "node:fs";
+              const core = await import("@casys/mcp-view");
+              const contracts = await import("@casys/mcp-view/contracts");
+              if (typeof core.createMcpApp !== "function" ||
+                  "installMcpViewTheme" in core ||
+                  "defineComponentRegistry" in core ||
+                  "scaffoldResultViewer" in core) {
+                throw new Error("core-only ESM boundary invalid");
+              }
+              if (contracts.VIEWER_SESSION_APPLY_ACTION !== "viewer.session.apply") {
+                throw new Error("core-only ESM contracts export missing");
+              }
+              const installedPaths = Object.keys(
+                JSON.parse(readFileSync("package-lock.json", "utf8")).packages ?? {},
+              );
+              for (const dependency of ["preact", "@casys/mcp-view-components"]) {
+                if (installedPaths.some((path) =>
+                  path === `node_modules/${dependency}` || path.endsWith(`/node_modules/${dependency}`)
+                )) {
+                  throw new Error(`core-only consumer installed ${dependency}`);
+                }
+              }
+              for (const subpath of [
+                "@casys/mcp-view/preact",
+                "@casys/mcp-view/preact/components",
+                "@casys/mcp-view/scaffold",
+              ]) {
+                let rejected = false;
+                try {
+                  await import(subpath);
+                } catch (error) {
+                  if (error?.code !== "ERR_PACKAGE_PATH_NOT_EXPORTED") throw error;
+                  rejected = true;
+                }
+                if (!rejected) throw new Error(`removed core UI subpath is still exported: ${subpath}`);
+              }
+            '
+            node --input-type=commonjs --eval '
+              const core = require("@casys/mcp-view");
+              const contracts = require("@casys/mcp-view/contracts");
+              if (typeof core.createMcpApp !== "function" ||
+                  "installMcpViewTheme" in core ||
+                  "defineComponentRegistry" in core ||
+                  "scaffoldResultViewer" in core) {
+                throw new Error("core-only CommonJS boundary invalid");
+              }
+              if (contracts.VIEWER_SESSION_APPLY_ACTION !== "viewer.session.apply") {
+                throw new Error("core-only CommonJS contracts export missing");
+              }
+              for (const subpath of [
+                "@casys/mcp-view/preact",
+                "@casys/mcp-view/preact/components",
+                "@casys/mcp-view/scaffold",
+              ]) {
+                let rejected = false;
+                try {
+                  require(subpath);
+                } catch (error) {
+                  if (error?.code !== "ERR_PACKAGE_PATH_NOT_EXPORTED") throw error;
+                  rejected = true;
+                }
+                if (!rejected) throw new Error(`removed core UI subpath is still exported: ${subpath}`);
+              }
+            '
+          )
+
+          CONSUMER_DIR=$(mktemp -d)
+          (
+            cd "$CONSUMER_DIR"
+            npm init --yes >/dev/null
+            npm pkg set type=module
+            npm install --ignore-scripts --no-audit --no-fund \
+              "$CONTRACTS_TARBALL" "$VIEW_TARBALL" "$COMPONENTS_TARBALL" \
+              preact@10.28.3 react@18.3.1 react-dom@18.3.1
+            node --input-type=module --eval '
+              const contracts = await import("@casys/mcp-view-contracts");
+              const core = await import("@casys/mcp-view");
+              const compatibility = await import("@casys/mcp-view/contracts");
+              const components = await import("@casys/mcp-view-components");
+              const preact = await import("@casys/mcp-view-components/preact");
+              const presentation = await import("@casys/mcp-view-components/preact/components");
+              if (typeof contracts.defineViewAppManifest !== "function") throw new Error("contracts missing");
+              if (typeof core.createMcpApp !== "function" || "installMcpViewTheme" in core) throw new Error("core boundary invalid");
+              if (compatibility.VIEWER_SESSION_APPLY_ACTION !== "viewer.session.apply") throw new Error("compatibility export missing");
+              if (typeof components.defineComponentRegistry !== "function") throw new Error("components runtime missing");
+              if (typeof preact.startPreactSurfaceApp !== "function") throw new Error("Preact runtime missing");
+              if (typeof presentation.Card !== "function" || "createMcpApp" in presentation) throw new Error("presentation boundary invalid");
+              let scaffoldRejected = false;
+              try {
+                await import("@casys/mcp-view-components/scaffold");
+              } catch (error) {
+                if (error?.code !== "ERR_PACKAGE_PATH_NOT_EXPORTED") throw error;
+                scaffoldRejected = true;
+              }
+              if (!scaffoldRejected) throw new Error("Deno-only scaffold leaked into npm ESM exports");
+            '
+            node --input-type=commonjs --eval '
+              const components = require("@casys/mcp-view-components");
+              const preact = require("@casys/mcp-view-components/preact");
+              const presentation = require("@casys/mcp-view-components/preact/components");
+              if (typeof components.defineComponentRegistry !== "function") throw new Error("CommonJS components runtime missing");
+              if (typeof preact.startPreactSurfaceApp !== "function") throw new Error("CommonJS Preact runtime missing");
+              if (typeof presentation.Card !== "function") throw new Error("CommonJS presentation runtime missing");
+              let scaffoldRejected = false;
+              try {
+                require("@casys/mcp-view-components/scaffold");
+              } catch (error) {
+                if (error?.code !== "ERR_PACKAGE_PATH_NOT_EXPORTED") throw error;
+                scaffoldRejected = true;
+              }
+              if (!scaffoldRejected) throw new Error("Deno-only scaffold leaked into npm CommonJS exports");
+            '
+          )
+
+          assert_published_version_matches() {
+            PACKAGE_DIR=$1
+            LOCAL_TARBALL=$2
+            PKG_NAME=$(node -p "require('./' + process.argv[1] + '/package.json').name" "$PACKAGE_DIR")
+            PKG_VERSION=$(node -p "require('./' + process.argv[1] + '/package.json').version" "$PACKAGE_DIR")
+            if ! npm view "${PKG_NAME}@${PKG_VERSION}" version >/dev/null 2>&1; then
+              return
+            fi
+
+            REMOTE_PACK_DIR=$(mktemp -d)
+            REMOTE_TARBALL=$(npm pack "${PKG_NAME}@${PKG_VERSION}" --pack-destination "$REMOTE_PACK_DIR" --json | node -p 'require("path").join(process.argv[1], JSON.parse(require("fs").readFileSync(0, "utf8"))[0].filename)' "$REMOTE_PACK_DIR")
+            LOCAL_UNPACK_DIR=$(mktemp -d)
+            REMOTE_UNPACK_DIR=$(mktemp -d)
+            tar -xzf "$LOCAL_TARBALL" -C "$LOCAL_UNPACK_DIR"
+            tar -xzf "$REMOTE_TARBALL" -C "$REMOTE_UNPACK_DIR"
+            if ! diff -qr "$LOCAL_UNPACK_DIR/package" "$REMOTE_UNPACK_DIR/package" >/dev/null; then
+              echo "::error::${PKG_NAME}@${PKG_VERSION} already exists with different contents. Authorize and apply a coordinated view-family version bump before publishing."
+              exit 1
+            fi
+          }
+
+          # Check the complete family before publishing any missing member.
+          # This makes retries safe while refusing an unpublished local rewrite
+          # of an immutable version (notably the already-published view core).
+          assert_published_version_matches packages/view-contracts/dist-node "$CONTRACTS_TARBALL"
+          assert_published_version_matches packages/view/dist-node "$VIEW_TARBALL"
+          assert_published_version_matches packages/view-components/dist-node "$COMPONENTS_TARBALL"
+
+          publish_if_missing() {
+            PACKAGE_DIR=$1
+            PKG_NAME=$(node -p "require('./' + process.argv[1] + '/package.json').name" "$PACKAGE_DIR")
+            PKG_VERSION=$(node -p "require('./' + process.argv[1] + '/package.json').version" "$PACKAGE_DIR")
+            if npm view "${PKG_NAME}@${PKG_VERSION}" version >/dev/null 2>&1; then
+              echo "Already published: ${PKG_NAME}@${PKG_VERSION} — skipping"
+            else
+              npm publish "$PACKAGE_DIR" --dry-run --access public
+              npm publish "$PACKAGE_DIR" --access public
+            fi
+          }
+
+          publish_if_missing packages/view-contracts/dist-node
+          publish_if_missing packages/view/dist-node
+          publish_if_missing packages/view-components/dist-node

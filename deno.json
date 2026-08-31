@@ -4,7 +4,9 @@
     "./packages/server",
     "./packages/compose",
     "./packages/bridge",
-    "./packages/view"
+    "./packages/view-contracts",
+    "./packages/view",
+    "./packages/view-components"
   ],
   "exclude": [
     "**/dist/",

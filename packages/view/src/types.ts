@@ -24,8 +24,7 @@ import type {
 import type { CallToolResult, Implementation } from "@modelcontextprotocol/sdk/types.js";
 
 import type { SampleArgs, SampleResult } from "./sample.ts";
-import type { ComposeEventClient } from "./compose-events.ts";
-import type { AdvertisedComponentCatalog } from "./components.ts";
+import type { ComposeEventClient, ComposeEventPayload } from "./compose-events.ts";
 import type { TeardownLifecycleCallback } from "./lifecycle.ts";
 import type { ToolsHandle, ViewToolDef } from "./tools.ts";
 
@@ -105,6 +104,28 @@ export interface AppLifecycleCallbacks<S> {
    * called at most once with a fully initialized handle.
    */
   onTeardown?: TeardownLifecycleCallback<S>;
+}
+
+/**
+ * Resource-level handler for one validated recorded-session envelope.
+ * `app` is a facade whose two navigation entry points are synchronously
+ * revoked when the session dispatcher is disposed.
+ */
+export type ViewerSessionHandler<S, TSession> = (
+  session: TSession,
+  payload: ComposeEventPayload,
+  app: AppHandle<S>,
+) => void | Promise<void>;
+
+/**
+ * App-owned contract for the whole-resource `viewer.session.apply` action.
+ * The host payload remains `unknown` until `validate` accepts it.
+ */
+export interface ViewerSessionSubscription<S, TSession> {
+  readonly validate: (value: unknown) => value is TSession;
+  readonly onSession: ViewerSessionHandler<S, TSession>;
+  readonly onInvalid?: (payload: ComposeEventPayload) => void;
+  readonly onError?: (error: unknown) => void;
 }
 
 /**
@@ -340,7 +361,8 @@ export type ViewMap<S> = Record<string, ViewDefinition<S, any, any>>;
  *
  * @typeParam S - User state shape. Defaults to an empty object.
  */
-export interface AppConfig<S = Record<string, never>> extends AppLifecycleCallbacks<S> {
+export interface AppConfig<S = Record<string, never>, TSession = never>
+  extends AppLifecycleCallbacks<S> {
   /**
    * App identity advertised to the host in `ui/initialize`.
    */
@@ -375,18 +397,21 @@ export interface AppConfig<S = Record<string, never>> extends AppLifecycleCallba
   initialState?: S;
 
   /**
+   * Optional whole-resource recorded-session lifecycle. The runtime installs
+   * it before `connect()`, buffers valid early sessions until the App handle
+   * exists, and disposes it with the resource. Disposal synchronously revokes
+   * navigation on the callback handle/context facade; it does not wait for
+   * arbitrary callback code already in flight. Individual components must not
+   * subscribe to `viewer.session.apply`.
+   */
+  viewerSession?: ViewerSessionSubscription<S, TSession>;
+
+  /**
    * Capabilities advertised to the host. Default: `{}` (no app-side
    * capabilities). Set this if the view itself exposes tools via
    * `ctx.app.oncalltool`.
    */
   capabilities?: McpUiAppCapabilities;
-
-  /**
-   * Serializable catalog of small components owned by this App. `createMcpApp`
-   * advertises it under the Casys experimental capability while preserving
-   * every unrelated capability supplied above.
-   */
-  componentCatalog?: AdvertisedComponentCatalog;
 
   /**
    * Auto-apply theme + CSS variables + font rules from host context to the
@@ -489,6 +514,6 @@ export declare function defineView<S, A = void, D = void>(
 /**
  * Bootstrap an MCP App view-side runtime. See spec.md §"Lifecycle".
  */
-export declare function createMcpApp<S = Record<string, never>>(
-  config: AppConfig<S>,
+export declare function createMcpApp<S = Record<string, never>, TSession = never>(
+  config: AppConfig<S, TSession>,
 ): Promise<AppHandle<S>>;

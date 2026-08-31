@@ -6,6 +6,7 @@ import {
   type ComposedSemanticRef,
   defineSemanticSelection,
   parseSemanticSelection,
+  readSurfaceContext,
   SEMANTIC_SELECTION_APPLY_ACTION,
   SEMANTIC_SELECTION_CHANGED_EVENT,
   SEMANTIC_SELECTION_EVENT_PORTS,
@@ -14,13 +15,12 @@ import {
   type SemanticSelectionInput,
   type SemanticSelectionMode,
   validateSemanticSelection,
-} from "./composition-contracts.ts";
+} from "@casys/mcp-view-contracts";
 import {
   COMPOSE_EVENT_METHOD,
   type ComposeEventClient,
   type ComposeEventPayload,
 } from "./compose-events.ts";
-import { readSurfaceContext } from "./components.ts";
 
 export {
   defineSemanticSelection,

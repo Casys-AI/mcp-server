@@ -1,11 +1,14 @@
-import { assertEquals, assertStrictEquals } from "@std/assert";
+import { assertEquals, assertRejects, assertStrictEquals } from "@std/assert";
 
-import type { AppContext } from "../types.ts";
+import type { AppContext } from "@casys/mcp-view";
+import type { ViewComponentRegistry } from "../components.ts";
 import {
   definePreactComponent,
   type PreactComponentRenderer,
   type PreactSurfaceAppState,
   type PreactSurfaceComponentProps,
+  type PreactSurfaceContext,
+  startPreactSurfaceApp,
 } from "./surface.ts";
 
 interface Data {
@@ -54,4 +57,24 @@ Deno.test("definePreactComponent forwards component surface context and cleans u
 
   await cleanup?.();
   assertEquals(events, ["mount", "unmount"]);
+});
+
+Deno.test("recorded sessions require an App validator and data mapper as one pair", async () => {
+  type Result = Record<string, unknown>;
+  type Session = { readonly schema: "io.casys.test.session/1.0" };
+  const registry = {} as ViewComponentRegistry<Result, PreactSurfaceContext<Result>>;
+
+  await assertRejects(
+    () =>
+      startPreactSurfaceApp<Result, Session>({
+        root: {} as HTMLElement,
+        info: { name: "Session test", version: "1.0.0" },
+        registry,
+        validateSession: (value): value is Session =>
+          typeof value === "object" && value !== null &&
+          (value as { schema?: unknown }).schema === "io.casys.test.session/1.0",
+      }),
+    TypeError,
+    "requires both validateSession and mapSessionToData",
+  );
 });

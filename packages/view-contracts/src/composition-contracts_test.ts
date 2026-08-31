@@ -4,15 +4,22 @@ import {
   defineSemanticSelection,
   SEMANTIC_SELECTION_CHANGED_EVENT,
   SEMANTIC_SELECTION_SCHEMA,
-} from "../contracts.ts";
+} from "../mod.ts";
 
 Deno.test("contracts entry is reusable without the iframe runtime", async () => {
-  const source = await Deno.readTextFile(
-    new URL("./composition-contracts.ts", import.meta.url),
-  );
-  assertFalse(source.includes("@modelcontextprotocol/ext-apps"));
-  assertFalse(source.includes("window."));
-  assertFalse(source.includes("document."));
+  for (
+    const path of [
+      `${import.meta.dirname}/../mod.ts`,
+      `${import.meta.dirname}/app-manifest.ts`,
+      `${import.meta.dirname}/composition-contracts.ts`,
+    ]
+  ) {
+    const source = await Deno.readTextFile(path);
+    assertFalse(source.includes("@modelcontextprotocol/ext-apps"));
+    assertFalse(source.includes("@modelcontextprotocol/sdk"));
+    assertFalse(source.includes("window."));
+    assertFalse(source.includes("document."));
+  }
 
   assertEquals(SEMANTIC_SELECTION_CHANGED_EVENT, "semantic.selection.changed");
   assertEquals(

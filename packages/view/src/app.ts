@@ -21,12 +21,12 @@ import type { McpUiHostCapabilities, McpUiHostContext } from "@modelcontextproto
 import type { AppConfig, AppContext, AppHandle, ToolResult, ViewDefinition } from "./types.ts";
 import { Router } from "./router.ts";
 import { createComposeEventClient } from "./compose-events.ts";
-import { applySurfaceContext, CASYS_COMPONENT_CATALOG_CAPABILITY_KEY } from "./components.ts";
 import { callServerToolGated } from "./capabilities.ts";
 import { MCPViewError } from "./errors.ts";
 import { wireLifecycleCallbacks, wireTeardownLifecycle } from "./lifecycle.ts";
 import { sampleGated } from "./sample.ts";
 import { ToolRegistry, viewsDeclareTools } from "./tools.ts";
+import { onViewerSession } from "./viewer-session.ts";
 
 /**
  * Identity function: lets TS infer `S`, `A`, `D` at the call site from the
@@ -53,8 +53,8 @@ export function defineView<S, A = void, D = void>(
  * Throws if `window.parent` is unavailable (must run inside an iframe),
  * if `initialView` is not a registered view, or if the handshake fails.
  */
-export async function createMcpApp<S = Record<string, never>>(
-  config: AppConfig<S>,
+export async function createMcpApp<S = Record<string, never>, TSession = never>(
+  config: AppConfig<S, TSession>,
 ): Promise<AppHandle<S>> {
   validateConfig(config);
 
@@ -63,18 +63,9 @@ export async function createMcpApp<S = Record<string, never>>(
   // user-supplied capabilities rather than overwriting, so authors keep
   // full control of unrelated caps.
   const baseCaps = config.capabilities ?? {};
-  const componentCaps = config.componentCatalog
-    ? {
-      ...baseCaps,
-      experimental: {
-        ...(baseCaps.experimental ?? {}),
-        [CASYS_COMPONENT_CATALOG_CAPABILITY_KEY]: config.componentCatalog,
-      },
-    }
-    : baseCaps;
   const finalCaps = viewsDeclareTools(config.views)
-    ? { ...componentCaps, tools: { listChanged: true, ...(componentCaps.tools ?? {}) } }
-    : componentCaps;
+    ? { ...baseCaps, tools: { listChanged: true, ...(baseCaps.tools ?? {}) } }
+    : baseCaps;
 
   // Forward ext-apps AppOptions opt-ins. When the user opted into nothing,
   // we pass no third arg so ext-apps' default-parameter assignment runs in
@@ -95,10 +86,16 @@ export async function createMcpApp<S = Record<string, never>>(
   const frame = getFrameWindow();
   const parent = frame.parent;
   const events = createComposeEventClient(parent, frame);
+  // Install the whole-resource session action synchronously before connect.
+  // The dispatcher retains validated early actions until the handle exists.
+  const viewerSession = config.viewerSession
+    ? onViewerSession(events, config.viewerSession)
+    : undefined;
   const transport = new PostMessageTransport(parent, parent);
   try {
     await app.connect(transport);
   } catch (error) {
+    viewerSession?.dispose();
     events.destroy();
     teardown.abort(error);
     throw error;
@@ -112,6 +109,7 @@ export async function createMcpApp<S = Record<string, never>>(
       "HANDSHAKE_NO_CAPABILITIES",
       "ui/initialize handshake completed without host capabilities — the host response was malformed.",
     );
+    viewerSession?.dispose();
     events.destroy();
     teardown.abort(error);
     await transport.close().catch(() => {});
@@ -126,7 +124,6 @@ export async function createMcpApp<S = Record<string, never>>(
   let currentHostContext: McpUiHostContext = { ...(app.getHostContext() ?? {}) };
 
   if (autoTheme) applyHostContextSideEffects(currentHostContext);
-  applySurfaceContext(currentHostContext, document.documentElement);
 
   // Re-apply on host-context-changed. Using addEventListener (not
   // onhostcontextchanged) so we don't clobber user handlers they may wire
@@ -135,7 +132,6 @@ export async function createMcpApp<S = Record<string, never>>(
   const onHostContextChanged = (params: McpUiHostContext) => {
     currentHostContext = { ...currentHostContext, ...params };
     if (autoTheme) applyHostContextSideEffects(currentHostContext);
-    applySurfaceContext(currentHostContext, document.documentElement);
   };
   app.addEventListener("hostcontextchanged", onHostContextChanged);
 
@@ -174,6 +170,7 @@ export async function createMcpApp<S = Record<string, never>>(
       return transportClosePromise;
     };
     const cleanup = async (): Promise<void> => {
+      viewerSession?.dispose();
       try {
         await router.dispose();
       } finally {
@@ -206,8 +203,10 @@ export async function createMcpApp<S = Record<string, never>>(
     // The handle is now complete (including the initial route), so replay
     // early host notifications and serialise any arrivals during that replay.
     await lifecycle.activate(handle);
+    await viewerSession?.activate(handle);
   } catch (err) {
     app.removeEventListener("hostcontextchanged", onHostContextChanged);
+    viewerSession?.dispose();
     events.destroy();
     teardown.abort(err);
     await transport.close().catch(() => {}); // best-effort, rethrowing
@@ -244,7 +243,7 @@ function applyHostContextSideEffects(ctx: McpUiHostContext): void {
   }
 }
 
-function validateConfig<S>(config: AppConfig<S>): void {
+function validateConfig<S, TSession>(config: AppConfig<S, TSession>): void {
   if (!config.root) {
     throw new MCPViewError("INVALID_CONFIG_ROOT", "createMcpApp: `root` is required");
   }
@@ -311,8 +310,8 @@ function getFrameWindow(): Window {
  * disable `autoResize`. The mirrored defaults are documented inline; if
  * ext-apps changes them in a future version, this list must move with it.
  */
-function buildAppOptions<S>(
-  config: AppConfig<S>,
+function buildAppOptions<S, TSession>(
+  config: AppConfig<S, TSession>,
 ): { strict?: boolean; allowUnsafeEval?: boolean; autoResize?: boolean } | undefined {
   const anySet = config.strict !== undefined ||
     config.allowUnsafeEval !== undefined ||

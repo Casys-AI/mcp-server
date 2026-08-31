@@ -10,9 +10,9 @@ re-render, no roundtrip through the host chat.
 
 The module is a renderer-neutral authoring layer over the `App` class from
 `@modelcontextprotocol/ext-apps`. It owns lifecycle bootstrap, memory-based view routing,
-capability-gated tool calls, structured-result extraction, renderer-neutral component surfaces, and
-the viewer side of declared Compose events. It does not own MCP server transport, dashboard layout,
-or domain rendering. Direct use of `ext-apps` remains conformant.
+capability-gated tool calls, structured-result extraction, recorded-session subscriptions, and the
+viewer side of declared Compose events. It does not own MCP server transport, component surfaces,
+dashboard layout, themes, or domain rendering. Direct use of `ext-apps` remains conformant.
 
 ## Public API
 
@@ -53,27 +53,25 @@ const detailView = defineView<State, { id: string }, Invoice>({
 `@casys/mcp-view/react` exports `defineReactView()`. It returns a normal `ViewDefinition`, mounts
 with ReactDOM, and guarantees that the active root is unmounted on route leave or App teardown.
 React, ReactDOM, and their types are optional npm peers; importing the main package does not load a
-renderer. `@casys/mcp-view/preact` exports `definePreactComponent()`, `startPreactSurfaceApp()`, and
-the shared `Card`, `Badge`, `MetricGrid`, `KeyValueList`, `DataTable`, `Button`, `Toolbar`,
-`EmptyState`, and `StateMessage` presentation components. Preact is also an optional peer.
+renderer. Component surfaces, the theme, and Preact bindings live in the separate
+`@casys/mcp-view-components` package.
 
-### Structured results, component surfaces, and Compose events
+### Structured results, recorded sessions, and Compose events
 
 - `readStructuredContent()` reads only record-shaped `structuredContent`.
 - `readResultData()` adds JSON text fallback only with `{ fallback: "json-text" }`.
-- `defineComponentRegistry()` declares small domain components and an optional standalone default
-  surface. Omitting it creates a component-only App that requires a host-selected surface.
-- `mountComponentSurface()` mounts the host-selected or default surface and aggregates cleanup.
-- `defineStatusComponent()`, `defineMetricGridComponent()`, and `defineKeyValueComponent()` provide
-  safe renderer-neutral primitives; `defineCustomComponent()` keeps specialized rendering local.
 - `ctx.events.emit()` / `ctx.events.on()` exchange validated `ui/compose/event` messages with a
   compatible parent. This channel is optional and distinct from standard model-context messages.
-- component descriptors may declare `events.emits` / `events.accepts`; these are discoverable ports,
-  not implicit routes;
 - `defineSemanticSelection()`, `emitSemanticSelection()`, and `onSemanticSelection()` provide a
   versioned structural semantic-reference contract without owning product domain values or mappings.
-- `installMcpViewTheme()` installs the shared ERPNext-derived visual tokens and component classes
-  once per document. The Preact surface runtime does this by default.
+- `AppConfig.viewerSession` installs `onViewerSession()` before `connect()`, validates through an
+  App-owned type guard, buffers early valid actions until the initial route exists, and serializes
+  whole-resource delivery. The host payload stays opaque and component mounts own no subscription.
+  Dispatcher disposal synchronously unsubscribes, drops pending sessions, and revokes navigation on
+  the callback handle/context facade. It never waits for arbitrary callback code already in flight;
+  the router independently rejects work after App disposal.
+- `@casys/mcp-view/contracts` is a compatibility re-export of the standalone dependency-free
+  `@casys/mcp-view-contracts` package.
 
 #### `AppConfig<S>` fields
 
@@ -84,8 +82,6 @@ the shared `Card`, `Badge`, `MetricGrid`, `KeyValueList`, `DataTable`, `Button`,
 - `initialArgs?` — args forwarded to `initialView.onEnter`.
 - `initialState?` — initial value of `ctx.state`.
 - `capabilities?` — app-side capabilities (default `{}`).
-- `componentCatalog?` — component registry advertised under `io.casys.mcp.view-components/v1`. When
-  present, its optional default surface is the complete standalone composition.
 - `autoTheme?` — auto-apply host theme/CSS/fonts on handshake and context updates. Default `true`.
   Set to `false` if the App ships its own complete stylesheet. `ctx.hostContext` remains live
   regardless.
@@ -94,6 +90,10 @@ the shared `Card`, `Badge`, `MetricGrid`, `KeyValueList`, `DataTable`, `Button`,
   They are registered on ext-apps **before** `connect()`; notifications received during setup are
   buffered and replayed in host arrival order. Async callbacks are serialized. A callback error is
   logged and does not block later notifications.
+- `viewerSession?` — paired App-owned validator and handler for resource-level
+  `viewer.session.apply`. Valid actions received during bootstrap replay FIFO after the initial
+  route. Resource disposal synchronously unsubscribes and revokes callback-facade navigation without
+  waiting for in-flight author code.
 - `onTeardown?` — optional author cleanup callback. Host teardown and manual `dispose()` share one
   idempotent cleanup path and receive either `"host"` or `"dispose"` as the reason.
 
@@ -203,25 +203,8 @@ Explicitly **out of scope** for v0.1.0; may ship later:
 The type surface is designed so each of the above can be added without breaking existing `AppConfig`
 / `ViewDefinition` / `AppContext` shapes (all extension points are optional fields).
 
-## Result-viewer scaffold
+## Component and scaffold boundary
 
-`@casys/mcp-view/scaffold` is an executable subpath, not part of the iframe runtime API:
-
-```sh
-deno run -A jsr:@casys/mcp-view@0.8.0/scaffold result-viewer <target> [--force]
-```
-
-It emits a small vanilla project with an inline-HTML bundling script and no domain brand or remote
-asset. The generated viewer uses `createMcpApp` with `onToolInput` and `onToolResult` supplied in
-the initial configuration. The callback registration and buffering guarantee documented above are
-therefore the mechanism that preserves the initiating tool result; the scaffold does not install a
-late `app.ontoolresult` handler or invent a polling layer.
-
-Its parser accepts a generic `structuredContent` object. `metrics` may be a record or a list of
-named values, `artifacts` is an optional list of URI-bearing objects, and remaining scalar fields
-become Details. Invalid payloads render an actionable error; an otherwise empty object renders an
-empty state. It deliberately does not claim to validate any domain envelope.
-
-The CLI refuses a non-empty target without `--force`, and `--force` overwrites only emitted files;
-it never deletes unrelated files. This keeps the tool safe to use in an existing repository while
-making replacement an explicit choice.
+Component catalogs, generic presentation roles, the ERPNext-derived theme, Preact bindings, and the
+result-viewer scaffold live in `@casys/mcp-view-components`. They are intentionally absent from this
+package so a lifecycle-only consumer does not download or install the visual kit.

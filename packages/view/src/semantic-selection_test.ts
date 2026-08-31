@@ -2,7 +2,7 @@ import { assertEquals, assertThrows } from "@std/assert";
 import type { McpUiHostContext } from "@modelcontextprotocol/ext-apps";
 
 import type { ComposeEventClient, ComposeEventHandler } from "./compose-events.ts";
-import { CASYS_SURFACE_CONTEXT_KEY } from "./components.ts";
+import { CASYS_SURFACE_CONTEXT_KEY } from "@casys/mcp-view-contracts";
 import {
   defineSemanticSelection,
   emitSemanticSelection,

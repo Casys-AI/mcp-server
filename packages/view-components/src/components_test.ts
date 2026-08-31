@@ -1,5 +1,4 @@
 import { assertEquals, assertRejects, assertThrows } from "@std/assert";
-import type { McpUiHostContext } from "@modelcontextprotocol/ext-apps";
 import {
   activeComponentSurface,
   advertisedComponentCatalog,
@@ -8,6 +7,7 @@ import {
   defineComponentRegistry,
   defineComponentSurface,
   defineViewComponent,
+  type McpViewHostContext,
   mountComponentSurface,
   readSurfaceContext,
 } from "./components.ts";
@@ -168,7 +168,7 @@ Deno.test("negotiated surface replaces the default without size modes", () => {
       source: "requested",
       surface: requested,
     },
-  } as McpUiHostContext;
+  } as McpViewHostContext;
   assertEquals(readSurfaceContext(hostContext)?.status, "ready");
   assertEquals(activeComponentSurface(registry(), hostContext), requested);
   assertEquals(activeComponentSurface(registry(), {}), registry().defaultSurface);

@@ -6,8 +6,13 @@ served artifact.
 
 ## Framework boundary
 
-- `@casys/mcp-view` owns the child-App lifecycle, renderer-neutral component registry, surface
-  mounting, safe shared primitives, and optional Compose event client.
+- `@casys/mcp-view-contracts` owns dependency-free resource manifests, serializable component
+  catalogs and surfaces, semantic selection, and resource-level session compatibility.
+- `@casys/mcp-view` owns the child-App lifecycle, routing, structured results, resource-level
+  session delivery, and optional Compose event client.
+- `@casys/mcp-view-components` owns the optional renderer-neutral component registry, surface
+  mounting, shared primitives/theme, Preact adapter, and Deno/JSR-only scaffold. The npm package
+  intentionally excludes that Deno-only subpath.
 - `@casys/mcp-compose` owns the dashboard shell, selection/order of advertised components, physical
   panel layout, and declared viewer-to-viewer routes.
 - Each MCP repository owns its data validation, domain components, specialized renderers, actions,
@@ -52,20 +57,25 @@ event routes.
 ## Migration recipe
 
 1. Preserve focused tests around the current result model and visible evidence.
-2. Split the existing viewer into the smallest meaningful domain blocks; avoid tiny decorative
-   fragments and avoid keeping the whole viewer as one component.
+2. Choose the resource ownership honestly. Keep a complete domain viewer as `whole-view`; use
+   `component-catalog` only when the MCP intentionally exposes independently composable blocks. Do
+   not wrap a whole viewer in one artificial component merely to satisfy a catalog.
 3. In Preact Apps, import `Card`, `Badge`, `MetricGrid`, `KeyValueList`, `DataTable`, `Button`,
-   `Toolbar`, `EmptyState`, and `StateMessage` from `@casys/mcp-view/preact`. Keep only CAD,
-   diagrams, charts, and domain actions in custom components; do not copy the shared presentation
-   CSS into every MCP.
-4. If standalone usage matters, define it as `defaultSurface` using those same blocks. Otherwise
-   omit it deliberately.
-5. Mount the negotiated surface from the App host context, falling back to `defaultSurface` when
-   present and to the explicit `surface-required` state otherwise.
-6. Preserve existing cross-view events and local navigation. Declare their ports, and use the shared
+   `Toolbar`, `EmptyState`, and `StateMessage` from `@casys/mcp-view-components/preact/components`.
+   Keep CAD, diagrams, charts, and domain actions in the owning MCP; do not copy the shared
+   presentation CSS into every MCP.
+4. For a component catalog, define `defaultSurface` only when the same catalog is also meaningful
+   standalone. Otherwise omit it deliberately. A `whole-view` resource needs no catalog or default
+   surface.
+5. In a component App, mount the negotiated surface from host context, falling back to
+   `defaultSurface` when present and to the explicit `surface-required` state otherwise.
+6. Declare recorded-session compatibility on the resource (`acceptedActions` plus `sessionSchemas`)
+   and validate it in the whole-App lifecycle before mapping it to view data. Individual components
+   do not subscribe to `viewer.session.apply`.
+7. Preserve existing cross-view events and local navigation. Declare their ports, and use the shared
    semantic-selection contract only where an exact local or host-provided recorded binding exists.
-7. Run the repository checks, rebuild the single-file HTML, then exercise both standalone and
-   Compose paths with a real tool result.
+8. Run the repository checks, rebuild the single-file HTML, then exercise the supported standalone
+   and Compose paths with a real tool result or recorded session.
 
 For unreleased framework work, use the consumer's existing local module override rather than
 publishing a temporary version.

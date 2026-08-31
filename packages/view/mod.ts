@@ -76,53 +76,8 @@ export type {
   SemanticSelectionMode,
 } from "./src/semantic-selection.ts";
 
-export { installMcpViewTheme, MCP_VIEW_THEME_CSS, MCP_VIEW_THEME_STYLE_ID } from "./src/theme.ts";
-export type { McpViewThemeDocument } from "./src/theme.ts";
-
-export {
-  activeComponentSurface,
-  advertisedComponentCatalog,
-  applySurfaceContext,
-  CASYS_COMPONENT_CATALOG_CAPABILITY_KEY,
-  CASYS_SURFACE_CONTEXT_KEY,
-  componentCatalogCapabilities,
-  defineComponentRegistry,
-  defineComponentSurface,
-  defineViewComponent,
-  mountComponentSurface,
-  readSurfaceContext,
-} from "./src/components.ts";
-
-export {
-  defineCustomComponent,
-  defineKeyValueComponent,
-  defineMetricGridComponent,
-  defineStatusComponent,
-} from "./src/component-primitives.ts";
-export type {
-  ComponentTone,
-  KeyValueComponentValue,
-  MetricComponentValue,
-  StatusComponentValue,
-} from "./src/component-primitives.ts";
-export type {
-  AdvertisedComponentCatalog,
-  ComponentCleanup,
-  ComponentSurface,
-  ComponentSurfaceItem,
-  ComponentSurfaceLayout,
-  JsonValue,
-  MountComponentSurfaceOptions,
-  MountedComponentSurface,
-  SurfaceContext,
-  SurfaceGap,
-  SurfaceLayoutType,
-  ViewComponentDefinition,
-  ViewComponentDescriptor,
-  ViewComponentEventPorts,
-  ViewComponentMountContext,
-  ViewComponentRegistry,
-} from "./src/components.ts";
+export { onViewerSession } from "./src/viewer-session.ts";
+export type { ViewerSessionDispatcher } from "./src/viewer-session.ts";
 
 export type {
   AppConfig,
@@ -136,6 +91,8 @@ export type {
   ToolResult,
   ToolResultLifecycleCallback,
   ViewDefinition,
+  ViewerSessionHandler,
+  ViewerSessionSubscription,
   ViewLifecycle,
   ViewMap,
   ViewOutput,

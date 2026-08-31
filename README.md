@@ -19,11 +19,14 @@ rate-limit → auth → custom middleware → scope-check → validation → bac
 
 ## Packages
 
-| Package                                   | Status         | Description                                                                  |
-| ----------------------------------------- | -------------- | ---------------------------------------------------------------------------- |
-| [`@casys/mcp-server`](packages/server/)   | **Production** | The framework. Middleware, auth, dual transport, observability.              |
-| [`@casys/mcp-compose`](packages/compose/) | Experimental   | Multi-server UI composition — sync and orchestrate MCP Apps into dashboards. |
-| [`@casys/mcp-bridge`](packages/bridge/)   | Experimental   | Bridge MCP Apps UIs and private-network tool calls across hosts and relays.  |
+| Package                                                   | Status         | Description                                                                  |
+| --------------------------------------------------------- | -------------- | ---------------------------------------------------------------------------- |
+| [`@casys/mcp-server`](packages/server/)                   | **Production** | The framework. Middleware, auth, dual transport, observability.              |
+| [`@casys/mcp-compose`](packages/compose/)                 | Experimental   | Multi-server UI composition — sync and orchestrate MCP Apps into dashboards. |
+| [`@casys/mcp-bridge`](packages/bridge/)                   | Experimental   | Bridge MCP Apps UIs and private-network tool calls across hosts and relays.  |
+| [`@casys/mcp-view-contracts`](packages/view-contracts/)   | Experimental   | Dependency-free App/resource, composition, and session contracts.            |
+| [`@casys/mcp-view`](packages/view/)                       | Experimental   | Framework-neutral MCP Apps lifecycle, routing, results, and events.          |
+| [`@casys/mcp-view-components`](packages/view-components/) | Experimental   | Optional component runtime, theme, Preact kit, and Deno/JSR scaffold.        |
 
 ---
 
@@ -182,6 +185,9 @@ Deno workspace — cross-package imports resolve automatically.
 cd packages/server && deno task test
 cd packages/compose && deno task test
 cd packages/bridge && deno task test
+cd packages/view-contracts && deno task test
+cd packages/view && deno task test
+cd packages/view-components && deno task test
 ```
 
 ## License

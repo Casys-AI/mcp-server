@@ -1,7 +1,7 @@
 # ADR 0004: Componentized MCP App Authoring Framework
 
 Date: 2026-08-01\
-Status: Accepted, implementation in progress
+Status: Superseded in package ownership on 2026-08-31; composition model retained
 
 ## Context
 
@@ -12,16 +12,19 @@ did not make the actual UI blocks reusable when several Apps shared one dashboar
 
 ## Decision
 
-`@casys/mcp-view` is the preferred componentized MCP App authoring framework. A domain viewer
-publishes a catalog of small meaningful components and may publish a standalone default surface. A
-Compose host may request a safe surface made only from those advertised components. Product-only
-palettes may omit the default instead of inventing a standalone page.
+The implementation is now split across three packages. A domain MCP may own a complete `whole-view`
+resource with no component catalog, or intentionally publish a catalog of meaningful components with
+an optional standalone default surface. A Compose host may embed a whole resource or request a safe
+surface made only from advertised components. Product-only palettes may omit the default instead of
+inventing a standalone page.
 
-| Layer                | Owns                                                                                                           | Must not own                                                |
-| -------------------- | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| `@casys/mcp-view`    | Apps lifecycle, structured results, component registry/mounting, safe primitives, cleanup, viewer event client | MCP transport, dashboard shell, domain schema               |
-| Domain viewer        | validation, component implementations, optional standalone default, local state/actions                        | copied handshake plumbing, host layout policy               |
-| `@casys/mcp-compose` | multi-App shell, explicit surface requests, stable instance IDs, event routes                                  | child DOM inspection, domain rendering, implicit size modes |
+| Layer                        | Owns                                                                                           | Must not own                                                |
+| ---------------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `@casys/mcp-view-contracts`  | App/resource manifests, serializable composition and session compatibility                     | DOM, renderer, MCP Apps runtime, provider authority         |
+| `@casys/mcp-view`            | Apps lifecycle, routing, structured results, whole-resource sessions, event client             | component/theme exports, dashboard shell, domain schema     |
+| `@casys/mcp-view-components` | optional registry/mounting, safe primitives, theme, Preact adapter, cleanup; Deno/JSR scaffold | domain renderers, provider authority, host layout policy    |
+| Domain viewer                | validation, whole-view or component implementation, local state/actions                        | copied handshake plumbing, host layout policy               |
+| `@casys/mcp-compose`         | multi-App shell, explicit surface requests, stable instance IDs, event routes                  | child DOM inspection, domain rendering, implicit size modes |
 
 The wire value is JSON-only: component key, instance ID, `stack|row|grid` layout, bounded columns,
 gap token, optional safe grid area, and component-owned props. It contains no HTML, JavaScript,
@@ -38,10 +41,15 @@ proven by the ERPNext BOM palette: restrained cards, dense metrics and tables, s
 cross-selection state, and container queries. Domain viewers may add specialized CAD, diagram, and
 evidence styling without redefining the shared shell.
 
-Preact Apps consume those foundations as actual components from `@casys/mcp-view/preact`, not as
-independently maintained CSS imitations. The shared kit covers cards, badges, metrics, key-value
-facts, data tables, actions, toolbars, empty states, and system states. Source-owned CSS is reserved
-for visuals that the kit cannot express, such as a Three.js viewport or a SysON SVG canvas.
+The scaffold remains a Deno/JSR command because its contract includes Deno filesystem APIs and
+`deno fmt`. The npm package exports only the cross-runtime runtime and presentation entry points; it
+does not ship a nominal Node scaffold that fails when invoked.
+
+Preact Apps consume those foundations as actual components from
+`@casys/mcp-view-components/preact/components`, not as independently maintained CSS imitations. The
+shared kit covers cards, badges, metrics, key-value facts, data tables, actions, toolbars, empty
+states, and system states. Source-owned CSS is reserved for visuals that the kit cannot express,
+such as a Three.js viewport or a SysON SVG canvas.
 
 ## Events and state
 
@@ -49,6 +57,10 @@ Composition changes presentation only. `ui/compose/event` remains the separately
 viewer-to-viewer plane. Local navigation, component state, tools, and domain actions remain owned by
 the child App. A surface remount must clean up component listeners and renderer resources
 deterministically.
+
+`viewer.session.apply` is different: compatibility is declared by the whole resource, and the App
+installs its validator before connecting. Valid early actions replay after initialization and update
+App-level data; component mounts never own this one-shot subscription.
 
 Each component may advertise event ports in its serializable descriptor. They make the App
 inspectable and dynamically connectable, but never create a route on their own. The host supplies an

@@ -1,71 +1,37 @@
 /** Renderer-neutral component catalog and surface runtime for MCP Apps. */
 
-import type { McpUiHostContext } from "@modelcontextprotocol/ext-apps";
-import type { ViewComponentEventPorts } from "./composition-contracts.ts";
+import type { AppContext } from "@casys/mcp-view";
+import {
+  type AdvertisedComponentCatalog,
+  CASYS_COMPONENT_CATALOG_CAPABILITY_KEY,
+  type ComponentSurface,
+  type ComponentSurfaceLayout,
+  type JsonValue,
+  readSurfaceContext,
+  type SurfaceGap,
+  type ViewComponentDescriptor,
+  type ViewComponentEventPorts,
+} from "@casys/mcp-view-contracts";
 
-export type { ViewComponentEventPorts } from "./composition-contracts.ts";
+export {
+  CASYS_COMPONENT_CATALOG_CAPABILITY_KEY,
+  CASYS_SURFACE_CONTEXT_KEY,
+  readSurfaceContext,
+} from "@casys/mcp-view-contracts";
+export type {
+  AdvertisedComponentCatalog,
+  ComponentSurface,
+  ComponentSurfaceItem,
+  ComponentSurfaceLayout,
+  JsonValue,
+  SurfaceContext,
+  SurfaceGap,
+  SurfaceLayoutType,
+  ViewComponentDescriptor,
+  ViewComponentEventPorts,
+} from "@casys/mcp-view-contracts";
 
-export const CASYS_COMPONENT_CATALOG_CAPABILITY_KEY = "io.casys.mcp.view-components/v1";
-export const CASYS_SURFACE_CONTEXT_KEY = "io.casys.mcp.surface/v1";
-
-export type SurfaceLayoutType = "stack" | "row" | "grid";
-export type SurfaceGap = "none" | "xs" | "sm" | "md" | "lg";
-export type JsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | readonly JsonValue[]
-  | { readonly [key: string]: JsonValue };
-
-export interface ComponentSurfaceLayout {
-  readonly type: SurfaceLayoutType;
-  readonly columns?: number;
-  readonly gap?: SurfaceGap;
-}
-
-export interface ComponentSurfaceItem {
-  /** Stable identity for local state and future agent patches. */
-  readonly id: string;
-  /** Component key advertised by the owning MCP App. */
-  readonly component: string;
-  /** Optional safe grid-area identifier. */
-  readonly area?: string;
-  /** JSON-only configuration interpreted by the component implementation. */
-  readonly props?: Readonly<Record<string, JsonValue>>;
-}
-
-export interface ComponentSurface {
-  readonly layout: ComponentSurfaceLayout;
-  readonly components: readonly ComponentSurfaceItem[];
-}
-
-export interface ViewComponentDescriptor {
-  readonly title: string;
-  readonly description?: string;
-  /** Discoverable ports only; the composition host remains authoritative for routing. */
-  readonly events?: ViewComponentEventPorts;
-}
-
-/** Serializable catalog advertised during `ui/initialize`. */
-export interface AdvertisedComponentCatalog {
-  readonly components: Readonly<Record<string, ViewComponentDescriptor>>;
-  /** Optional fallback for hosts that do not request a composition. */
-  readonly defaultSurface?: ComponentSurface;
-}
-
-export interface SurfaceContext {
-  readonly instanceId: string;
-  readonly status: "ready" | "legacy" | "unresolved";
-  readonly source?: "requested" | "default";
-  readonly surface?: ComponentSurface;
-  readonly reason?:
-    | "component-catalog-unavailable"
-    | "surface-required"
-    | "unknown-components";
-  readonly missingComponents?: readonly string[];
-  readonly eventChannel?: "ui/compose/event";
-}
+export type McpViewHostContext = AppContext<unknown>["hostContext"];
 
 export type ComponentCleanup = () => void | Promise<void>;
 
@@ -74,7 +40,7 @@ export interface ViewComponentMountContext<TData, TAppContext> {
   readonly props: Readonly<Record<string, JsonValue>>;
   readonly instanceId: string;
   readonly appContext: TAppContext;
-  readonly hostContext: McpUiHostContext;
+  readonly hostContext: McpViewHostContext;
 }
 
 export interface ViewComponentDefinition<TData = unknown, TAppContext = unknown> {
@@ -103,7 +69,7 @@ export interface MountComponentSurfaceOptions<TData, TAppContext> {
   readonly registry: ViewComponentRegistry<TData, TAppContext>;
   readonly data: TData;
   readonly appContext: TAppContext;
-  readonly hostContext: McpUiHostContext;
+  readonly hostContext: McpViewHostContext;
   /** Explicit surface wins; otherwise the negotiated or default surface is used. */
   readonly surface?: ComponentSurface;
 }
@@ -197,22 +163,9 @@ export function advertisedComponentCatalog<TData, TAppContext>(
   });
 }
 
-export function readSurfaceContext(
-  hostContext: McpUiHostContext,
-): SurfaceContext | undefined {
-  const value = hostContext[CASYS_SURFACE_CONTEXT_KEY];
-  if (!value || typeof value !== "object") return undefined;
-  const candidate = value as Partial<SurfaceContext>;
-  if (
-    typeof candidate.instanceId !== "string" ||
-    !["ready", "legacy", "unresolved"].includes(candidate.status ?? "")
-  ) return undefined;
-  return value as SurfaceContext;
-}
-
 /** Expose only surface identity/status for CSS and diagnostics, never component internals. */
 export function applySurfaceContext(
-  hostContext: McpUiHostContext,
+  hostContext: McpViewHostContext,
   target: { dataset: Record<string, string | undefined> },
 ): void {
   const surface = readSurfaceContext(hostContext);
@@ -223,7 +176,7 @@ export function applySurfaceContext(
 
 export function activeComponentSurface<TData, TAppContext>(
   registry: ViewComponentRegistry<TData, TAppContext>,
-  hostContext: McpUiHostContext,
+  hostContext: McpViewHostContext,
 ): ComponentSurface | undefined {
   const context = readSurfaceContext(hostContext);
   return context?.status === "ready" && context.surface

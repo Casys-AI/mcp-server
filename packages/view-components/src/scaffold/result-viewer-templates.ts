@@ -1,4 +1,4 @@
-/** Files emitted by the intentionally small vanilla result-viewer scaffold. */
+/** Files emitted by the intentionally small component result-viewer scaffold. */
 
 export const resultViewerTemplates: Readonly<Record<string, string>> = {
   "deno.json": `{
@@ -6,11 +6,12 @@ export const resultViewerTemplates: Readonly<Record<string, string>> = {
     "lib": ["deno.ns", "deno.window", "dom", "dom.iterable", "dom.asynciterable", "esnext"]
   },
   "imports": {
-    "@casys/mcp-view": "jsr:@casys/mcp-view@0.8.0"
+    "@casys/mcp-view": "jsr:@casys/mcp-view@0.8.0",
+    "@casys/mcp-view-components": "jsr:@casys/mcp-view-components@0.1.0"
   },
   "minimumDependencyAge": {
     "age": "P1D",
-    "exclude": ["jsr:@casys/mcp-view"]
+    "exclude": ["jsr:@casys/mcp-view", "jsr:@casys/mcp-view-components"]
   },
   "tasks": {
     "build": "deno run -A build.ts",
@@ -42,6 +43,8 @@ export const resultViewerTemplates: Readonly<Record<string, string>> = {
 
 const here = dirname(fromFileUrl(import.meta.url));
 const mcpViewModule = Deno.env.get("MCP_VIEW_MODULE") ?? "jsr:@casys/mcp-view@0.8.0";
+const mcpViewComponentsModule = Deno.env.get("MCP_VIEW_COMPONENTS_MODULE") ??
+  "jsr:@casys/mcp-view-components@0.1.0";
 const temporaryDirectory = await Deno.makeTempDir({ prefix: "mcp-view-result-viewer-" });
 const importMap = join(temporaryDirectory, "import-map.json");
 const bundlePath = join(temporaryDirectory, "result-viewer.js");
@@ -53,6 +56,7 @@ try {
     },
     imports: {
       "@casys/mcp-view": mcpViewModule,
+      "@casys/mcp-view-components": mcpViewComponentsModule,
       "@modelcontextprotocol/ext-apps": "npm:@modelcontextprotocol/ext-apps@^1.7.4",
       "@modelcontextprotocol/sdk": "npm:@modelcontextprotocol/sdk@^1.29.0",
       "@modelcontextprotocol/sdk/types.js": "npm:@modelcontextprotocol/sdk@^1.29.0/types.js"
@@ -277,17 +281,19 @@ code { overflow-wrap: anywhere; font-family: var(--font-data); }
 @media (max-width: 480px) { #root { padding: 8px; } .result-header { display: block; } .status { display: inline-block; margin-top: 8px; } }
 `,
   "src/main.ts": `import {
-  advertisedComponentCatalog,
   createMcpApp,
+  defineView,
+  type AppContext,
+} from "@casys/mcp-view";
+import {
+  componentCatalogCapabilities,
   defineComponentRegistry,
   defineCustomComponent,
   defineKeyValueComponent,
   defineMetricGridComponent,
-  defineView,
   mountComponentSurface,
-  type AppContext,
   type MountedComponentSurface,
-} from "@casys/mcp-view";
+} from "@casys/mcp-view-components";
 import { isEmptyResult, parseStructuredResult, toolErrorMessage, type DisplayState } from "./model.ts";
 import { escapeHtml } from "./render.ts";
 
@@ -421,7 +427,9 @@ async function boot(): Promise<void> {
     views: { result: resultView },
     initialView: "result",
     initialState: { display: { kind: "loading" } },
-    componentCatalog: advertisedComponentCatalog(components),
+    capabilities: {
+      experimental: componentCatalogCapabilities(components),
+    },
     // Registered by mcp-view before connect(), so the initiating tool result
     // cannot be lost during the MCP Apps handshake.
     async onToolInput(_input, app) {

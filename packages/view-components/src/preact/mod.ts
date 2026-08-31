@@ -1,4 +1,4 @@
-/** Preact integration for `@casys/mcp-view` component surfaces. */
+/** Preact integration for `@casys/mcp-view-components` surfaces. */
 
 export { definePreactComponent, preactSurfaceRenderer, startPreactSurfaceApp } from "./surface.ts";
 export {

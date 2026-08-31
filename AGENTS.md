@@ -83,10 +83,11 @@ class and will be removed in v1.0.)
   for remote. Auth only applies to HTTP transport.
 - **Publishing**: On push to `main`, `.github/workflows/publish.yml` publishes
   every workspace member to JSR (`npx jsr publish` skips already-published
-  versions) and four of them to npm (`server`, `compose`, `bridge`, and `view`
-  via dnt). Each npm job is idempotent: it queries `npm view <pkg>@<ver>` before
-  publishing, so repeated runs without a version bump exit cleanly instead of
-  masking auth/build/network failures behind `|| echo`.
+  versions) and all six to npm (`server`, `compose`, `bridge`, `view-contracts`,
+  `view`, and `view-components` via dnt). Each npm job is idempotent: it queries
+  `npm view <pkg>@<ver>` before publishing, so repeated runs without a version
+  bump exit cleanly instead of masking auth/build/network failures behind
+  `|| echo`.
 
 ## Release process
 

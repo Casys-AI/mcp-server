@@ -1051,10 +1051,22 @@
         "dependencies": [
           "jsr:@deno/dnt@0.41",
           "jsr:@std/assert@1",
-          "jsr:@std/path@^1.1.0",
           "npm:@modelcontextprotocol/ext-apps@^1.7.4",
-          "npm:@modelcontextprotocol/sdk@^1.29.0",
+          "npm:@modelcontextprotocol/sdk@^1.29.0"
+        ]
+      },
+      "packages/view-components": {
+        "dependencies": [
+          "jsr:@deno/dnt@0.41",
+          "jsr:@std/assert@1",
+          "jsr:@std/path@^1.1.0",
           "npm:preact@^10.28.3"
+        ]
+      },
+      "packages/view-contracts": {
+        "dependencies": [
+          "jsr:@deno/dnt@0.41",
+          "jsr:@std/assert@1"
         ]
       }
     }

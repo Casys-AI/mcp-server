@@ -11,7 +11,7 @@ import type { AppConfig } from "./types.ts";
 
 const minimalInfo = { name: "TestApp", version: "0.0.0" };
 
-Deno.test("AppConfig accepts runtime options and a component catalog (compile-time)", () => {
+Deno.test("AppConfig accepts ext-apps runtime options (compile-time)", () => {
   // Smoke test — the value is asserted, but the real assertion is that this
   // file type-checks: AppConfig must surface the three new pass-through
   // fields so consumers can opt in. createMcpApp forwards them to the
@@ -25,18 +25,10 @@ Deno.test("AppConfig accepts runtime options and a component catalog (compile-ti
     strict: true,
     allowUnsafeEval: false,
     autoResize: true,
-    componentCatalog: {
-      components: { "test.summary": { title: "Summary" } },
-      defaultSurface: {
-        layout: { type: "stack" },
-        components: [{ id: "summary", component: "test.summary" }],
-      },
-    },
   };
   assertEquals(cfg.strict, true);
   assertEquals(cfg.allowUnsafeEval, false);
   assertEquals(cfg.autoResize, true);
-  assertEquals(cfg.componentCatalog?.components["test.summary"].title, "Summary");
 });
 
 Deno.test("AppConfig exposes typed one-shot tool notification callbacks", () => {
@@ -61,6 +53,28 @@ Deno.test("AppConfig exposes typed one-shot tool notification callbacks", () => 
   assertEquals(typeof cfg.onToolInput, "function");
   assertEquals(typeof cfg.onToolInputPartial, "function");
   assertEquals(typeof cfg.onToolResult, "function");
+});
+
+Deno.test("AppConfig exposes a typed whole-resource session lifecycle", () => {
+  interface Session {
+    readonly schema: "io.casys.test.session/1.0";
+  }
+  const cfg: AppConfig<Record<string, never>, Session> = {
+    info: minimalInfo,
+    root: {} as unknown as HTMLElement,
+    views: { home: { render: () => "" } },
+    initialView: "home",
+    viewerSession: {
+      validate: (value): value is Session =>
+        typeof value === "object" && value !== null &&
+        (value as { schema?: unknown }).schema === "io.casys.test.session/1.0",
+      onSession: (session, _payload, app) => {
+        assertEquals(session.schema, "io.casys.test.session/1.0");
+        assertEquals(app.currentView, "home");
+      },
+    },
+  };
+  assertEquals(typeof cfg.viewerSession?.validate, "function");
 });
 
 Deno.test("createMcpApp rejects when initialView is not a registered view", async () => {

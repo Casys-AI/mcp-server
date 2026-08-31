@@ -3,7 +3,7 @@ import { dirname, join } from "@std/path";
 
 import { parseScaffoldArguments, ScaffoldError, scaffoldResultViewer } from "./scaffold.ts";
 
-Deno.test("result-viewer scaffold creates a standalone vanilla project in a temporary directory", async () => {
+Deno.test("result-viewer scaffold creates a standalone component project", async () => {
   const directory = await Deno.makeTempDir({ prefix: "mcp-view-scaffold-" });
   try {
     const target = join(directory, "result-viewer");
@@ -39,14 +39,19 @@ Deno.test("result-viewer scaffold creates a standalone vanilla project in a temp
     const configPath = join(target, "deno.json");
     const generatedConfig = await Deno.readTextFile(configPath);
     assertStringIncludes(generatedConfig, '"@casys/mcp-view": "jsr:@casys/mcp-view@0.8.0"');
+    assertStringIncludes(
+      generatedConfig,
+      '"@casys/mcp-view-components": "jsr:@casys/mcp-view-components@0.1.0"',
+    );
     assertStringIncludes(generatedConfig, '"minimumDependencyAge"');
-    assertStringIncludes(generatedConfig, '"exclude": ["jsr:@casys/mcp-view"]');
+    assertStringIncludes(generatedConfig, '"jsr:@casys/mcp-view-components"');
+    const coreModule = new URL("../view/mod.ts", import.meta.url).href;
+    const componentsModule = new URL("./mod.ts", import.meta.url).href;
     await Deno.writeTextFile(
       configPath,
-      generatedConfig.replace(
-        "jsr:@casys/mcp-view@0.8.0",
-        new URL("./mod.ts", import.meta.url).href,
-      ),
+      generatedConfig
+        .replace("jsr:@casys/mcp-view@0.8.0", coreModule)
+        .replace("jsr:@casys/mcp-view-components@0.1.0", componentsModule),
     );
 
     await Deno.writeTextFile(
@@ -55,7 +60,10 @@ Deno.test("result-viewer scaffold creates a standalone vanilla project in a temp
       { append: true },
     );
 
-    const environment = { MCP_VIEW_MODULE: new URL("./mod.ts", import.meta.url).href };
+    const environment = {
+      MCP_VIEW_MODULE: coreModule,
+      MCP_VIEW_COMPONENTS_MODULE: componentsModule,
+    };
     await runGeneratedTask(target, "test", environment);
     await runGeneratedTask(target, "check", environment);
     await runGeneratedTask(target, "build", environment);

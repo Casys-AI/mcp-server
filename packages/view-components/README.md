@@ -34,6 +34,7 @@ import {
   ElementIdent,
   ElementProvenance,
   ElementReading,
+  InlineCode,
   LimitGauge,
   PathBar,
   Row,
@@ -47,7 +48,8 @@ import {
 
 Primitives:
 
-- `Card`, `Badge`, `BadgeGroup`, `Button`, `Toolbar`, `Stack`, `Row`, `TextInput`, `CodeBlock`
+- `Card`, `Badge`, `BadgeGroup`, `Button`, `Toolbar`, `Stack`, `Row`, `TextInput`, `InlineCode`,
+  `CodeBlock`
 - `Metric`, `MetricGrid`, `KeyValueList`, `DataTable`
 - `Message`, `StateMessage`, `EmptyState`, `CrossSelection`
 
@@ -59,7 +61,7 @@ Reusable structures:
 
 Semantic composition:
 
-- `SemanticElement` with `chip | row | card` density
+- `SemanticElement` with `chip | row | card` density and kit-owned explicit selection
 - `SemanticList` for a bounded, optionally scrollable group of row-density semantic objects
 - required `ElementIdent`
 - optional `ElementReading`, `ElementBody`, `ElementVerdict`, and `ElementProvenance`

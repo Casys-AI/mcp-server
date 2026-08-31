@@ -11,6 +11,7 @@ import {
   CrossSelection,
   DataTable,
   EmptyState,
+  InlineCode,
   KeyValueList,
   Message,
   Metric,
@@ -73,6 +74,7 @@ Deno.test({
             />
           </Toolbar>
           <CodeBlock label="Expression">self.temperature</CodeBlock>
+          <InlineCode title="Recorded fingerprint">sha256:abc123</InlineCode>
           <CrossSelection label="Selection" value="MotorAssembly" status="linked" />
           <Message tone="warning">Recorded values may be stale</Message>
           <EmptyState>No secondary evidence</EmptyState>
@@ -95,6 +97,7 @@ Deno.test({
         "Filter qualification",
       );
       assertEquals(root.querySelector(".mcp-view-code-block")?.textContent, "self.temperature");
+      assertEquals(root.querySelector(".mcp-view-inline-code")?.textContent, "sha256:abc123");
       assertEquals(root.querySelector(".mcp-view-stack")?.getAttribute("data-gap"), "sm");
       assertEquals(root.querySelector(".mcp-view-row")?.getAttribute("role"), "group");
       assertEquals(
@@ -111,6 +114,7 @@ Deno.test({
       assertEquals(root.querySelector(".mcp-view-empty")?.textContent, "No secondary evidence");
       assertEquals(root.querySelector(".mcp-view-state")?.getAttribute("role"), "alert");
       assertEquals(root.querySelector(".mcp-view-state")?.getAttribute("aria-busy"), "true");
+      assertEquals(root.querySelectorAll(".mcp-view-state-busy").length, 1);
     } finally {
       Object.defineProperty(globalThis, "document", {
         configurable: true,

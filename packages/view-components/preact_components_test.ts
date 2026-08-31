@@ -4,6 +4,7 @@ import {
   BadgeGroup,
   Card,
   DataTable,
+  InlineCode,
   installMcpViewTheme,
   LimitGauge,
   MCP_VIEW_THEME_CSS,
@@ -22,6 +23,7 @@ Deno.test("Preact components entry exposes presentation without an MCP Apps runt
   assertEquals(typeof LimitGauge, "function");
   assertEquals(typeof SemanticElement, "function");
   assertEquals(typeof installMcpViewTheme, "function");
+  assertEquals(typeof InlineCode, "function");
   assert(MCP_VIEW_THEME_CSS.includes(".mcp-view-card"));
 });
 

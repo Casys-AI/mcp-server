@@ -51,6 +51,43 @@ Deno.test({
 });
 
 Deno.test({
+  name: "SemanticElement owns explicit selection presentation and accessible state",
+  permissions: { read: true, env: true, run: true },
+  async fn() {
+    await withDom((root) => {
+      render(
+        <SemanticElement
+          reference={REFERENCE}
+          density="row"
+          selected
+          activationLabel="Select run"
+          ident={<ElementIdent label="Run A" />}
+          onActivate={() => {}}
+        />,
+        root,
+      );
+      const interactive = root.firstElementChild;
+      assertEquals(interactive?.getAttribute("data-selected"), "true");
+      assertEquals(interactive?.getAttribute("aria-pressed"), "true");
+      assertEquals(interactive?.classList.contains("mcp-view-selected"), true);
+
+      render(
+        <SemanticElement
+          reference={REFERENCE}
+          density="chip"
+          selected
+          ident={<ElementIdent label="Run A" />}
+        />,
+        root,
+      );
+      const passive = root.firstElementChild;
+      assertEquals(passive?.getAttribute("aria-current"), "true");
+      assertEquals(passive?.hasAttribute("aria-pressed"), false);
+    });
+  },
+});
+
+Deno.test({
   name: "SemanticElement preserves one semantic identity across chip row and card densities",
   permissions: { read: true, env: true, run: true },
   async fn() {

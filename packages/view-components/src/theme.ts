@@ -392,6 +392,17 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
   white-space: pre-wrap;
 }
 
+.mcp-view-inline-code {
+  max-width: 100%;
+  padding: 0.08rem 0.25rem;
+  border-radius: var(--mcp-view-radius-sm);
+  background: var(--mcp-view-subtle);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.88em;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .mcp-view-button {
   min-height: 1.9rem;
   padding: 0.35rem 0.58rem;
@@ -440,6 +451,17 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
 .mcp-view-state[data-tone="warning"] strong { color: var(--mcp-view-warning); }
 .mcp-view-state[data-tone="danger"] strong { color: var(--mcp-view-danger); }
 .mcp-view-state[data-tone="info"] strong { color: var(--mcp-view-accent); }
+
+.mcp-view-state-busy {
+  width: 0.9rem;
+  height: 0.9rem;
+  justify-self: center;
+  border: 2px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-block-start-color: currentColor;
+  border-radius: 999px;
+  color: var(--mcp-view-accent);
+  animation: mcp-view-spin 0.8s linear infinite;
+}
 
 .mcp-view-state-detail { max-width: 48ch; }
 
@@ -855,6 +877,14 @@ button.mcp-view-artifact-row:focus-visible {
   .mcp-view-semantic-element[data-density="row"] .mcp-view-element-provenance {
     justify-self: start;
   }
+}
+
+@keyframes mcp-view-spin {
+  to { transform: rotate(1turn); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mcp-view-state-busy { animation: none; }
 }
 `;
 

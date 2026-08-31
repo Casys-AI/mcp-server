@@ -389,6 +389,25 @@ export function CodeBlock({ label, className, children }: CodeBlockProps): JSX.E
   );
 }
 
+export interface InlineCodeProps {
+  readonly title?: string;
+  readonly className?: string;
+  readonly children?: ComponentChildren;
+}
+
+/** Inline exact text with safe wrapping for fingerprints, identifiers, and URIs. */
+export function InlineCode({
+  title,
+  className,
+  children,
+}: InlineCodeProps): JSX.Element {
+  return (
+    <code class={classes("mcp-view-inline-code", className)} title={title}>
+      {children}
+    </code>
+  );
+}
+
 export function Toolbar({
   label,
   className,
@@ -485,6 +504,7 @@ export function StateMessage({
       data-tone={tone}
       role={tone === "danger" ? "alert" : "status"}
     >
+      {busy && <span aria-hidden="true" class="mcp-view-state-busy" />}
       {title && <strong>{title}</strong>}
       {children && <div class="mcp-view-state-detail">{children}</div>}
     </div>

@@ -150,6 +150,8 @@ export interface SemanticElementProps {
   readonly density: SemanticElementDensity;
   /** Explicit visual verdict. Omit when the object has no warranted verdict. */
   readonly tone?: PresentationTone;
+  /** Explicit current selection; presentation and accessible state stay kit-owned. */
+  readonly selected?: boolean;
   /** Every semantic object must provide a resolved identity slot. */
   readonly ident: VNode<ElementIdentProps>;
   readonly reading?: VNode<ElementReadingProps> | readonly VNode<ElementReadingProps>[];
@@ -171,6 +173,7 @@ export function SemanticElement({
   reference,
   density,
   tone,
+  selected,
   ident,
   reading,
   body,
@@ -186,10 +189,17 @@ export function SemanticElement({
   const activate = (): void => onActivate?.(reference);
   return (
     <div
+      aria-current={!interactive && selected ? "true" : undefined}
       aria-label={interactive ? activationLabel : undefined}
-      class={classes("mcp-view-semantic-element", className)}
+      aria-pressed={interactive && selected !== undefined ? selected : undefined}
+      class={classes(
+        "mcp-view-semantic-element",
+        selected ? "mcp-view-selected" : undefined,
+        className,
+      )}
       data-density={density}
       data-interactive={interactive ? "true" : undefined}
+      data-selected={selected === undefined ? undefined : String(selected)}
       data-semantic-domain={reference.domain}
       data-semantic-id={reference.id}
       data-semantic-kind={reference.kind}

@@ -19,6 +19,8 @@ Deno.test("shared theme exposes the MCP View v2 component vocabulary", () => {
       ".mcp-view-key-values",
       ".mcp-view-button",
       ".mcp-view-state",
+      ".mcp-view-state-busy",
+      ".mcp-view-inline-code",
       ".mcp-view-path-bar",
       ".mcp-view-limit-gauge",
       ".mcp-view-artifact-row",

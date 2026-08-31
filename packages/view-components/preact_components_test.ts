@@ -4,13 +4,19 @@ import {
   Card,
   DataTable,
   installMcpViewTheme,
+  LimitGauge,
   MCP_VIEW_THEME_CSS,
+  PathBar,
+  SemanticElement,
 } from "./preact-components.ts";
 
 Deno.test("Preact components entry exposes presentation without an MCP Apps runtime", () => {
   assertEquals(typeof Badge, "function");
   assertEquals(typeof Card, "function");
   assertEquals(typeof DataTable, "function");
+  assertEquals(typeof PathBar, "function");
+  assertEquals(typeof LimitGauge, "function");
+  assertEquals(typeof SemanticElement, "function");
   assertEquals(typeof installMcpViewTheme, "function");
   assert(MCP_VIEW_THEME_CSS.includes(".mcp-view-card"));
 });

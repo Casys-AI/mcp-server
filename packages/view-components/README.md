@@ -1,9 +1,24 @@
 # @casys/mcp-view-components
 
-Optional component surfaces and an ERPNext-inspired visual language for MCP Apps. Domain viewers own
-their rendering and semantics; this package supplies reusable roles such as cards, badges, metrics,
-key-value rows, tables, toolbars, empty states, and explicit loading/error states. It does not
-contain CAD, Modelica, FEA, SysML, or other domain renderers.
+Optional presentation runtime and light-first component kit for MCP Apps. It gives provider-owned
+viewers a shared visual grammar without moving their data, semantics, or rendering authority into
+the host.
+
+The intended unit is a small recorded view: one run, artifact, requirement, metric, or other bounded
+object. A provider may export several whole-view resources; it should not turn one viewer into a
+dashboard that contains every provider capability. In a composed host such as the Digital Thread
+Whiteboard, `chip`, `row`, and `card` densities project the same semantic object while the
+whole-view App remains the exact viewer opened for that object.
+
+## Package boundary
+
+- `@casys/mcp-view-contracts` is dependency-free and owns serializable contracts.
+- `@casys/mcp-view` owns the MCP App lifecycle and transport.
+- `@casys/mcp-view-components` is optional. Apps that do not want the kit do not import it.
+- Providers resolve references and validate values, units, limits, verdicts, and provenance. The
+  components display those values and never infer them.
+- The host composes and opens recorded views. It does not become a native CAD, Modelica, FEA, or
+  SysML renderer.
 
 The package root is renderer-neutral. Preact is an optional peer and is loaded only through the
 Preact subpaths:
@@ -11,10 +26,68 @@ Preact subpaths:
 ```ts
 import { defineComponentRegistry, installMcpViewTheme } from "@casys/mcp-view-components";
 import {
+  ArtifactRow,
   Card,
-  definePreactComponent,
-  startPreactSurfaceApp,
+  ElementBody,
+  ElementIdent,
+  ElementProvenance,
+  ElementReading,
+  LimitGauge,
+  PathBar,
+  SemanticElement,
 } from "@casys/mcp-view-components/preact";
+```
+
+## Presentation vocabulary
+
+Primitives:
+
+- `Card`, `Badge`, `Button`, `Toolbar`, `Stack`
+- `Metric`, `MetricGrid`, `KeyValueList`, `DataTable`
+- `Message`, `StateMessage`, `EmptyState`, `CrossSelection`
+
+Reusable structures:
+
+- `PathBar` for local navigation inside one bounded view
+- `LimitGauge` for caller-supplied readings, bounds, labels, and tone
+- `ArtifactRow` for immutable artifact identity and literal verification status
+
+Semantic composition:
+
+- `SemanticElement` with `chip | row | card` density
+- required `ElementIdent`
+- optional `ElementReading`, `ElementBody`, `ElementVerdict`, and `ElementProvenance`
+
+`viewer` is deliberately not a `SemanticElement` density. It is the provider's whole-view App,
+usually composed from one `card` plus an optional `PathBar`.
+
+```tsx
+<SemanticElement
+  reference={{ domain: "cad", kind: "artifact", id: "bracket.step" }}
+  density="card"
+  tone="warning"
+  ident={<ElementIdent marker="STEP" label="Bracket" detail="revision 4" />}
+  reading={<ElementReading label="Minimum thickness" value="0.84" unit="mm" />}
+  provenance={<ElementProvenance label="SHA-256" value={digest} />}
+/>;
+```
+
+The semantic reference is structured but never dereferenced by the component. Likewise, `LimitGauge`
+never derives whether a value passes a limit, and `ArtifactRow` never claims a digest was verified
+unless the caller supplies that recorded status.
+
+## Theme
+
+`installMcpViewTheme()` installs the shared CSS once. The defaults are light-first, include an
+explicit dark mapping, inherit host fonts, and make no network font request. Apps can override the
+stable variables exported as `MCP_VIEW_THEME_TOKENS`:
+
+```css
+:root {
+  --mcp-view-accent: #0d7c8a;
+  --mcp-view-brand: #8a4fa3;
+  --mcp-view-radius: 0.5rem;
+}
 ```
 
 Whole-view recorded sessions are declared in `@casys/mcp-view-contracts` and consumed through the

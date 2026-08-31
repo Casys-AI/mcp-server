@@ -10,6 +10,21 @@ export type PresentationTone =
   | "warning"
   | "danger";
 
+export interface StackProps {
+  readonly gap?: "xs" | "sm" | "md" | "lg";
+  readonly className?: string;
+  readonly children?: ComponentChildren;
+}
+
+/** Simple vertical composition primitive; it carries no domain semantics. */
+export function Stack({ gap = "md", className, children }: StackProps): JSX.Element {
+  return (
+    <div class={classes("mcp-view-stack", className)} data-gap={gap}>
+      {children}
+    </div>
+  );
+}
+
 export interface CardProps {
   readonly title?: ComponentChildren;
   readonly eyebrow?: ComponentChildren;
@@ -74,23 +89,40 @@ export interface MetricGridProps {
   readonly className?: string;
 }
 
+export interface MetricProps extends Omit<MetricItem, "id"> {
+  readonly id?: string;
+  readonly className?: string;
+}
+
+/** One unit-bearing reading. Callers remain responsible for the value and its tone. */
+export function Metric({
+  id,
+  label,
+  value,
+  unit,
+  detail,
+  tone = "neutral",
+  className,
+}: MetricProps): JSX.Element {
+  return (
+    <article
+      class={classes("mcp-view-metric", className)}
+      data-metric={id}
+      data-tone={tone}
+    >
+      <span class="mcp-view-metric-label">{label}</span>
+      <strong class="mcp-view-metric-value">{value}</strong>
+      {unit && <small class="mcp-view-metric-unit">{unit}</small>}
+      {detail && <small class="mcp-view-metric-detail">{detail}</small>}
+    </article>
+  );
+}
+
 /** Responsive, container-aware metrics with stable semantic slots. */
 export function MetricGrid({ items, className }: MetricGridProps): JSX.Element {
   return (
     <div class={classes("mcp-view-metrics", className)}>
-      {items.map((metric) => (
-        <article
-          class="mcp-view-metric"
-          data-metric={metric.id}
-          data-tone={metric.tone ?? "neutral"}
-          key={metric.id}
-        >
-          <span class="mcp-view-metric-label">{metric.label}</span>
-          <strong class="mcp-view-metric-value">{metric.value}</strong>
-          {metric.unit && <small class="mcp-view-metric-unit">{metric.unit}</small>}
-          {metric.detail && <small class="mcp-view-metric-detail">{metric.detail}</small>}
-        </article>
-      ))}
+      {items.map((metric) => <Metric {...metric} key={metric.id} />)}
     </div>
   );
 }
@@ -283,6 +315,52 @@ export function EmptyState({
   className,
 }: EmptyStateProps): JSX.Element {
   return <p class={classes("mcp-view-empty", className)}>{children}</p>;
+}
+
+export interface MessageProps {
+  readonly tone?: PresentationTone;
+  readonly children?: ComponentChildren;
+  readonly className?: string;
+}
+
+/** Compact inline notice that keeps surrounding values visible. */
+export function Message({
+  tone = "neutral",
+  children,
+  className,
+}: MessageProps): JSX.Element {
+  return (
+    <div
+      class={classes("mcp-view-message", className)}
+      data-tone={tone}
+      role={tone === "danger" ? "alert" : "status"}
+    >
+      {children}
+    </div>
+  );
+}
+
+export interface CrossSelectionProps {
+  readonly label: ComponentChildren;
+  readonly value: ComponentChildren;
+  readonly status?: ComponentChildren;
+  readonly className?: string;
+}
+
+/** Read-only projection of a selection coordinated by an owning host. */
+export function CrossSelection({
+  label,
+  value,
+  status,
+  className,
+}: CrossSelectionProps): JSX.Element {
+  return (
+    <div class={classes("mcp-view-cross-selection", className)} role="status">
+      <span class="mcp-view-cross-selection-label">{label}</span>
+      <strong class="mcp-view-cross-selection-value">{value}</strong>
+      {status && <span class="mcp-view-cross-selection-status">{status}</span>}
+    </div>
+  );
 }
 
 export interface StateMessageProps {

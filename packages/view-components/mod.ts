@@ -1,5 +1,5 @@
 /**
- * `@casys/mcp-view-components` — optional presentation runtime and visual kit.
+ * `@casys/mcp-view-components` — optional presentation runtime for small composable viewers.
  *
  * The root stays renderer-neutral. Import Preact bindings from `/preact` or
  * pure Preact presentation primitives from `/preact/components`.
@@ -53,5 +53,10 @@ export type {
   StatusComponentValue,
 } from "./src/component-primitives.ts";
 
-export { installMcpViewTheme, MCP_VIEW_THEME_CSS, MCP_VIEW_THEME_STYLE_ID } from "./src/theme.ts";
-export type { McpViewThemeDocument } from "./src/theme.ts";
+export {
+  installMcpViewTheme,
+  MCP_VIEW_THEME_CSS,
+  MCP_VIEW_THEME_STYLE_ID,
+  MCP_VIEW_THEME_TOKENS,
+} from "./src/theme.ts";
+export type { McpViewThemeDocument, McpViewThemeToken, McpViewThemeTokens } from "./src/theme.ts";

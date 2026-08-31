@@ -13,10 +13,14 @@ export {
   Badge,
   Button,
   Card,
+  CrossSelection,
   DataTable,
   EmptyState,
   KeyValueList,
+  Message,
+  Metric,
   MetricGrid,
+  Stack,
   StateMessage,
   Toolbar,
 } from "./src/preact/components.tsx";
@@ -24,17 +28,55 @@ export type {
   BadgeProps,
   ButtonProps,
   CardProps,
+  CrossSelectionProps,
   DataTableColumn,
   DataTableProps,
   EmptyStateProps,
   KeyValueItem,
   KeyValueListProps,
+  MessageProps,
   MetricGridProps,
   MetricItem,
+  MetricProps,
   PresentationTone,
+  StackProps,
   StateMessageProps,
   ToolbarProps,
 } from "./src/preact/components.tsx";
 
-export { installMcpViewTheme, MCP_VIEW_THEME_CSS, MCP_VIEW_THEME_STYLE_ID } from "./src/theme.ts";
-export type { McpViewThemeDocument } from "./src/theme.ts";
+export { ArtifactRow, LimitGauge, PathBar } from "./src/preact/structural.tsx";
+export type {
+  ArtifactFingerprint,
+  ArtifactRowProps,
+  ArtifactVerification,
+  LimitGaugeLimit,
+  LimitGaugeProps,
+  PathBarItem,
+  PathBarProps,
+} from "./src/preact/structural.tsx";
+
+export {
+  ElementBody,
+  ElementIdent,
+  ElementProvenance,
+  ElementReading,
+  ElementVerdict,
+  SemanticElement,
+} from "./src/preact/semantic-element.tsx";
+export type {
+  ElementBodyProps,
+  ElementIdentProps,
+  ElementProvenanceProps,
+  ElementReadingProps,
+  ElementVerdictProps,
+  SemanticElementDensity,
+  SemanticElementProps,
+} from "./src/preact/semantic-element.tsx";
+
+export {
+  installMcpViewTheme,
+  MCP_VIEW_THEME_CSS,
+  MCP_VIEW_THEME_STYLE_ID,
+  MCP_VIEW_THEME_TOKENS,
+} from "./src/theme.ts";
+export type { McpViewThemeDocument, McpViewThemeToken, McpViewThemeTokens } from "./src/theme.ts";

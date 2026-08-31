@@ -1,25 +1,67 @@
-/** Shared visual language for composable MCP App components. */
+/** Shared light-first visual language for composable MCP App components. */
 
 export const MCP_VIEW_THEME_STYLE_ID = "mcp-view-theme";
 
+/** Stable CSS custom-property names available to App-local themes. */
+export type McpViewThemeTokens = Readonly<{
+  text: "--mcp-view-text";
+  muted: "--mcp-view-muted";
+  quiet: "--mcp-view-quiet";
+  border: "--mcp-view-border";
+  panel: "--mcp-view-panel";
+  subtle: "--mcp-view-subtle";
+  accent: "--mcp-view-accent";
+  brand: "--mcp-view-brand";
+  success: "--mcp-view-success";
+  warning: "--mcp-view-warning";
+  danger: "--mcp-view-danger";
+  radius: "--mcp-view-radius";
+  radiusSmall: "--mcp-view-radius-sm";
+  gap: "--mcp-view-gap";
+}>;
+
+export const MCP_VIEW_THEME_TOKENS: McpViewThemeTokens = Object.freeze(
+  {
+    text: "--mcp-view-text",
+    muted: "--mcp-view-muted",
+    quiet: "--mcp-view-quiet",
+    border: "--mcp-view-border",
+    panel: "--mcp-view-panel",
+    subtle: "--mcp-view-subtle",
+    accent: "--mcp-view-accent",
+    brand: "--mcp-view-brand",
+    success: "--mcp-view-success",
+    warning: "--mcp-view-warning",
+    danger: "--mcp-view-danger",
+    radius: "--mcp-view-radius",
+    radiusSmall: "--mcp-view-radius-sm",
+    gap: "--mcp-view-gap",
+  },
+);
+
+export type McpViewThemeToken = McpViewThemeTokens[keyof McpViewThemeTokens];
+
 /**
- * Compact, container-friendly defaults extracted from the ERPNext component
- * viewer. Domain components keep their own semantics while sharing tokens,
- * cards, metrics, tables, badges and system states.
+ * Compact, container-friendly MCP View v2 defaults. Domain components keep
+ * their own semantics while sharing tokens, cards, metrics, tables, badges
+ * and explicit system states. Every token can be overridden by the host.
  */
 export const MCP_VIEW_THEME_CSS: string = String.raw`
 :root {
   color-scheme: light dark;
-  --mcp-view-text: var(--color-text-primary, #29241f);
-  --mcp-view-muted: var(--color-text-secondary, #6f665e);
-  --mcp-view-border: var(--color-border, rgba(75, 64, 54, 0.18));
-  --mcp-view-panel: var(--color-background-secondary, rgba(255, 253, 250, 0.96));
-  --mcp-view-subtle: rgba(91, 76, 63, 0.065);
-  --mcp-view-accent: var(--color-accent, #9a5b23);
-  --mcp-view-success: var(--color-success, #28764c);
-  --mcp-view-warning: var(--color-warning, #936316);
-  --mcp-view-danger: var(--color-danger, #b43b35);
-  --mcp-view-radius: 0.75rem;
+  --mcp-view-text: var(--color-text-primary, #101519);
+  --mcp-view-muted: var(--color-text-secondary, #5c6b76);
+  --mcp-view-quiet: var(--color-text-tertiary, #7b8894);
+  --mcp-view-border: var(--color-border, #dbe3e7);
+  --mcp-view-panel: var(--color-background-primary, #ffffff);
+  --mcp-view-subtle: var(--color-background-secondary, #f4f7f8);
+  --mcp-view-accent: var(--color-accent, #0d7c8a);
+  --mcp-view-brand: var(--color-brand, #8a4fa3);
+  --mcp-view-success: var(--color-success, #12855f);
+  --mcp-view-warning: var(--color-warning, #d98b1f);
+  --mcp-view-danger: var(--color-danger, #c9453c);
+  --mcp-view-radius: 0.5rem;
+  --mcp-view-radius-sm: 0.25rem;
   --mcp-view-gap: 0.65rem;
   color: var(--mcp-view-text);
   font-family: var(
@@ -34,28 +76,32 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
 }
 
 :root[data-theme="dark"] {
-  --mcp-view-text: var(--color-text-primary, #f4efe7);
-  --mcp-view-muted: var(--color-text-secondary, #a99c8f);
-  --mcp-view-border: var(--color-border, rgba(150, 135, 120, 0.24));
-  --mcp-view-panel: var(--color-background-secondary, rgba(34, 30, 26, 0.92));
-  --mcp-view-subtle: rgba(128, 112, 95, 0.09);
-  --mcp-view-accent: var(--color-accent, #e49a53);
-  --mcp-view-success: var(--color-success, #62d99a);
-  --mcp-view-warning: var(--color-warning, #f6c453);
-  --mcp-view-danger: var(--color-danger, #ef7b72);
+  --mcp-view-text: var(--color-text-primary, #e6ecf0);
+  --mcp-view-muted: var(--color-text-secondary, #8895a0);
+  --mcp-view-quiet: var(--color-text-tertiary, #5d6a74);
+  --mcp-view-border: var(--color-border, #262c33);
+  --mcp-view-panel: var(--color-background-primary, #13161a);
+  --mcp-view-subtle: var(--color-background-secondary, #1d2329);
+  --mcp-view-accent: var(--color-accent, #3ec1cf);
+  --mcp-view-brand: var(--color-brand, #b47ec9);
+  --mcp-view-success: var(--color-success, #4fbf8b);
+  --mcp-view-warning: var(--color-warning, #e0a248);
+  --mcp-view-danger: var(--color-danger, #f07067);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --mcp-view-text: var(--color-text-primary, #f4efe7);
-    --mcp-view-muted: var(--color-text-secondary, #a99c8f);
-    --mcp-view-border: var(--color-border, rgba(150, 135, 120, 0.24));
-    --mcp-view-panel: var(--color-background-secondary, rgba(34, 30, 26, 0.92));
-    --mcp-view-subtle: rgba(128, 112, 95, 0.09);
-    --mcp-view-accent: var(--color-accent, #e49a53);
-    --mcp-view-success: var(--color-success, #62d99a);
-    --mcp-view-warning: var(--color-warning, #f6c453);
-    --mcp-view-danger: var(--color-danger, #ef7b72);
+    --mcp-view-text: var(--color-text-primary, #e6ecf0);
+    --mcp-view-muted: var(--color-text-secondary, #8895a0);
+    --mcp-view-quiet: var(--color-text-tertiary, #5d6a74);
+    --mcp-view-border: var(--color-border, #262c33);
+    --mcp-view-panel: var(--color-background-primary, #13161a);
+    --mcp-view-subtle: var(--color-background-secondary, #1d2329);
+    --mcp-view-accent: var(--color-accent, #3ec1cf);
+    --mcp-view-brand: var(--color-brand, #b47ec9);
+    --mcp-view-success: var(--color-success, #4fbf8b);
+    --mcp-view-warning: var(--color-warning, #e0a248);
+    --mcp-view-danger: var(--color-danger, #f07067);
   }
 }
 
@@ -79,16 +125,14 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
   border: 1px solid var(--mcp-view-border);
   border-radius: var(--mcp-view-radius);
   background: var(--mcp-view-panel);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
 .mcp-view-card-title {
   margin: 0 0 0.72rem;
-  color: var(--mcp-view-muted);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.13em;
-  text-transform: uppercase;
+  color: var(--mcp-view-text);
+  font-size: 0.9rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
 }
 
 .mcp-view-card-header {
@@ -106,7 +150,7 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
 .mcp-view-card-eyebrow {
   margin: 0 0 0.18rem;
   color: var(--mcp-view-accent);
-  font-size: 0.62rem;
+  font-size: 0.6rem;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -127,10 +171,16 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
 }
 
 .mcp-view-message {
-  padding: 1rem;
-  border: 1px dashed color-mix(in srgb, currentColor 25%, transparent);
-  border-radius: 0.6rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid color-mix(in srgb, currentColor 24%, transparent);
+  border-radius: var(--mcp-view-radius-sm);
+  background: color-mix(in srgb, currentColor 6%, transparent);
 }
+
+.mcp-view-message[data-tone="info"] { color: var(--mcp-view-accent); }
+.mcp-view-message[data-tone="success"] { color: var(--mcp-view-success); }
+.mcp-view-message[data-tone="warning"] { color: var(--mcp-view-warning); }
+.mcp-view-message[data-tone="danger"] { color: var(--mcp-view-danger); }
 
 .mcp-view-empty { margin: 0; }
 
@@ -145,7 +195,7 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
   gap: 0.12rem;
   min-width: 0;
   padding: 0.65rem;
-  border-radius: 0.55rem;
+  border-radius: var(--mcp-view-radius-sm);
   background: var(--mcp-view-subtle);
 }
 
@@ -158,6 +208,7 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
 .mcp-view-metric-value {
   overflow-wrap: anywhere;
   font-size: 1.1rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .mcp-view-metric[data-tone="info"] .mcp-view-metric-value { color: var(--mcp-view-accent); }
@@ -173,7 +224,7 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
 
 .mcp-view-badge {
   padding: 0.2rem 0.45rem;
-  border-radius: 999px;
+  border-radius: var(--mcp-view-radius-sm);
   background: color-mix(in srgb, var(--mcp-view-muted) 12%, transparent);
   color: var(--mcp-view-muted);
   font-size: 0.68rem;
@@ -255,7 +306,10 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
   color: var(--mcp-view-warning);
 }
 
-.mcp-view-stack { display: grid; gap: 0.42rem; }
+.mcp-view-stack { display: grid; gap: var(--mcp-view-gap); }
+.mcp-view-stack[data-gap="xs"] { gap: 0.25rem; }
+.mcp-view-stack[data-gap="sm"] { gap: 0.45rem; }
+.mcp-view-stack[data-gap="lg"] { gap: 1rem; }
 
 .mcp-view-row {
   display: flex;
@@ -305,7 +359,7 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
   min-height: 1.9rem;
   padding: 0.35rem 0.58rem;
   border: 1px solid var(--mcp-view-border);
-  border-radius: 0.5rem;
+  border-radius: var(--mcp-view-radius-sm);
   background: var(--mcp-view-subtle);
   color: var(--mcp-view-text);
   cursor: pointer;
@@ -352,6 +406,370 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
 
 .mcp-view-state-detail { max-width: 48ch; }
 
+.mcp-view-path-bar {
+  min-width: 0;
+  border: 1px solid var(--mcp-view-border);
+  border-radius: var(--mcp-view-radius);
+  background: var(--mcp-view-subtle);
+}
+
+.mcp-view-path-bar-list {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  min-height: 2.25rem;
+  margin: 0;
+  padding: 0 0.75rem;
+  overflow-x: auto;
+  list-style: none;
+  scrollbar-width: thin;
+}
+
+.mcp-view-path-bar-item {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.mcp-view-path-bar-item + .mcp-view-path-bar-item::before {
+  content: "/";
+  margin: 0 0.48rem;
+  color: var(--mcp-view-quiet);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.65rem;
+}
+
+.mcp-view-path-bar-button {
+  padding: 0.22rem 0;
+  border: 0;
+  background: transparent;
+  color: var(--mcp-view-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+}
+
+.mcp-view-path-bar-button:hover { color: var(--mcp-view-accent); }
+.mcp-view-path-bar-button:focus-visible {
+  border-radius: 0.12rem;
+  outline: 2px solid var(--mcp-view-accent);
+  outline-offset: 2px;
+}
+
+.mcp-view-path-bar-current {
+  color: var(--mcp-view-text);
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.mcp-view-limit-gauge {
+  --mcp-view-gauge-tone: var(--mcp-view-muted);
+  display: grid;
+  grid-template-columns: minmax(7rem, auto) minmax(6rem, 1fr) auto;
+  grid-template-areas:
+    "label track reading"
+    ". limit status";
+  align-items: center;
+  gap: 0.32rem 0.75rem;
+  min-width: 0;
+}
+
+.mcp-view-limit-gauge[data-tone="info"] { --mcp-view-gauge-tone: var(--mcp-view-accent); }
+.mcp-view-limit-gauge[data-tone="success"] { --mcp-view-gauge-tone: var(--mcp-view-success); }
+.mcp-view-limit-gauge[data-tone="warning"] { --mcp-view-gauge-tone: var(--mcp-view-warning); }
+.mcp-view-limit-gauge[data-tone="danger"] { --mcp-view-gauge-tone: var(--mcp-view-danger); }
+
+.mcp-view-limit-gauge-label { grid-area: label; font-size: 0.75rem; }
+.mcp-view-limit-gauge-track { position: relative; grid-area: track; min-width: 0; }
+.mcp-view-limit-gauge-reading {
+  grid-area: reading;
+  color: var(--mcp-view-text);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.mcp-view-limit-gauge-status {
+  grid-area: status;
+  color: var(--mcp-view-gauge-tone);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-align: right;
+  text-transform: uppercase;
+}
+.mcp-view-limit-gauge-limit {
+  grid-area: limit;
+  color: var(--mcp-view-quiet);
+  font-size: 0.62rem;
+}
+
+.mcp-view-limit-gauge-meter {
+  width: 100%;
+  height: 0.55rem;
+  border: 0;
+  border-radius: var(--mcp-view-radius-sm);
+  background: var(--mcp-view-subtle);
+  appearance: none;
+}
+.mcp-view-limit-gauge-meter::-webkit-meter-bar {
+  border: 0;
+  border-radius: var(--mcp-view-radius-sm);
+  background: var(--mcp-view-subtle);
+}
+.mcp-view-limit-gauge-meter::-webkit-meter-optimum-value {
+  border-radius: var(--mcp-view-radius-sm);
+  background: color-mix(in srgb, var(--mcp-view-gauge-tone) 70%, transparent);
+}
+.mcp-view-limit-gauge-meter::-moz-meter-bar {
+  border-radius: var(--mcp-view-radius-sm);
+  background: color-mix(in srgb, var(--mcp-view-gauge-tone) 70%, transparent);
+}
+.mcp-view-limit-gauge-marker {
+  position: absolute;
+  top: -0.18rem;
+  width: 2px;
+  height: 0.9rem;
+  background: var(--mcp-view-text);
+  transform: translateX(-1px);
+}
+
+.mcp-view-artifact-row {
+  display: grid;
+  grid-template-columns: minmax(7rem, auto) minmax(10rem, 1fr) auto;
+  align-items: center;
+  gap: 0.35rem 0.75rem;
+  width: 100%;
+  min-width: 0;
+  padding: 0.58rem 0.72rem;
+  border: 1px solid var(--mcp-view-border);
+  border-radius: var(--mcp-view-radius);
+  background: var(--mcp-view-panel);
+  color: var(--mcp-view-text);
+  text-align: left;
+}
+
+button.mcp-view-artifact-row {
+  cursor: pointer;
+  font: inherit;
+}
+button.mcp-view-artifact-row:hover { border-color: var(--mcp-view-accent); }
+button.mcp-view-artifact-row:focus-visible {
+  outline: 2px solid var(--mcp-view-accent);
+  outline-offset: 2px;
+}
+
+.mcp-view-artifact-row-identity {
+  display: flex;
+  align-items: center;
+  gap: 0.42rem;
+  min-width: 0;
+}
+.mcp-view-artifact-row-kind {
+  flex: 0 0 auto;
+  padding: 0.12rem 0.35rem;
+  border-radius: var(--mcp-view-radius-sm);
+  background: color-mix(in srgb, var(--mcp-view-accent) 10%, transparent);
+  color: var(--mcp-view-accent);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.58rem;
+  font-weight: 700;
+}
+.mcp-view-artifact-row-label { overflow-wrap: anywhere; font-size: 0.75rem; }
+.mcp-view-artifact-row-uri,
+.mcp-view-artifact-row-fingerprint {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--mcp-view-muted);
+  font-size: 0.65rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mcp-view-artifact-row-fingerprint {
+  grid-column: 2;
+  display: flex;
+  gap: 0.35rem;
+}
+.mcp-view-artifact-row-size {
+  grid-column: 3;
+  grid-row: 1;
+  color: var(--mcp-view-quiet);
+  font-size: 0.65rem;
+  text-align: right;
+}
+.mcp-view-artifact-row-verification {
+  grid-column: 3;
+  color: var(--mcp-view-muted);
+  font-size: 0.62rem;
+  text-align: right;
+}
+.mcp-view-artifact-row-verification[data-tone="info"] { color: var(--mcp-view-accent); }
+.mcp-view-artifact-row-verification[data-tone="success"] { color: var(--mcp-view-success); }
+.mcp-view-artifact-row-verification[data-tone="warning"] { color: var(--mcp-view-warning); }
+.mcp-view-artifact-row-verification[data-tone="danger"] { color: var(--mcp-view-danger); }
+
+.mcp-view-semantic-element {
+  min-width: 0;
+  color: var(--mcp-view-text);
+}
+.mcp-view-semantic-element[data-density="chip"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 1.75rem;
+  padding: 0.2rem 0.52rem;
+  border: 1px solid var(--mcp-view-border);
+  border-radius: var(--mcp-view-radius-sm);
+  background: var(--mcp-view-subtle);
+}
+.mcp-view-semantic-element[data-density="row"] {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1.2fr) minmax(5rem, auto) minmax(5rem, auto) auto;
+  align-items: center;
+  gap: 0.55rem 0.85rem;
+  min-height: 2.35rem;
+  padding: 0.45rem 0.65rem;
+  border-block: 1px solid var(--mcp-view-border);
+  background: var(--mcp-view-panel);
+}
+.mcp-view-semantic-element[data-density="card"] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem 1rem;
+  padding: 0.85rem;
+  border: 1px solid var(--mcp-view-border);
+  border-radius: var(--mcp-view-radius);
+  background: var(--mcp-view-panel);
+}
+.mcp-view-semantic-element[data-interactive="true"] { cursor: pointer; }
+.mcp-view-semantic-element[data-interactive="true"]:hover {
+  border-color: var(--mcp-view-accent);
+}
+.mcp-view-semantic-element[data-interactive="true"]:focus-visible {
+  outline: 2px solid var(--mcp-view-accent);
+  outline-offset: 2px;
+}
+
+.mcp-view-element-ident {
+  display: flex;
+  align-items: center;
+  gap: 0.48rem;
+  min-width: 0;
+}
+.mcp-view-element-ident-marker {
+  flex: 0 0 auto;
+  color: var(--mcp-view-brand);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+.mcp-view-element-ident-copy { display: grid; min-width: 0; gap: 0.08rem; }
+.mcp-view-element-ident-label {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.76rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mcp-view-element-ident-detail,
+.mcp-view-element-reading-label,
+.mcp-view-element-reading-detail,
+.mcp-view-element-verdict-label,
+.mcp-view-element-provenance-label {
+  color: var(--mcp-view-quiet);
+  font-size: 0.61rem;
+}
+
+.mcp-view-element-reading { display: grid; gap: 0.08rem; min-width: 0; }
+.mcp-view-element-reading-measure { display: inline-flex; align-items: baseline; gap: 0.24rem; }
+.mcp-view-element-reading-value,
+.mcp-view-element-reading-unit {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-variant-numeric: tabular-nums;
+}
+.mcp-view-element-reading-value { font-size: 0.8rem; }
+.mcp-view-element-reading-unit { color: var(--mcp-view-muted); font-size: 0.65rem; }
+.mcp-view-element-body { min-width: 0; }
+
+.mcp-view-element-verdict { display: grid; gap: 0.08rem; min-width: 0; }
+.mcp-view-element-verdict-value {
+  color: var(--mcp-view-muted);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+[data-tone="info"] > .mcp-view-element-verdict .mcp-view-element-verdict-value {
+  color: var(--mcp-view-accent);
+}
+[data-tone="success"] > .mcp-view-element-verdict .mcp-view-element-verdict-value {
+  color: var(--mcp-view-success);
+}
+[data-tone="warning"] > .mcp-view-element-verdict .mcp-view-element-verdict-value {
+  color: var(--mcp-view-warning);
+}
+[data-tone="danger"] > .mcp-view-element-verdict .mcp-view-element-verdict-value {
+  color: var(--mcp-view-danger);
+}
+
+.mcp-view-element-provenance {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  min-width: 0;
+  color: var(--mcp-view-quiet);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.6rem;
+}
+.mcp-view-element-provenance-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mcp-view-semantic-element[data-density="chip"] .mcp-view-element-ident-detail,
+.mcp-view-semantic-element[data-density="chip"] .mcp-view-element-reading-label,
+.mcp-view-semantic-element[data-density="chip"] .mcp-view-element-reading-detail,
+.mcp-view-semantic-element[data-density="chip"] .mcp-view-element-verdict-label,
+.mcp-view-semantic-element[data-density="chip"] .mcp-view-element-body,
+.mcp-view-semantic-element[data-density="chip"] .mcp-view-element-provenance {
+  display: none;
+}
+.mcp-view-semantic-element[data-density="chip"] .mcp-view-element-ident-label,
+.mcp-view-semantic-element[data-density="chip"] .mcp-view-element-reading-value {
+  font-size: 0.68rem;
+}
+.mcp-view-semantic-element[data-density="row"] .mcp-view-element-provenance {
+  justify-self: end;
+}
+.mcp-view-semantic-element[data-density="row"] .mcp-view-element-body {
+  grid-column: 1 / -1;
+}
+.mcp-view-semantic-element[data-density="card"] .mcp-view-element-ident {
+  grid-column: 1;
+}
+.mcp-view-semantic-element[data-density="card"] .mcp-view-element-verdict {
+  grid-column: 2;
+  grid-row: 1;
+  text-align: right;
+}
+.mcp-view-semantic-element[data-density="card"] .mcp-view-element-reading {
+  grid-column: 1 / -1;
+  padding-block: 0.65rem;
+  border-block: 1px solid var(--mcp-view-border);
+}
+.mcp-view-semantic-element[data-density="card"] .mcp-view-element-body {
+  grid-column: 1 / -1;
+}
+.mcp-view-semantic-element[data-density="card"] .mcp-view-element-reading-value {
+  font-size: 1.35rem;
+}
+.mcp-view-semantic-element[data-density="card"] .mcp-view-element-provenance {
+  grid-column: 1 / -1;
+}
+
 @container (max-width: 440px) {
   .mcp-view-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .mcp-view-row-responsive { align-items: flex-start; flex-direction: column; }
@@ -359,6 +777,29 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
   .mcp-view-card-actions { justify-content: flex-start; }
   .mcp-view-key-value { grid-template-columns: 1fr; gap: 0.2rem; }
   .mcp-view-key-value dd { text-align: left; }
+  .mcp-view-limit-gauge {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "label reading"
+      "track track"
+      "limit status";
+  }
+  .mcp-view-artifact-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .mcp-view-artifact-row-identity,
+  .mcp-view-artifact-row-uri,
+  .mcp-view-artifact-row-fingerprint { grid-column: 1; }
+  .mcp-view-artifact-row-size,
+  .mcp-view-artifact-row-verification { grid-column: 2; }
+  .mcp-view-semantic-element[data-density="row"] {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .mcp-view-semantic-element[data-density="row"] .mcp-view-element-reading,
+  .mcp-view-semantic-element[data-density="row"] .mcp-view-element-provenance {
+    grid-column: 1 / -1;
+  }
+  .mcp-view-semantic-element[data-density="row"] .mcp-view-element-provenance {
+    justify-self: start;
+  }
 }
 `;
 

@@ -6,10 +6,14 @@ import {
   Badge,
   Button,
   Card,
+  CrossSelection,
   DataTable,
   EmptyState,
   KeyValueList,
+  Message,
+  Metric,
   MetricGrid,
+  Stack,
   StateMessage,
   Toolbar,
 } from "./components.tsx";
@@ -35,20 +39,25 @@ Deno.test({
           title="Qualification"
           actions={<Badge tone="success">Ready</Badge>}
         >
-          <MetricGrid
-            items={[{
-              id: "temperature",
-              label: "Temperature",
-              value: "94",
-              unit: "°C",
-            }]}
-          />
+          <Stack gap="sm">
+            <MetricGrid
+              items={[{
+                id: "temperature",
+                label: "Temperature",
+                value: "94",
+                unit: "°C",
+              }]}
+            />
+            <Metric label="Duration" value="148" unit="s" tone="info" />
+          </Stack>
           <KeyValueList
             items={[{ id: "model", label: "Model", value: "CM-01" }]}
           />
           <Toolbar label="Qualification actions">
             <Button pressed>Pin</Button>
           </Toolbar>
+          <CrossSelection label="Selection" value="MotorAssembly" status="linked" />
+          <Message tone="warning">Recorded values may be stale</Message>
           <EmptyState>No secondary evidence</EmptyState>
           <StateMessage tone="danger" title="Invalid result">Check the solver log</StateMessage>
         </Card>,
@@ -62,6 +71,10 @@ Deno.test({
       assertEquals(root.querySelector(".mcp-view-key-value")?.textContent, "ModelCM-01");
       assertEquals(root.querySelector(".mcp-view-toolbar")?.getAttribute("role"), "group");
       assertEquals(root.querySelector(".mcp-view-button")?.getAttribute("aria-pressed"), "true");
+      assertEquals(root.querySelector(".mcp-view-stack")?.getAttribute("data-gap"), "sm");
+      assertEquals(root.querySelectorAll(".mcp-view-metric").length, 2);
+      assertEquals(root.querySelector(".mcp-view-cross-selection")?.getAttribute("role"), "status");
+      assertEquals(root.querySelector(".mcp-view-message")?.getAttribute("data-tone"), "warning");
       assertEquals(root.querySelector(".mcp-view-empty")?.textContent, "No secondary evidence");
       assertEquals(root.querySelector(".mcp-view-state")?.getAttribute("role"), "alert");
     } finally {

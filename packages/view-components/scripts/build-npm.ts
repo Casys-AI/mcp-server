@@ -30,7 +30,7 @@ await build({
   package: {
     name: "@casys/mcp-view-components",
     version: denoJson.version,
-    description: "Optional component runtime and ERPNext-inspired visual kit for MCP Apps",
+    description: "Optional light-first component runtime for small composable MCP App viewers",
     license: "MIT",
     repository: { type: "git", url: "https://github.com/Casys-AI/mcp-server" },
     keywords: ["mcp", "model-context-protocol", "mcp-apps", "components", "preact"],

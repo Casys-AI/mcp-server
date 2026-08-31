@@ -11,13 +11,43 @@ import {
   ElementVerdict,
   SemanticElement,
   type SemanticElementDensity,
+  SemanticList,
 } from "./semantic-element.tsx";
 
 const REFERENCE: ComposedSemanticRef = Object.freeze({
   domain: "simulation",
   kind: "metric",
   id: "temperature.outlet",
-  basisFingerprint: "sha256:abc123",
+  basisFingerprint: "a".repeat(64),
+});
+
+Deno.test({
+  name: "SemanticList groups row objects without inventing ordering semantics",
+  permissions: { read: true, env: true, run: true },
+  async fn() {
+    await withDom((root) => {
+      render(
+        <SemanticList label="Simulation runs" scrollable>
+          <SemanticElement
+            reference={REFERENCE}
+            density="row"
+            ident={<ElementIdent label="Run A" />}
+          />
+          <SemanticElement
+            reference={{ ...REFERENCE, id: "temperature.return" }}
+            density="row"
+            ident={<ElementIdent label="Run B" />}
+          />
+        </SemanticList>,
+        root,
+      );
+      const list = root.firstElementChild;
+      assertEquals(list?.getAttribute("role"), "group");
+      assertEquals(list?.getAttribute("aria-label"), "Simulation runs");
+      assertEquals(list?.getAttribute("data-scrollable"), "true");
+      assertEquals(list?.querySelectorAll(".mcp-view-semantic-element").length, 2);
+    });
+  },
 });
 
 Deno.test({

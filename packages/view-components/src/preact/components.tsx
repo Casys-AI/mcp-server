@@ -289,6 +289,54 @@ export interface ToolbarProps {
   readonly children?: ComponentChildren;
 }
 
+export interface TextInputProps {
+  readonly label: string;
+  readonly value: string;
+  readonly placeholder?: string;
+  readonly type?: "text" | "search";
+  readonly disabled?: boolean;
+  readonly className?: string;
+  readonly onValueInput?: (value: string) => void;
+}
+
+/** Compact controlled text input with a mandatory accessible label. */
+export function TextInput({
+  label,
+  value,
+  placeholder,
+  type = "search",
+  disabled,
+  className,
+  onValueInput,
+}: TextInputProps): JSX.Element {
+  return (
+    <input
+      aria-label={label}
+      class={classes("mcp-view-text-input", className)}
+      disabled={disabled}
+      onInput={(event) => onValueInput?.(event.currentTarget.value)}
+      placeholder={placeholder}
+      type={type}
+      value={value}
+    />
+  );
+}
+
+export interface CodeBlockProps {
+  readonly label?: string;
+  readonly className?: string;
+  readonly children?: ComponentChildren;
+}
+
+/** Bounded preformatted content for expressions, source excerpts, and exact text. */
+export function CodeBlock({ label, className, children }: CodeBlockProps): JSX.Element {
+  return (
+    <pre aria-label={label} class={classes("mcp-view-code-block", className)}>
+      <code>{children}</code>
+    </pre>
+  );
+}
+
 export function Toolbar({
   label,
   className,
@@ -366,6 +414,7 @@ export function CrossSelection({
 export interface StateMessageProps {
   readonly title?: ComponentChildren;
   readonly tone?: PresentationTone;
+  readonly busy?: boolean;
   readonly children?: ComponentChildren;
   readonly className?: string;
 }
@@ -373,11 +422,13 @@ export interface StateMessageProps {
 export function StateMessage({
   title,
   tone = "neutral",
+  busy,
   children,
   className,
 }: StateMessageProps): JSX.Element {
   return (
     <div
+      aria-busy={busy}
       class={classes("mcp-view-state", className)}
       data-tone={tone}
       role={tone === "danger" ? "alert" : "status"}

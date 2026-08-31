@@ -355,6 +355,43 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
   gap: 0.35rem;
 }
 
+.mcp-view-text-input {
+  min-width: 0;
+  min-height: 1.9rem;
+  padding: 0.32rem 0.55rem;
+  border: 1px solid var(--mcp-view-border);
+  border-radius: var(--mcp-view-radius-sm);
+  outline: none;
+  background: var(--mcp-view-panel);
+  color: var(--mcp-view-text);
+  font: inherit;
+  font-size: 0.75rem;
+}
+.mcp-view-text-input::placeholder { color: var(--mcp-view-quiet); }
+.mcp-view-text-input:focus-visible {
+  border-color: var(--mcp-view-accent);
+  outline: 2px solid var(--mcp-view-accent);
+  outline-offset: 2px;
+}
+.mcp-view-text-input:disabled { cursor: not-allowed; opacity: 0.5; }
+
+.mcp-view-code-block {
+  display: block;
+  max-height: 10rem;
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  overflow: auto;
+  border: 1px solid var(--mcp-view-border);
+  border-radius: var(--mcp-view-radius-sm);
+  background: var(--mcp-view-subtle);
+  color: var(--mcp-view-muted);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .mcp-view-button {
   min-height: 1.9rem;
   padding: 0.35rem 0.58rem;
@@ -634,6 +671,24 @@ button.mcp-view-artifact-row:focus-visible {
   padding: 0.45rem 0.65rem;
   border-block: 1px solid var(--mcp-view-border);
   background: var(--mcp-view-panel);
+}
+.mcp-view-semantic-list {
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--mcp-view-border);
+  border-radius: var(--mcp-view-radius);
+}
+.mcp-view-semantic-list[data-scrollable="true"] {
+  max-height: min(22rem, 65cqi);
+  overflow: auto;
+}
+.mcp-view-semantic-list > .mcp-view-semantic-element[data-density="row"] {
+  border-inline: 0;
+  border-block-start: 0;
+}
+.mcp-view-semantic-list > .mcp-view-semantic-element[data-density="row"]:last-child {
+  border-block-end: 0;
 }
 .mcp-view-semantic-element[data-density="card"] {
   display: grid;

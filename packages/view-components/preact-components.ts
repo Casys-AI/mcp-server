@@ -13,6 +13,7 @@ export {
   Badge,
   Button,
   Card,
+  CodeBlock,
   CrossSelection,
   DataTable,
   EmptyState,
@@ -22,12 +23,14 @@ export {
   MetricGrid,
   Stack,
   StateMessage,
+  TextInput,
   Toolbar,
 } from "./src/preact/components.tsx";
 export type {
   BadgeProps,
   ButtonProps,
   CardProps,
+  CodeBlockProps,
   CrossSelectionProps,
   DataTableColumn,
   DataTableProps,
@@ -41,6 +44,7 @@ export type {
   PresentationTone,
   StackProps,
   StateMessageProps,
+  TextInputProps,
   ToolbarProps,
 } from "./src/preact/components.tsx";
 
@@ -62,6 +66,7 @@ export {
   ElementReading,
   ElementVerdict,
   SemanticElement,
+  SemanticList,
 } from "./src/preact/semantic-element.tsx";
 export type {
   ElementBodyProps,
@@ -71,6 +76,7 @@ export type {
   ElementVerdictProps,
   SemanticElementDensity,
   SemanticElementProps,
+  SemanticListProps,
 } from "./src/preact/semantic-element.tsx";
 
 export {

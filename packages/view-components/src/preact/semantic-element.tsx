@@ -7,6 +7,32 @@ import type { PresentationTone } from "./components.tsx";
 
 export type SemanticElementDensity = "chip" | "row" | "card";
 
+export interface SemanticListProps {
+  readonly label: string;
+  readonly scrollable?: boolean;
+  readonly className?: string;
+  readonly children?: ComponentChildren;
+}
+
+/** Bounded group for row-density semantic objects; it owns no domain ordering. */
+export function SemanticList({
+  label,
+  scrollable = false,
+  className,
+  children,
+}: SemanticListProps): JSX.Element {
+  return (
+    <div
+      aria-label={label}
+      class={classes("mcp-view-semantic-list", className)}
+      data-scrollable={scrollable ? "true" : undefined}
+      role="group"
+    >
+      {children}
+    </div>
+  );
+}
+
 export interface ElementIdentProps {
   readonly label: ComponentChildren;
   readonly detail?: ComponentChildren;

@@ -28,6 +28,7 @@ import { defineComponentRegistry, installMcpViewTheme } from "@casys/mcp-view-co
 import {
   ArtifactRow,
   Card,
+  CodeBlock,
   ElementBody,
   ElementIdent,
   ElementProvenance,
@@ -35,6 +36,8 @@ import {
   LimitGauge,
   PathBar,
   SemanticElement,
+  SemanticList,
+  TextInput,
 } from "@casys/mcp-view-components/preact";
 ```
 
@@ -42,7 +45,7 @@ import {
 
 Primitives:
 
-- `Card`, `Badge`, `Button`, `Toolbar`, `Stack`
+- `Card`, `Badge`, `Button`, `Toolbar`, `Stack`, `TextInput`, `CodeBlock`
 - `Metric`, `MetricGrid`, `KeyValueList`, `DataTable`
 - `Message`, `StateMessage`, `EmptyState`, `CrossSelection`
 
@@ -55,6 +58,7 @@ Reusable structures:
 Semantic composition:
 
 - `SemanticElement` with `chip | row | card` density
+- `SemanticList` for a bounded, optionally scrollable group of row-density semantic objects
 - required `ElementIdent`
 - optional `ElementReading`, `ElementBody`, `ElementVerdict`, and `ElementProvenance`
 

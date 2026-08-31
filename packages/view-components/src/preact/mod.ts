@@ -6,6 +6,7 @@ export {
   Badge,
   Button,
   Card,
+  CodeBlock,
   CrossSelection,
   DataTable,
   ElementBody,
@@ -21,8 +22,10 @@ export {
   MetricGrid,
   PathBar,
   SemanticElement,
+  SemanticList,
   Stack,
   StateMessage,
+  TextInput,
   Toolbar,
 } from "../../preact-components.ts";
 export type {
@@ -40,6 +43,7 @@ export type {
   BadgeProps,
   ButtonProps,
   CardProps,
+  CodeBlockProps,
   CrossSelectionProps,
   DataTableColumn,
   DataTableProps,
@@ -62,7 +66,9 @@ export type {
   PresentationTone,
   SemanticElementDensity,
   SemanticElementProps,
+  SemanticListProps,
   StackProps,
   StateMessageProps,
+  TextInputProps,
   ToolbarProps,
 } from "../../preact-components.ts";

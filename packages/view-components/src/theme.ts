@@ -1004,6 +1004,7 @@ button.mcp-view-artifact-row:focus-visible {
     grid-template-columns: minmax(0, 1fr) auto;
   }
   .mcp-view-semantic-element[data-density="row"] .mcp-view-element-reading,
+  .mcp-view-semantic-element[data-density="row"] .mcp-view-element-limit,
   .mcp-view-semantic-element[data-density="row"] .mcp-view-element-provenance {
     grid-column: 1 / -1;
   }

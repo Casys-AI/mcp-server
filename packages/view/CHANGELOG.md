@@ -7,6 +7,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-08-31
+
+### Changed
+
+- Point the result-viewer scaffold and documentation at `@casys/mcp-view-components` 0.2.1,
+  which adds the v2 typography roles used by the compact provider viewers.
+
 ## [0.9.1] - 2026-08-31
 
 ### Changed

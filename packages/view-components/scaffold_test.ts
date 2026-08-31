@@ -38,7 +38,7 @@ Deno.test("result-viewer scaffold creates a standalone component project", async
 
     const configPath = join(target, "deno.json");
     const generatedConfig = await Deno.readTextFile(configPath);
-    assertStringIncludes(generatedConfig, '"@casys/mcp-view": "jsr:@casys/mcp-view@0.8.0"');
+    assertStringIncludes(generatedConfig, '"@casys/mcp-view": "jsr:@casys/mcp-view@0.9.0"');
     assertStringIncludes(
       generatedConfig,
       '"@casys/mcp-view-components": "jsr:@casys/mcp-view-components@0.1.0"',
@@ -50,7 +50,7 @@ Deno.test("result-viewer scaffold creates a standalone component project", async
     await Deno.writeTextFile(
       configPath,
       generatedConfig
-        .replace("jsr:@casys/mcp-view@0.8.0", coreModule)
+        .replace("jsr:@casys/mcp-view@0.9.0", coreModule)
         .replace("jsr:@casys/mcp-view-components@0.1.0", componentsModule),
     );
 

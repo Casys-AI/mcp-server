@@ -7,6 +7,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-08-31
+
+### Changed
+
+- Keep the core package renderer-neutral and move the optional component runtime, Preact
+  presentation kit, theme, and scaffold to `@casys/mcp-view-components`.
+- Move dependency-free viewer manifests and recorded-session contracts to
+  `@casys/mcp-view-contracts`, while retaining the core `./contracts` compatibility export.
+- Remove the former core `./preact`, `./preact/components`, and `./scaffold` exports so consumers
+  that only need MCP App lifecycle and contracts do not install a UI framework.
+
 ## [0.8.0] - 2026-08-31
 
 ### Added

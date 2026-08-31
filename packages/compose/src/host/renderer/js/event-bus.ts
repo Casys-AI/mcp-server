@@ -66,6 +66,7 @@ export function generateEventBusScript(
     // mcp-compose Event Bus - MCP Apps Protocol host
     const COMPOSE_METHOD = '${COMPOSE_EVENT_METHOD}';
     const syncRules = ${serializeForInlineScript(descriptor.sync)};
+    const portSyncRules = ${serializeForInlineScript(descriptor.portSync ?? [])};
     const sharedContext = ${serializeForInlineScript(descriptor.sharedContext ?? {})};
     const slotConfigs = ${serializeForInlineScript(serialisedSlots)};
     const initialResultsDelivered = new Set();
@@ -211,12 +212,33 @@ export function generateEventBusScript(
       for (const [id, descriptor] of entries) {
         if (!id || !descriptor || typeof descriptor !== 'object' ||
           typeof descriptor.title !== 'string' || !descriptor.title) return undefined;
+        if (descriptor.description !== undefined && typeof descriptor.description !== 'string') {
+          return undefined;
+        }
+        if (!validEventPorts(descriptor.events)) return undefined;
       }
       const known = new Set(entries.map(([id]) => id));
       if (value.defaultSurface !== undefined && !validSurface(value.defaultSurface, known)) {
         return undefined;
       }
       return value;
+    }
+
+    function validEventPorts(value) {
+      if (value === undefined) return true;
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+      return validEventNames(value.emits) && validEventNames(value.accepts);
+    }
+
+    function validEventNames(value) {
+      if (value === undefined) return true;
+      if (!Array.isArray(value)) return false;
+      const names = new Set();
+      for (const name of value) {
+        if (typeof name !== 'string' || !name.trim() || names.has(name)) return false;
+        names.add(name);
+      }
+      return true;
     }
 
     function surfaceContextForSlot(slot) {
@@ -300,9 +322,20 @@ export function generateEventBusScript(
       }, targetOriginForSlot(slot));
     }
 
+    function componentSupports(slot, direction, name) {
+      const catalog = componentCatalogs.get(slot);
+      if (!catalog) return false;
+      const surfaceContext = surfaceContextForSlot(slot);
+      if (surfaceContext.status !== 'ready') return false;
+      return surfaceContext.surface.components.some((item) =>
+        catalog.components[item.component]?.events?.[direction]?.includes(name)
+      );
+    }
+
     // Route an event through sync rules, calling
     // deliver(rule, targetSlot, targetIframe) for each matching target.
     function routeEvent(sourceSlot, eventType, deliver) {
+      const staticallyDelivered = new Set();
       for (const rule of syncRules) {
         if (rule.from !== sourceSlot) continue;
         if (rule.event !== '*' && rule.event !== eventType) continue;
@@ -316,6 +349,20 @@ export function generateEventBusScript(
 
         for (const [targetSlot, target] of targets) {
           deliver(rule, targetSlot, target);
+          staticallyDelivered.add(JSON.stringify([targetSlot, rule.action]));
+        }
+      }
+
+      for (const rule of portSyncRules) {
+        if (rule.event !== eventType) continue;
+        if (!componentSupports(sourceSlot, 'emits', eventType)) continue;
+        for (const [targetSlot, target] of iframes.entries()) {
+          if (targetSlot === sourceSlot) continue;
+          if (!componentSupports(targetSlot, 'accepts', rule.action)) continue;
+          const routeKey = JSON.stringify([targetSlot, rule.action]);
+          if (staticallyDelivered.has(routeKey)) continue;
+          deliver(rule, targetSlot, target);
+          staticallyDelivered.add(routeKey);
         }
       }
     }

@@ -4,6 +4,7 @@
   "license": "MIT",
   "exports": {
     ".": "./mod.ts",
+    "./contracts": "./contracts.ts",
     "./preact": "./preact.ts",
     "./preact/components": "./preact-components.ts",
     "./react": "./react.ts",
@@ -12,6 +13,7 @@
   "publish": {
     "include": [
       "mod.ts",
+      "contracts.ts",
       "preact.ts",
       "preact-components.ts",
       "react.ts",
@@ -29,7 +31,7 @@
   "tasks": {
     "build:npm": "deno run -A scripts/build-npm.ts",
     "test": "deno test --allow-read --allow-write --allow-run --allow-env src/ scaffold_test.ts preact_components_test.ts",
-    "check": "deno check mod.ts preact.ts preact-components.ts react.ts scaffold.ts",
+    "check": "deno check mod.ts contracts.ts preact.ts preact-components.ts react.ts scaffold.ts",
     "lint": "deno lint",
     "fmt": "deno fmt",
     "publish:check": "deno publish --dry-run --allow-dirty",

@@ -11,6 +11,11 @@ All notable changes to `@casys/mcp-compose` will be documented in this file.
   unknown-component failures.
 - Support component-only Apps with no standalone default and report `surface-required` when a host
   omits the selection.
+- Add component event-port catalogs and `portSync` policies. Hosts can keep one stable composition
+  policy while Compose connects only distinct active surfaces that advertise both ends, with
+  preflight against tool manifests and no payload or identifier transformation.
+- Add an explicit JSON template parser and `.json` loading path for canonical agent-authored
+  composition manifests; existing YAML dashboards remain compatible.
 
 ### Changed
 

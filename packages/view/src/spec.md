@@ -68,6 +68,10 @@ the shared `Card`, `Badge`, `MetricGrid`, `KeyValueList`, `DataTable`, `Button`,
   safe renderer-neutral primitives; `defineCustomComponent()` keeps specialized rendering local.
 - `ctx.events.emit()` / `ctx.events.on()` exchange validated `ui/compose/event` messages with a
   compatible parent. This channel is optional and distinct from standard model-context messages.
+- component descriptors may declare `events.emits` / `events.accepts`; these are discoverable ports,
+  not implicit routes;
+- `defineSemanticSelection()`, `emitSemanticSelection()`, and `onSemanticSelection()` provide a
+  versioned structural semantic-reference contract without owning product domain values or mappings.
 - `installMcpViewTheme()` installs the shared ERPNext-derived visual tokens and component classes
   once per document. The Preact surface runtime does this by default.
 

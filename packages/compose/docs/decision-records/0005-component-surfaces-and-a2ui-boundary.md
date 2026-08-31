@@ -42,9 +42,12 @@ Compose validates only the safe grammar, then sends the requested or default sur
 `unresolved`; a component-only App without an explicit selection yields `surface-required`.
 Resolution never depends on dimensions or child DOM inspection.
 
-`ui/compose/event` remains a separate, declared event plane. A component instance's stable `id`
-supports future stateful patch operations and unambiguous event routing without changing the current
-whole-surface contract.
+`ui/compose/event` remains a separate, declared event plane. Component descriptors may advertise the
+event names they emit and accept. A host-selected `portSync` policy resolves those ports against the
+active surfaces at delivery time, allowing Apps to enter and leave a session without a hard-coded
+MCP matrix. Matching names alone never authorize a route, and Compose never transforms the payload.
+A component instance's stable `id` continues to support stateful patch operations and unambiguous
+local ownership without exposing child DOM.
 
 ## A2UI boundary
 
@@ -61,3 +64,5 @@ subset at the edge.
 4. Repeated component instances have distinct stable IDs.
 5. Event routes deliver the same payload independently of surface composition.
 6. Legacy Apps continue to mount unchanged.
+7. Dynamic port routes require declarations on both distinct active surfaces and never infer a
+   semantic identifier mapping.

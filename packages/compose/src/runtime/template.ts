@@ -1,8 +1,9 @@
 /**
  * Dashboard template parsing, validation, and arg injection.
  *
- * Templates are YAML files that define which MCP servers to start,
- * which tools to call, and how to arrange the resulting UIs.
+ * Canonical agent-authored templates are JSON. YAML remains supported for existing human-authored
+ * dashboards. Both define which MCP servers to start, which tools to call, and how to arrange the
+ * resulting UIs.
  * Runtime args are injected via `{{placeholder}}` syntax.
  *
  * @module runtime/template
@@ -97,6 +98,22 @@ export function validateTemplate(
     errors.push(
       `orchestration.layout "${template.orchestration.layout}" is not a valid layout`,
     );
+  }
+  if (template.orchestration?.portSync !== undefined) {
+    if (!Array.isArray(template.orchestration.portSync)) {
+      errors.push("orchestration.portSync must be an array");
+    } else {
+      for (let index = 0; index < template.orchestration.portSync.length; index++) {
+        const rule = template.orchestration.portSync[index];
+        for (const field of ["event", "action"] as const) {
+          if (typeof rule?.[field] !== "string" || !rule[field].trim()) {
+            errors.push(
+              `orchestration.portSync[${index}].${field} must be a non-empty string`,
+            );
+          }
+        }
+      }
+    }
   }
 
   return { valid: errors.length === 0, errors };
@@ -224,14 +241,23 @@ export function parseTemplate(yaml: string, filePath?: string): DashboardTemplat
     } satisfies RuntimeError;
   }
 
-  if (!data || typeof data !== "object" || Array.isArray(data)) {
+  return templateObject(data, "YAML", filePath);
+}
+
+/** Parse the canonical agent-facing JSON dashboard manifest. */
+export function parseTemplateJson(json: string, filePath?: string): DashboardTemplate {
+  let data: unknown;
+  try {
+    data = JSON.parse(json);
+  } catch (error) {
     throw {
       code: RuntimeErrorCode.TEMPLATE_PARSE_ERROR,
-      message: `Template must be a YAML object${filePath ? ` (${filePath})` : ""}`,
+      message: `Invalid JSON${filePath ? ` in ${filePath}` : ""}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
     } satisfies RuntimeError;
   }
-
-  return data as DashboardTemplate;
+  return templateObject(data, "JSON", filePath);
 }
 
 /**
@@ -243,8 +269,24 @@ export function parseTemplate(yaml: string, filePath?: string): DashboardTemplat
  * ```
  */
 export async function loadTemplate(path: string): Promise<DashboardTemplate> {
-  const yaml = await Deno.readTextFile(path);
-  return parseTemplate(yaml, path);
+  const text = await Deno.readTextFile(path);
+  return path.toLowerCase().endsWith(".json")
+    ? parseTemplateJson(text, path)
+    : parseTemplate(text, path);
+}
+
+function templateObject(
+  data: unknown,
+  format: "JSON" | "YAML",
+  filePath?: string,
+): DashboardTemplate {
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    throw {
+      code: RuntimeErrorCode.TEMPLATE_PARSE_ERROR,
+      message: `Template must be a ${format} object${filePath ? ` (${filePath})` : ""}`,
+    } satisfies RuntimeError;
+  }
+  return data as DashboardTemplate;
 }
 
 /**

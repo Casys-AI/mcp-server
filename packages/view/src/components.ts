@@ -1,6 +1,9 @@
 /** Renderer-neutral component catalog and surface runtime for MCP Apps. */
 
 import type { McpUiHostContext } from "@modelcontextprotocol/ext-apps";
+import type { ViewComponentEventPorts } from "./composition-contracts.ts";
+
+export type { ViewComponentEventPorts } from "./composition-contracts.ts";
 
 export const CASYS_COMPONENT_CATALOG_CAPABILITY_KEY = "io.casys.mcp.view-components/v1";
 export const CASYS_SURFACE_CONTEXT_KEY = "io.casys.mcp.surface/v1";
@@ -40,6 +43,8 @@ export interface ComponentSurface {
 export interface ViewComponentDescriptor {
   readonly title: string;
   readonly description?: string;
+  /** Discoverable ports only; the composition host remains authoritative for routing. */
+  readonly events?: ViewComponentEventPorts;
 }
 
 /** Serializable catalog advertised during `ui/initialize`. */
@@ -106,11 +111,11 @@ export interface MountComponentSurfaceOptions<TData, TAppContext> {
 export function defineViewComponent<TData = unknown, TAppContext = unknown>(
   definition: ViewComponentDefinition<TData, TAppContext>,
 ): ViewComponentDefinition<TData, TAppContext> {
-  validateDescriptor(definition.descriptor);
+  const descriptor = normalizedDescriptor(definition.descriptor);
   if (typeof definition.mount !== "function") {
     throw new TypeError("View component must declare a mount function");
   }
-  return Object.freeze(definition);
+  return Object.freeze({ ...definition, descriptor });
 }
 
 export function defineComponentRegistry<TData = unknown, TAppContext = unknown>(
@@ -183,7 +188,7 @@ export function advertisedComponentCatalog<TData, TAppContext>(
   const components = Object.fromEntries(
     Object.entries(registry.components).map(([id, definition]) => [
       id,
-      definition.descriptor,
+      normalizedDescriptor(definition.descriptor),
     ]),
   );
   return Object.freeze({
@@ -346,6 +351,48 @@ function validateDescriptor(descriptor: ViewComponentDescriptor): void {
   }
   if (descriptor.description !== undefined && typeof descriptor.description !== "string") {
     throw new TypeError("View component description must be a string");
+  }
+  validateEventPorts(descriptor.events);
+}
+
+function normalizedDescriptor(descriptor: ViewComponentDescriptor): ViewComponentDescriptor {
+  validateDescriptor(descriptor);
+  const events = descriptor.events === undefined ? undefined : Object.freeze({
+    ...(descriptor.events.emits ? { emits: Object.freeze([...descriptor.events.emits]) } : {}),
+    ...(descriptor.events.accepts
+      ? { accepts: Object.freeze([...descriptor.events.accepts]) }
+      : {}),
+  });
+  return Object.freeze({
+    title: descriptor.title,
+    ...(descriptor.description !== undefined ? { description: descriptor.description } : {}),
+    ...(events ? { events } : {}),
+  });
+}
+
+function validateEventPorts(ports: ViewComponentEventPorts | undefined): void {
+  if (ports === undefined) return;
+  if (!ports || typeof ports !== "object" || Array.isArray(ports)) {
+    throw new TypeError("View component events must be an object");
+  }
+  validateEventNames(ports.emits, "emits");
+  validateEventNames(ports.accepts, "accepts");
+}
+
+function validateEventNames(names: readonly string[] | undefined, field: string): void {
+  if (names === undefined) return;
+  if (!Array.isArray(names)) {
+    throw new TypeError(`View component ${field} must be an array`);
+  }
+  const seen = new Set<string>();
+  for (const name of names) {
+    if (typeof name !== "string" || !name.trim()) {
+      throw new TypeError(`View component ${field} names must be non-empty strings`);
+    }
+    if (seen.has(name)) {
+      throw new TypeError(`Duplicate View component ${field} name ${JSON.stringify(name)}`);
+    }
+    seen.add(name);
   }
 }
 

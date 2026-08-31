@@ -231,6 +231,7 @@ export async function composeDashboard(
     const orchestration = {
       layout: template.orchestration.layout,
       sync: template.orchestration.sync,
+      portSync: template.orchestration.portSync,
       sharedContext: template.orchestration.sharedContext,
     };
 

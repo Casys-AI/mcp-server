@@ -4,6 +4,7 @@ import {
   defineViewComponent,
   type ViewComponentDefinition,
   type ViewComponentDescriptor,
+  type ViewComponentEventPorts,
   type ViewComponentMountContext,
 } from "./components.ts";
 import { installMcpViewTheme } from "./theme.ts";
@@ -33,6 +34,7 @@ export interface KeyValueComponentValue {
 interface PrimitiveConfig<TData, TValue> {
   readonly title: string;
   readonly description?: string;
+  readonly events?: ViewComponentEventPorts;
   readonly select: (data: TData) => TValue;
 }
 
@@ -139,6 +141,7 @@ export function defineKeyValueComponent<TData, TAppContext = unknown>(
 export function defineCustomComponent<TData, TAppContext = unknown>(config: {
   readonly title: string;
   readonly description?: string;
+  readonly events?: ViewComponentEventPorts;
   readonly mount: (
     target: HTMLElement,
     context: ViewComponentMountContext<TData, TAppContext>,
@@ -155,10 +158,12 @@ export function defineCustomComponent<TData, TAppContext = unknown>(config: {
 function descriptor(config: {
   readonly title: string;
   readonly description?: string;
+  readonly events?: ViewComponentEventPorts;
 }): ViewComponentDescriptor {
   return {
     title: config.title,
     ...(config.description ? { description: config.description } : {}),
+    ...(config.events ? { events: config.events } : {}),
   };
 }
 

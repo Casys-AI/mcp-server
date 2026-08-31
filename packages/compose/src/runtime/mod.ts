@@ -42,7 +42,13 @@ export { RuntimeErrorCode } from "./types.ts";
 export { loadManifest, loadManifests, parseManifest, validateManifest } from "./manifest.ts";
 
 // Template
-export { injectArgs, loadTemplate, parseTemplate, validateTemplate } from "./template.ts";
+export {
+  injectArgs,
+  loadTemplate,
+  parseTemplate,
+  parseTemplateJson,
+  validateTemplate,
+} from "./template.ts";
 
 // Cluster
 export { connectHttp, createCluster, startServer } from "./cluster.ts";

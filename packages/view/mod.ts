@@ -57,6 +57,25 @@ export type {
 export { readResultData, readStructuredContent } from "./src/results.ts";
 export type { ReadResultDataOptions, ResultData } from "./src/results.ts";
 
+export {
+  defineSemanticSelection,
+  emitSemanticSelection,
+  onSemanticSelection,
+  parseSemanticSelection,
+  SEMANTIC_SELECTION_APPLY_ACTION,
+  SEMANTIC_SELECTION_CHANGED_EVENT,
+  SEMANTIC_SELECTION_EVENT_PORTS,
+  SEMANTIC_SELECTION_SCHEMA,
+} from "./src/semantic-selection.ts";
+export type {
+  ComposedSemanticRef,
+  SemanticSelection,
+  SemanticSelectionEventContext,
+  SemanticSelectionHandler,
+  SemanticSelectionInput,
+  SemanticSelectionMode,
+} from "./src/semantic-selection.ts";
+
 export { installMcpViewTheme, MCP_VIEW_THEME_CSS, MCP_VIEW_THEME_STYLE_ID } from "./src/theme.ts";
 export type { McpViewThemeDocument } from "./src/theme.ts";
 
@@ -100,6 +119,7 @@ export type {
   SurfaceLayoutType,
   ViewComponentDefinition,
   ViewComponentDescriptor,
+  ViewComponentEventPorts,
   ViewComponentMountContext,
   ViewComponentRegistry,
 } from "./src/components.ts";

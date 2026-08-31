@@ -7,6 +7,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Let component descriptors advertise validated Compose event ports and provide a versioned
+  semantic-selection contract structurally compatible with Digital Thread references. Standalone
+  Apps remain unchanged, while compatible hosts can connect active viewers without MCP-specific
+  whiteboard code or inferred cross-domain mappings.
+- Add the DOM-free `@casys/mcp-view/contracts` entry point so one versioned set of event names and
+  payload validators can be reused by server-side tool metadata and the browser viewer.
+
 ## [0.7.1] - 2026-08-01
 
 ### Added

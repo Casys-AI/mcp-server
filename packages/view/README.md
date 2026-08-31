@@ -63,6 +63,10 @@ const components = defineComponentRegistry<Simulation>({
   components: {
     "thermal.status": defineStatusComponent({
       title: "Simulation status",
+      events: {
+        emits: ["semantic.selection.changed"],
+        accepts: ["semantic.selection.apply"],
+      },
       select: (data) => ({ label: data.status }),
     }),
     "thermal.metrics": defineMetricGridComponent({
@@ -169,6 +173,65 @@ must supply a complete alternative theme. Domain-specific visuals remain owned b
 Viewer-to-viewer interactions use the separate optional `ctx.events` channel. Its messages are
 restricted to `ui/compose/event`, validated at the iframe boundary, and removed automatically on
 teardown. Domain viewers still decide which selections, filters, or highlights are meaningful.
+
+Component descriptors may advertise `events.emits` and `events.accepts`. These ports are the App's
+runtime capability manifest; they do not create routes by themselves. A Compose host may apply a
+stable `portSync` policy to the currently active components, so adding a compatible App does not
+require a whiteboard-specific code path.
+
+Engineering viewers can share the versioned semantic-selection contract:
+
+```ts
+import {
+  defineSemanticSelection,
+  emitSemanticSelection,
+  onSemanticSelection,
+  SEMANTIC_SELECTION_EVENT_PORTS,
+  type SemanticSelectionEventContext,
+} from "@casys/mcp-view";
+
+const scene = defineCustomComponent<unknown, SemanticSelectionEventContext>({
+  title: "CAD scene",
+  events: SEMANTIC_SELECTION_EVENT_PORTS,
+  mount(target, { appContext }) {
+    target.addEventListener("click", () => {
+      emitSemanticSelection(
+        appContext,
+        defineSemanticSelection({
+          mode: "replace",
+          references: [{ domain: "cad", kind: "face", id: "face-12" }],
+        }),
+      );
+    });
+    return onSemanticSelection(appContext.events, (selection) => {
+      // Highlight only an exact local or host-provided recorded binding.
+      applyRecordedSelection(selection.references);
+    });
+  },
+});
+```
+
+The contract keeps `domain` structurally open because the owning Digital Thread remains the
+authority for its narrower domain vocabulary. Compose forwards references but never invents a
+cross-domain mapping.
+
+Server-side tool metadata can reuse the same constants without importing the iframe runtime:
+
+```ts
+import {
+  SEMANTIC_SELECTION_APPLY_ACTION,
+  SEMANTIC_SELECTION_CHANGED_EVENT,
+} from "@casys/mcp-view/contracts";
+
+const resultViewer = uiMeta({
+  resourceUri: "ui://cad/results",
+  emits: [SEMANTIC_SELECTION_CHANGED_EVENT],
+  accepts: [SEMANTIC_SELECTION_APPLY_ACTION],
+});
+```
+
+That tool metadata is the pre-open manifest an agent can inspect. The component catalog confirms the
+ports actually mounted after the Apps handshake, so planning and runtime cannot silently diverge.
 
 ## Host tool notifications
 

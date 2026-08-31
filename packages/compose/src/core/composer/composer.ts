@@ -51,6 +51,7 @@ export function buildCompositeUi(
     layout: orchestration?.layout ?? "stack",
     children: resources,
     sync: resolution.rules,
+    portSync: [...(orchestration?.portSync ?? [])],
     sharedContext,
   };
 }

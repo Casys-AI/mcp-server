@@ -167,6 +167,10 @@ The event bus implements:
 
 All messages follow JSON-RPC 2.0.
 
+Component catalogs may advertise `events.emits` and `events.accepts`. An orchestration `portSync`
+policy connects matching declarations across distinct active surfaces at runtime. This is a
+host-selected policy, not name-based implicit wiring; payloads remain opaque and unchanged.
+
 ## Current Status
 
 Implemented today:

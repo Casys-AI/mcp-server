@@ -25,10 +25,13 @@ export type {
   SurfaceLayoutType,
   UiLayout,
   UiOrchestration,
+  UiPortSyncRule,
   UiSyncRule,
   UnresolvedComponentSurface,
   ValidationIssue,
   ValidationResult,
+  ViewComponentDescriptor,
+  ViewComponentEventPorts,
 } from "./types/mod.ts";
 
 export {

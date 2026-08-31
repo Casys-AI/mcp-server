@@ -132,6 +132,14 @@ jobs:
         run: |
           cd packages/compose
           deno run -A scripts/build-npm.ts
+
+          PACK_DIR=$(mktemp -d)
+          TARBALL_NAME=$(npm pack ./dist-node --pack-destination "$PACK_DIR" --json | node -p 'JSON.parse(require("fs").readFileSync(0, "utf8"))[0].filename')
+          TARBALL="$PACK_DIR/$TARBALL_NAME"
+          for REQUIRED in package/LICENSE package/README.md package/CHANGELOG.md; do
+            tar -tzf "$TARBALL" | grep -Fx "$REQUIRED" >/dev/null
+          done
+
           cd dist-node
           PKG_NAME=$(node -p "require('./package.json').name")
           PKG_VERSION=$(node -p "require('./package.json').version")

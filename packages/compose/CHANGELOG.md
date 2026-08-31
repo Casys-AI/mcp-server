@@ -4,6 +4,23 @@ All notable changes to `@casys/mcp-compose` will be documented in this file.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-08-31
+
+### Added
+
+- Add component event-port catalogs and `portSync` policies. Hosts can keep one stable composition
+  policy while Compose connects only distinct active surfaces that advertise both ends, with
+  preflight against tool manifests and no payload or identifier transformation.
+- Add an explicit JSON template parser and `.json` loading path for canonical agent-authored
+  composition manifests; existing YAML dashboards remain compatible.
+
+### Fixed
+
+- Include the licence, README, and changelog in the npm tarball and fail the publish workflow when
+  any of those release files is missing.
+
+## [0.8.1] - 2026-08-01
+
 ### Added
 
 - Add explicit small-component surface negotiation between a Compose host and componentized MCP
@@ -11,16 +28,11 @@ All notable changes to `@casys/mcp-compose` will be documented in this file.
   unknown-component failures.
 - Support component-only Apps with no standalone default and report `surface-required` when a host
   omits the selection.
-- Add component event-port catalogs and `portSync` policies. Hosts can keep one stable composition
-  policy while Compose connects only distinct active surfaces that advertise both ends, with
-  preflight against tool manifests and no payload or identifier transformation.
-- Add an explicit JSON template parser and `.json` loading path for canonical agent-authored
-  composition manifests; existing YAML dashboards remain compatible.
 
 ### Changed
 
-- Prepare `0.8.1` to support component-only catalogs while keeping `ui/compose/event` as the
-  separate viewer-to-viewer event plane.
+- Keep `ui/compose/event` as the separate viewer-to-viewer event plane while adding component-only
+  catalogs.
 
 ## [0.7.1] - 2026-07-31
 

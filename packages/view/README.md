@@ -268,7 +268,7 @@ structured result and render a readable evidence-style view. It is a starting po
 componentized viewer, not a server generator.
 
 ```sh
-deno run -A jsr:@casys/mcp-view@0.7.0/scaffold result-viewer ./result-viewer
+deno run -A jsr:@casys/mcp-view@0.8.0/scaffold result-viewer ./result-viewer
 cd ./result-viewer
 deno task test
 deno task build

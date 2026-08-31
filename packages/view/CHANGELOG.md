@@ -7,6 +7,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-31
+
 ### Added
 
 - Let component descriptors advertise validated Compose event ports and provide a versioned
@@ -15,6 +17,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   whiteboard code or inferred cross-domain mappings.
 - Add the DOM-free `@casys/mcp-view/contracts` entry point so one versioned set of event names and
   payload validators can be reused by server-side tool metadata and the browser viewer.
+
+### Changed
+
+- Update generated result-viewer projects and current usage examples to pin `@casys/mcp-view`
+  `0.8.0`.
 
 ## [0.7.1] - 2026-08-01
 

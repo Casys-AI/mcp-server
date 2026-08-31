@@ -73,4 +73,8 @@ const pkg = JSON.parse(await Deno.readTextFile(pkgPath));
 pkg.types = "./esm/mod.d.ts";
 await Deno.writeTextFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
 
+for (const asset of ["README.md", "LICENSE", "CHANGELOG.md"] as const) {
+  await Deno.copyFile(asset, `dist-node/${asset}`);
+}
+
 console.log("\n[build-npm] Done. Output in ./dist-node/");

@@ -27,6 +27,7 @@ Preact subpaths:
 import { defineComponentRegistry, installMcpViewTheme } from "@casys/mcp-view-components";
 import {
   ArtifactRow,
+  BadgeGroup,
   Card,
   CodeBlock,
   ElementBody,
@@ -35,6 +36,7 @@ import {
   ElementReading,
   LimitGauge,
   PathBar,
+  Row,
   SemanticElement,
   SemanticList,
   TextInput,
@@ -45,7 +47,7 @@ import {
 
 Primitives:
 
-- `Card`, `Badge`, `Button`, `Toolbar`, `Stack`, `TextInput`, `CodeBlock`
+- `Card`, `Badge`, `BadgeGroup`, `Button`, `Toolbar`, `Stack`, `Row`, `TextInput`, `CodeBlock`
 - `Metric`, `MetricGrid`, `KeyValueList`, `DataTable`
 - `Message`, `StateMessage`, `EmptyState`, `CrossSelection`
 

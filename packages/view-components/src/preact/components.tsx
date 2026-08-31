@@ -25,6 +25,35 @@ export function Stack({ gap = "md", className, children }: StackProps): JSX.Elem
   );
 }
 
+export interface RowProps {
+  readonly label?: string;
+  readonly responsive?: boolean;
+  readonly className?: string;
+  readonly children?: ComponentChildren;
+}
+
+/** Horizontal fact or control row; its contents and meaning remain caller-owned. */
+export function Row({
+  label,
+  responsive = false,
+  className,
+  children,
+}: RowProps): JSX.Element {
+  return (
+    <div
+      aria-label={label}
+      class={classes(
+        "mcp-view-row",
+        responsive ? "mcp-view-row-responsive" : undefined,
+        className,
+      )}
+      role={label ? "group" : undefined}
+    >
+      {children}
+    </div>
+  );
+}
+
 export interface CardProps {
   readonly title?: ComponentChildren;
   readonly eyebrow?: ComponentChildren;
@@ -61,6 +90,29 @@ export interface BadgeProps {
   readonly tone?: PresentationTone;
   readonly children?: ComponentChildren;
   readonly className?: string;
+}
+
+export interface BadgeGroupProps {
+  readonly label: string;
+  readonly className?: string;
+  readonly children?: ComponentChildren;
+}
+
+/** Accessible wrapping group for compact status and classification badges. */
+export function BadgeGroup({
+  label,
+  className,
+  children,
+}: BadgeGroupProps): JSX.Element {
+  return (
+    <div
+      aria-label={label}
+      class={classes("mcp-view-badges", className)}
+      role="group"
+    >
+      {children}
+    </div>
+  );
 }
 
 /** Compact status or classification label. */

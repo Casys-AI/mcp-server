@@ -4,6 +4,7 @@ import { assertEquals } from "@std/assert";
 import { render } from "preact";
 import {
   Badge,
+  BadgeGroup,
   Button,
   Card,
   CodeBlock,
@@ -14,6 +15,7 @@ import {
   Message,
   Metric,
   MetricGrid,
+  Row,
   Stack,
   StateMessage,
   TextInput,
@@ -52,6 +54,13 @@ Deno.test({
             />
             <Metric label="Duration" value="148" unit="s" tone="info" />
           </Stack>
+          <Row label="Execution state" responsive>
+            <span>Simulation</span>
+            <BadgeGroup label="Execution labels">
+              <Badge tone="info">recorded</Badge>
+              <Badge>read-only</Badge>
+            </BadgeGroup>
+          </Row>
           <KeyValueList
             items={[{ id: "model", label: "Model", value: "CM-01" }]}
           />
@@ -87,6 +96,15 @@ Deno.test({
       );
       assertEquals(root.querySelector(".mcp-view-code-block")?.textContent, "self.temperature");
       assertEquals(root.querySelector(".mcp-view-stack")?.getAttribute("data-gap"), "sm");
+      assertEquals(root.querySelector(".mcp-view-row")?.getAttribute("role"), "group");
+      assertEquals(
+        root.querySelector(".mcp-view-row")?.classList.contains("mcp-view-row-responsive"),
+        true,
+      );
+      assertEquals(
+        root.querySelector(".mcp-view-badges")?.getAttribute("aria-label"),
+        "Execution labels",
+      );
       assertEquals(root.querySelectorAll(".mcp-view-metric").length, 2);
       assertEquals(root.querySelector(".mcp-view-cross-selection")?.getAttribute("role"), "status");
       assertEquals(root.querySelector(".mcp-view-message")?.getAttribute("data-tone"), "warning");

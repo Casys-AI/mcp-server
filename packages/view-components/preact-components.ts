@@ -11,6 +11,7 @@
 
 export {
   Badge,
+  BadgeGroup,
   Button,
   Card,
   CodeBlock,
@@ -21,12 +22,14 @@ export {
   Message,
   Metric,
   MetricGrid,
+  Row,
   Stack,
   StateMessage,
   TextInput,
   Toolbar,
 } from "./src/preact/components.tsx";
 export type {
+  BadgeGroupProps,
   BadgeProps,
   ButtonProps,
   CardProps,
@@ -42,6 +45,7 @@ export type {
   MetricItem,
   MetricProps,
   PresentationTone,
+  RowProps,
   StackProps,
   StateMessageProps,
   TextInputProps,

@@ -45,6 +45,14 @@ export { createMcpApp, defineView } from "./src/app.ts";
 export { MCPViewError } from "./src/errors.ts";
 export type { MCPViewErrorCode } from "./src/errors.ts";
 
+export {
+  defineViewAppManifest,
+  parseViewAppManifestJson,
+  VIEW_APP_MANIFEST_SCHEMA,
+  VIEWER_SESSION_APPLY_ACTION,
+} from "./src/app-manifest.ts";
+export type { ViewAppManifest, ViewAppManifestResource } from "./src/app-manifest.ts";
+
 export { COMPOSE_EVENT_METHOD, createComposeEventClient } from "./src/compose-events.ts";
 export type {
   ComposeEventClient,

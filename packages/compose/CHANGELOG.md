@@ -4,6 +4,12 @@ All notable changes to `@casys/mcp-compose` will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Add a typed browser-host gateway for direct actions to one stable active component. Delivery is
+  fail-closed against declared `events.accepts` ports and bypasses static sync, dynamic port routing,
+  and the MCP proxy.
+
 ## [0.9.0] - 2026-08-31
 
 ### Added

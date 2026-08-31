@@ -32,6 +32,10 @@ interface FakeMessageEvent {
 
 type MessageListener = (event: FakeMessageEvent) => void;
 
+interface HostComponentActionGateway {
+  publishComponentAction(action: unknown): unknown;
+}
+
 function createHarness(
   script: string,
   iframes: readonly FakeIframe[],
@@ -40,14 +44,20 @@ function createHarness(
 ): {
   emit(source: FakeChildWindow, data: unknown, origin?: string): void;
   resize(): void;
+  publishComponentAction(action: unknown): unknown;
+  hostGateway(): HostComponentActionGateway | undefined;
+  rerun(): void;
+  unload(): void;
 } {
   const listeners: MessageListener[] = [];
   const resizeListeners: Array<() => void> = [];
+  const pagehideListeners: Array<() => void> = [];
   const fakeWindow = {
     matchMedia: () => ({ matches: prefersDark }),
     addEventListener(type: string, listener: MessageListener | (() => void)) {
       if (type === "message") listeners.push(listener as MessageListener);
       if (type === "resize") resizeListeners.push(listener as () => void);
+      if (type === "pagehide") pagehideListeners.push(listener as () => void);
     },
   };
   const fakeDocument = {
@@ -65,7 +75,8 @@ function createHarness(
     fetch: (input: string, init: RequestInit) => Promise<unknown>,
     console: typeof silentConsole,
   ) => void;
-  run(fakeWindow, fakeDocument, fetchFn, silentConsole);
+  const rerun = () => run(fakeWindow, fakeDocument, fetchFn, silentConsole);
+  rerun();
 
   return {
     emit(source, data, origin = "http://legacy-slot.test") {
@@ -73,6 +84,17 @@ function createHarness(
     },
     resize() {
       for (const listener of resizeListeners) listener();
+    },
+    publishComponentAction(action) {
+      return (fakeWindow as { mcpComposeHost?: HostComponentActionGateway }).mcpComposeHost
+        ?.publishComponentAction(action);
+    },
+    hostGateway() {
+      return (fakeWindow as { mcpComposeHost?: HostComponentActionGateway }).mcpComposeHost;
+    },
+    rerun,
+    unload() {
+      for (const listener of pagehideListeners) listener();
     },
   };
 }
@@ -650,6 +672,190 @@ Deno.test("generated event bus does not dynamically route to undeclared componen
     findPost(fea, (message) => message.method === "ui/compose/event"),
     undefined,
   );
+});
+
+Deno.test("generated event bus directly publishes only to one declared active component", () => {
+  const descriptor = buildCompositeUi(
+    [
+      { componentId: "viewer", source: "viewer", resourceUri: "ui://viewer", slot: 0 },
+      { componentId: "passive", source: "passive", resourceUri: "ui://passive", slot: 1 },
+      { componentId: "inactive", source: "inactive", resourceUri: "ui://inactive", slot: 2 },
+    ],
+    {
+      layout: "split",
+      sync: [{ from: "viewer", event: "session.replace", to: "passive", action: "follow" }],
+    },
+  );
+  const viewer = new FakeChildWindow();
+  const passive = new FakeChildWindow();
+  const inactive = new FakeChildWindow();
+  const fetchCalls: unknown[] = [];
+  const harness = createHarness(
+    generateEventBusScript(
+      descriptor,
+      resolveRendererSlots(descriptor, {
+        slots: { 0: { capabilities: { serverTools: true } } },
+      }),
+    ),
+    [
+      { dataset: { slot: "0" }, contentWindow: viewer },
+      { dataset: { slot: "1" }, contentWindow: passive },
+      { dataset: { slot: "2" }, contentWindow: inactive },
+    ],
+    (input) => {
+      fetchCalls.push(input);
+      return Promise.reject(new Error("host action must not call the proxy"));
+    },
+  );
+
+  harness.emit(viewer, {
+    jsonrpc: "2.0",
+    id: "viewer-init",
+    method: "ui/initialize",
+    params: {
+      appCapabilities: {
+        experimental: {
+          "io.casys.mcp.view-components/v1": {
+            components: {
+              "viewer.session": {
+                title: "Session",
+                events: { accepts: ["session.replace"] },
+              },
+            },
+            defaultSurface: {
+              layout: { type: "stack" },
+              components: [{ id: "session", component: "viewer.session" }],
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const payload = { sessionId: "next", source: "host" };
+  assertEquals(
+    harness.publishComponentAction({
+      componentId: "viewer",
+      action: "session.replace",
+      payload,
+    }),
+    { delivered: true },
+  );
+  assertEquals(
+    findPost(viewer, (message) =>
+      message.method === "ui/compose/event" &&
+      (message.params as Record<string, unknown>).action === "session.replace")?.params,
+    { action: "session.replace", data: payload, sharedContext: {} },
+  );
+  assertEquals(
+    findPost(passive, (message) => message.method === "ui/compose/event"),
+    undefined,
+  );
+  assertEquals(fetchCalls, []);
+
+  assertEquals(
+    harness.publishComponentAction({
+      componentId: "viewer",
+      action: "session.close",
+      payload,
+    }),
+    { delivered: false, reason: "action-not-accepted" },
+  );
+  assertEquals(
+    harness.publishComponentAction({
+      componentId: "inactive",
+      action: "session.replace",
+      payload,
+    }),
+    { delivered: false, reason: "action-not-accepted" },
+  );
+  assertEquals(
+    viewer.posts.filter((post) =>
+      (post.message as Record<string, unknown>).method === "ui/compose/event"
+    ).length,
+    1,
+  );
+  assertEquals(inactive.posts.length, 0);
+
+  // More than one accepting component in the active surface is ambiguous,
+  // so the host fails closed instead of selecting one by declaration order.
+  harness.emit(viewer, {
+    jsonrpc: "2.0",
+    id: "viewer-reinitialize",
+    method: "ui/initialize",
+    params: {
+      appCapabilities: {
+        experimental: {
+          "io.casys.mcp.view-components/v1": {
+            components: {
+              "viewer.current": {
+                title: "Current session",
+                events: { accepts: ["session.replace"] },
+              },
+              "viewer.next": {
+                title: "Next session",
+                events: { accepts: ["session.replace"] },
+              },
+            },
+            defaultSurface: {
+              layout: { type: "stack" },
+              components: [
+                { id: "current", component: "viewer.current" },
+                { id: "next", component: "viewer.next" },
+              ],
+            },
+          },
+        },
+      },
+    },
+  });
+  assertEquals(
+    harness.publishComponentAction({
+      componentId: "viewer",
+      action: "session.replace",
+      payload,
+    }),
+    { delivered: false, reason: "action-ambiguous" },
+  );
+
+  const firstGateway = harness.hostGateway();
+  harness.rerun();
+  const secondGateway = harness.hostGateway();
+  assert(secondGateway);
+  assert(firstGateway !== secondGateway);
+  harness.unload();
+  assertEquals(harness.hostGateway(), undefined);
+});
+
+Deno.test("generated event bus rejects an ambiguous stable component target", () => {
+  const descriptor = buildCompositeUi(
+    [
+      { componentId: "viewer", source: "first", resourceUri: "ui://first", slot: 0 },
+      { componentId: "viewer", source: "second", resourceUri: "ui://second", slot: 1 },
+    ],
+    { layout: "split" },
+  );
+  const first = new FakeChildWindow();
+  const second = new FakeChildWindow();
+  const harness = createHarness(
+    generateEventBusScript(descriptor, resolveRendererSlots(descriptor)),
+    [
+      { dataset: { slot: "0" }, contentWindow: first },
+      { dataset: { slot: "1" }, contentWindow: second },
+    ],
+    () => Promise.reject(new Error("not used")),
+  );
+
+  assertEquals(
+    harness.publishComponentAction({
+      componentId: "viewer",
+      action: "session.replace",
+      payload: { sessionId: "next" },
+    }),
+    { delivered: false, reason: "component-ambiguous" },
+  );
+  assertEquals(first.posts.length, 0);
+  assertEquals(second.posts.length, 0);
 });
 
 Deno.test("generated event bus keeps unknown requested components unresolved", () => {

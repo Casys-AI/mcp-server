@@ -19,6 +19,7 @@ import {
   CASYS_COMPONENT_CATALOG_CAPABILITY_KEY,
   CASYS_SURFACE_CONTEXT_KEY,
 } from "../../components-contract.ts";
+import { MCP_COMPOSE_HOST_GATEWAY_KEY } from "../../component-actions.ts";
 
 /**
  * Generate the event bus JavaScript for a composite UI.
@@ -75,6 +76,8 @@ export function generateEventBusScript(
     const lastHostContexts = new Map();
     const COMPONENT_CAPABILITY = '${CASYS_COMPONENT_CATALOG_CAPABILITY_KEY}';
     const SURFACE_CONTEXT = '${CASYS_SURFACE_CONTEXT_KEY}';
+    const HOST_COMPONENT_ACTION_GATEWAY = '${MCP_COMPOSE_HOST_GATEWAY_KEY}';
+    const HOST_COMPONENT_ACTION_GATEWAY_STATE = '__mcpComposeHostGatewayState';
 
     // Build slot -> iframe map + reverse lookup. The fallback lookup matters
     // when the iframe's WindowProxy becomes available after this script runs.
@@ -332,6 +335,16 @@ export function generateEventBusScript(
       );
     }
 
+    function acceptingComponentCount(slot, action) {
+      const catalog = componentCatalogs.get(slot);
+      if (!catalog) return 0;
+      const surfaceContext = surfaceContextForSlot(slot);
+      if (surfaceContext.status !== 'ready') return 0;
+      return surfaceContext.surface.components.filter((item) =>
+        catalog.components[item.component]?.events?.accepts?.includes(action)
+      ).length;
+    }
+
     // Route an event through sync rules, calling
     // deliver(rule, targetSlot, targetIframe) for each matching target.
     function routeEvent(sourceSlot, eventType, deliver) {
@@ -369,12 +382,71 @@ export function generateEventBusScript(
 
     // Send a compose event to an iframe (mcp-compose protocol).
     function sendComposeEvent(iframe, targetSlot, action, data, sourceSlot) {
+      const params = { action, data, sharedContext };
+      if (sourceSlot !== undefined) params.sourceSlot = sourceSlot;
       iframe.contentWindow?.postMessage({
         jsonrpc: '2.0',
         method: COMPOSE_METHOD,
-        params: { action, data, sourceSlot, sharedContext }
+        params
       }, targetOriginForSlot(targetSlot));
     }
+
+    function publishComponentAction(request) {
+      if (!request || typeof request !== 'object' ||
+        typeof request.componentId !== 'string' || !request.componentId.trim() ||
+        typeof request.action !== 'string' || !request.action.trim()) {
+        return { delivered: false, reason: 'invalid-action' };
+      }
+
+      const targets = [...iframes.entries()].filter(([slot]) =>
+        getSlotConfig(slot)?.componentId === request.componentId
+      );
+      if (targets.length === 0) return { delivered: false, reason: 'component-not-found' };
+      if (targets.length > 1) return { delivered: false, reason: 'component-ambiguous' };
+
+      const [targetSlot, target] = targets[0];
+      const accepts = acceptingComponentCount(targetSlot, request.action);
+      if (accepts === 0) return { delivered: false, reason: 'action-not-accepted' };
+      if (accepts > 1) return { delivered: false, reason: 'action-ambiguous' };
+
+      try {
+        // Host actions are direct delivery only. They deliberately do not enter
+        // static sync, dynamic portSync, or the local MCP proxy.
+        sendComposeEvent(target, targetSlot, request.action, request.payload);
+        return { delivered: true };
+      } catch {
+        return { delivered: false, reason: 'payload-not-transferable' };
+      }
+    }
+
+    function installHostComponentActionGateway() {
+      const previousInstalled = window[HOST_COMPONENT_ACTION_GATEWAY];
+      const previousState = previousInstalled &&
+        previousInstalled[HOST_COMPONENT_ACTION_GATEWAY_STATE];
+      if (previousState && typeof previousState.dispose === 'function') previousState.dispose();
+
+      const previousGateway = window[HOST_COMPONENT_ACTION_GATEWAY];
+      const gateway = { publishComponentAction };
+      let disposed = false;
+      const dispose = () => {
+        if (disposed) return;
+        disposed = true;
+        if (window[HOST_COMPONENT_ACTION_GATEWAY] !== gateway) return;
+        if (previousGateway === undefined) {
+          delete window[HOST_COMPONENT_ACTION_GATEWAY];
+        } else {
+          window[HOST_COMPONENT_ACTION_GATEWAY] = previousGateway;
+        }
+      };
+
+      Object.defineProperty(gateway, HOST_COMPONENT_ACTION_GATEWAY_STATE, {
+        value: { dispose },
+      });
+      window[HOST_COMPONENT_ACTION_GATEWAY] = gateway;
+      window.addEventListener('pagehide', dispose);
+    }
+
+    installHostComponentActionGateway();
 
     function sendInitialToolResult(slot, source) {
       const config = getSlotConfig(slot);

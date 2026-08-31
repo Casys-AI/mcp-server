@@ -96,3 +96,10 @@ export type {
 
 // Host — host integration types
 export type { CompositeUiHost, HostConfig } from "./src/host/mod.ts";
+export { MCP_COMPOSE_HOST_GATEWAY_KEY } from "./src/host/mod.ts";
+export type {
+  HostComponentAction,
+  HostComponentActionGateway,
+  HostComponentActionRejectionReason,
+  HostComponentActionResult,
+} from "./src/host/mod.ts";

@@ -15,6 +15,9 @@ export type McpViewThemeTokens = Readonly<{
   success: "--mcp-view-success";
   warning: "--mcp-view-warning";
   danger: "--mcp-view-danger";
+  fontHeading: "--mcp-view-font-heading";
+  fontBody: "--mcp-view-font-body";
+  fontMono: "--mcp-view-font-mono";
   radius: "--mcp-view-radius";
   radiusSmall: "--mcp-view-radius-sm";
   gap: "--mcp-view-gap";
@@ -33,6 +36,9 @@ export const MCP_VIEW_THEME_TOKENS: McpViewThemeTokens = Object.freeze(
     success: "--mcp-view-success",
     warning: "--mcp-view-warning",
     danger: "--mcp-view-danger",
+    fontHeading: "--mcp-view-font-heading",
+    fontBody: "--mcp-view-font-body",
+    fontMono: "--mcp-view-font-mono",
     radius: "--mcp-view-radius",
     radiusSmall: "--mcp-view-radius-sm",
     gap: "--mcp-view-gap",
@@ -60,19 +66,42 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
   --mcp-view-success: var(--color-success, #12855f);
   --mcp-view-warning: var(--color-warning, #d98b1f);
   --mcp-view-danger: var(--color-danger, #c9453c);
+  --mcp-view-font-heading: var(
+    --font-heading,
+    "Space Grotesk",
+    "Avenir Next",
+    "Segoe UI",
+    system-ui,
+    sans-serif
+  );
+  --mcp-view-font-body: var(
+    --font-body,
+    var(
+      --font-sans,
+      "Work Sans",
+      Avenir,
+      "Segoe UI",
+      system-ui,
+      -apple-system,
+      BlinkMacSystemFont,
+      sans-serif
+    )
+  );
+  --mcp-view-font-mono: var(
+    --font-mono,
+    "JetBrains Mono",
+    "SFMono-Regular",
+    "Cascadia Code",
+    Menlo,
+    Consolas,
+    ui-monospace,
+    monospace
+  );
   --mcp-view-radius: 0.5rem;
   --mcp-view-radius-sm: 0.25rem;
   --mcp-view-gap: 0.65rem;
   color: var(--mcp-view-text);
-  font-family: var(
-    --font-sans,
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif
-  );
+  font-family: var(--mcp-view-font-body);
 }
 
 :root[data-theme="dark"] {
@@ -112,6 +141,7 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
 .mcp-view-component {
   width: 100%;
   min-width: 0;
+  font-family: var(--mcp-view-font-body);
 }
 
 .mcp-view-surface,
@@ -385,7 +415,7 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
   border-radius: var(--mcp-view-radius-sm);
   background: var(--mcp-view-subtle);
   color: var(--mcp-view-muted);
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-family: var(--mcp-view-font-mono);
   font-size: 0.72rem;
   line-height: 1.5;
   overflow-wrap: anywhere;
@@ -397,7 +427,7 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
   padding: 0.08rem 0.25rem;
   border-radius: var(--mcp-view-radius-sm);
   background: var(--mcp-view-subtle);
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-family: var(--mcp-view-font-mono);
   font-size: 0.88em;
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -495,7 +525,7 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
   content: "/";
   margin: 0 0.48rem;
   color: var(--mcp-view-quiet);
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-family: var(--mcp-view-font-mono);
   font-size: 0.65rem;
 }
 
@@ -544,7 +574,6 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
 .mcp-view-limit-gauge-reading {
   grid-area: reading;
   color: var(--mcp-view-text);
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 0.7rem;
   font-variant-numeric: tabular-nums;
   text-align: right;
@@ -631,7 +660,6 @@ button.mcp-view-artifact-row:focus-visible {
   border-radius: var(--mcp-view-radius-sm);
   background: color-mix(in srgb, var(--mcp-view-accent) 10%, transparent);
   color: var(--mcp-view-accent);
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 0.58rem;
   font-weight: 700;
 }
@@ -739,7 +767,6 @@ button.mcp-view-artifact-row:focus-visible {
 .mcp-view-element-ident-marker {
   flex: 0 0 auto;
   color: var(--mcp-view-brand);
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 0.65rem;
   font-weight: 700;
 }
@@ -764,7 +791,6 @@ button.mcp-view-artifact-row:focus-visible {
 .mcp-view-element-reading-measure { display: inline-flex; align-items: baseline; gap: 0.24rem; }
 .mcp-view-element-reading-value,
 .mcp-view-element-reading-unit {
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-variant-numeric: tabular-nums;
 }
 .mcp-view-element-reading-value { font-size: 0.8rem; }
@@ -797,7 +823,6 @@ button.mcp-view-artifact-row:focus-visible {
   gap: 0.35rem;
   min-width: 0;
   color: var(--mcp-view-quiet);
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 0.6rem;
 }
 .mcp-view-element-provenance-value {
@@ -845,6 +870,51 @@ button.mcp-view-artifact-row:focus-visible {
 }
 .mcp-view-semantic-element[data-density="card"] .mcp-view-element-provenance {
   grid-column: 1 / -1;
+}
+
+/*
+ * Type is role-based so a provider can theme the whole kit without coupling
+ * presentation components to a particular font delivery mechanism. Keep the
+ * role layer after component-local font shorthands so it remains authoritative.
+ */
+.mcp-view-card-title,
+.mcp-view-metric-value,
+.mcp-view-state > strong,
+.mcp-view-element-reading-value,
+.mcp-view-element-reading-unit {
+  font-family: var(--mcp-view-font-heading);
+}
+
+.mcp-view-card-eyebrow,
+.mcp-view-metric-label,
+.mcp-view-metric-unit,
+.mcp-view-metric-detail,
+.mcp-view-badge,
+.mcp-view-table th,
+.mcp-view-table [data-align="right"],
+.mcp-view-key-value dt,
+.mcp-view-key-value dd,
+.mcp-view-button,
+.mcp-view-cross-selection-label,
+.mcp-view-cross-selection-status,
+.mcp-view-path-bar-list,
+.mcp-view-limit-gauge-reading,
+.mcp-view-limit-gauge-status,
+.mcp-view-limit-gauge-limit,
+.mcp-view-artifact-row-kind,
+.mcp-view-artifact-row-uri,
+.mcp-view-artifact-row-fingerprint,
+.mcp-view-artifact-row-fingerprint code,
+.mcp-view-artifact-row-size,
+.mcp-view-artifact-row-verification,
+.mcp-view-element-ident-marker,
+.mcp-view-element-ident-detail,
+.mcp-view-element-reading-label,
+.mcp-view-element-reading-detail,
+.mcp-view-element-verdict-label,
+.mcp-view-element-verdict-value,
+.mcp-view-element-provenance {
+  font-family: var(--mcp-view-font-mono);
 }
 
 @container (max-width: 440px) {

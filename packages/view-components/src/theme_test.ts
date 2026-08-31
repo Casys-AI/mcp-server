@@ -36,9 +36,37 @@ Deno.test("shared theme exposes the MCP View v2 component vocabulary", () => {
   }
 });
 
-Deno.test("shared theme inherits host typography and keeps flat cards and neutral badges", () => {
-  assertStringIncludes(MCP_VIEW_THEME_CSS, "font-family: var(");
+Deno.test("shared theme exposes offline heading body and mono typography roles", () => {
+  assertEquals(MCP_VIEW_THEME_TOKENS.fontHeading, "--mcp-view-font-heading");
+  assertEquals(MCP_VIEW_THEME_TOKENS.fontBody, "--mcp-view-font-body");
+  assertEquals(MCP_VIEW_THEME_TOKENS.fontMono, "--mcp-view-font-mono");
+
+  assertStringIncludes(MCP_VIEW_THEME_CSS, "--mcp-view-font-heading: var(");
+  assertStringIncludes(MCP_VIEW_THEME_CSS, '"Space Grotesk"');
+  assertStringIncludes(MCP_VIEW_THEME_CSS, '"Avenir Next"');
+  assertStringIncludes(MCP_VIEW_THEME_CSS, "--mcp-view-font-body: var(");
+  assertStringIncludes(MCP_VIEW_THEME_CSS, '"Work Sans"');
   assertStringIncludes(MCP_VIEW_THEME_CSS, "--font-sans,");
+  assertStringIncludes(MCP_VIEW_THEME_CSS, "--mcp-view-font-mono: var(");
+  assertStringIncludes(MCP_VIEW_THEME_CSS, '"JetBrains Mono"');
+  assertStringIncludes(MCP_VIEW_THEME_CSS, '"SFMono-Regular"');
+  assertStringIncludes(MCP_VIEW_THEME_CSS, "font-family: var(--mcp-view-font-body);");
+  assertStringIncludes(MCP_VIEW_THEME_CSS, ".mcp-view-card-title,");
+  assertStringIncludes(MCP_VIEW_THEME_CSS, ".mcp-view-element-reading-value,");
+  assertStringIncludes(MCP_VIEW_THEME_CSS, "font-family: var(--mcp-view-font-heading);");
+  assertStringIncludes(MCP_VIEW_THEME_CSS, ".mcp-view-card-eyebrow,");
+  assertStringIncludes(MCP_VIEW_THEME_CSS, ".mcp-view-element-provenance {");
+  assertStringIncludes(MCP_VIEW_THEME_CSS, "font-family: var(--mcp-view-font-mono);");
+  assertEquals(
+    MCP_VIEW_THEME_CSS.indexOf("Type is role-based") >
+      MCP_VIEW_THEME_CSS.indexOf(".mcp-view-button {"),
+    true,
+  );
+
+  assertFalse(/@import\b/i.test(MCP_VIEW_THEME_CSS));
+  assertFalse(/@font-face\b/i.test(MCP_VIEW_THEME_CSS));
+  assertFalse(/url\s*\(/i.test(MCP_VIEW_THEME_CSS));
+
   assertFalse(MCP_VIEW_THEME_CSS.includes("font-family: Inter"));
 
   assertFalse(MCP_VIEW_THEME_CSS.includes("box-shadow:"));

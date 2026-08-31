@@ -86,14 +86,20 @@ unless the caller supplies that recorded status.
 
 ## Theme
 
-`installMcpViewTheme()` installs the shared CSS once. The defaults are light-first, include an
-explicit dark mapping, inherit host fonts, and make no network font request. Apps can override the
-stable variables exported as `MCP_VIEW_THEME_TOKENS`:
+`installMcpViewTheme()` installs the shared CSS once. The defaults are light-first and include an
+explicit dark mapping. Typography has three shared roles: heading/readings, body copy, and monospace
+labels/data. The preferred local faces mirror the v2 reference (`Space Grotesk`, `Work Sans`, and
+`JetBrains Mono`) and fall back to native families when they are unavailable. The kit neither embeds
+fonts nor makes a network font request. Apps can override the stable variables exported as
+`MCP_VIEW_THEME_TOKENS`:
 
 ```css
 :root {
   --mcp-view-accent: #0d7c8a;
   --mcp-view-brand: #8a4fa3;
+  --mcp-view-font-heading: "Space Grotesk", "Avenir Next", sans-serif;
+  --mcp-view-font-body: "Work Sans", Avenir, sans-serif;
+  --mcp-view-font-mono: "JetBrains Mono", "SFMono-Regular", monospace;
   --mcp-view-radius: 0.5rem;
 }
 ```

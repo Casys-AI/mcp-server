@@ -72,6 +72,7 @@ export function generateEventBusScript(
     const slotConfigs = ${serializeForInlineScript(serialisedSlots)};
     const initialResultsDelivered = new Set();
     const initializationResponded = new Set();
+    const initializedSlots = new Set();
     const componentCatalogs = new Map();
     const lastHostContexts = new Map();
     const COMPONENT_CAPABILITY = '${CASYS_COMPONENT_CATALOG_CAPABILITY_KEY}';
@@ -405,6 +406,9 @@ export function generateEventBusScript(
       if (targets.length > 1) return { delivered: false, reason: 'component-ambiguous' };
 
       const [targetSlot, target] = targets[0];
+      if (!initializedSlots.has(targetSlot)) {
+        return { delivered: false, reason: 'component-not-active' };
+      }
       const accepts = acceptingComponentCount(targetSlot, request.action);
       if (accepts === 0) return { delivered: false, reason: 'action-not-accepted' };
       if (accepts > 1) return { delivered: false, reason: 'action-ambiguous' };
@@ -569,6 +573,8 @@ export function generateEventBusScript(
         const advertisedCatalog = message.params?.appCapabilities?.experimental?.[
           COMPONENT_CAPABILITY
         ];
+        initializedSlots.delete(sourceSlot);
+        componentCatalogs.delete(sourceSlot);
         const catalog = validComponentCatalog(advertisedCatalog);
         if (catalog) componentCatalogs.set(sourceSlot, catalog);
         const hostContext = hostContextForSlot(sourceSlot);
@@ -591,6 +597,7 @@ export function generateEventBusScript(
           console.warn('[mcp-compose] Ignoring initialized notification before ui/initialize');
           return;
         }
+        initializedSlots.add(sourceSlot);
         sendInitialToolResult(sourceSlot, event.source);
         ackIfRequested(event.source, message, targetOrigin);
         return;

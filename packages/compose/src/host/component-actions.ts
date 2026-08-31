@@ -36,6 +36,7 @@ export type HostComponentActionRejectionReason =
   | "invalid-action"
   | "component-not-found"
   | "component-ambiguous"
+  | "component-not-active"
   | "action-not-accepted"
   | "action-ambiguous"
   | "payload-not-transferable";
@@ -62,6 +63,9 @@ export type HostComponentActionResult =
  * ```
  */
 export interface HostComponentActionGateway {
-  /** Deliver an opaque action directly to one accepting active component. */
+  /**
+   * Deliver an opaque action directly to one accepting component after its
+   * App has confirmed `ui/notifications/initialized`.
+   */
   publishComponentAction(action: HostComponentAction): HostComponentActionResult;
 }

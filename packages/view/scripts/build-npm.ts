@@ -146,6 +146,14 @@ async function smokeTestPackageImport(): Promise<void> {
     prefix: "mcp-view-npm-smoke-",
   });
   try {
+    await runConsumerCommand(tempConsumer, "npm", ["init", "--yes"]);
+    await runConsumerCommand(tempConsumer, "npm", [
+      "install",
+      "--ignore-scripts",
+      "--no-audit",
+      "--no-fund",
+      "typescript@5.9.3",
+    ]);
     const packageScope = `${tempConsumer}/node_modules/@casys`;
     await Deno.mkdir(packageScope, { recursive: true });
     await Deno.symlink(
@@ -213,7 +221,66 @@ async function smokeTestPackageImport(): Promise<void> {
         ].filter(Boolean).join("\n"),
       );
     }
+
+    await Deno.writeTextFile(
+      `${tempConsumer}/contracts-no-dom.ts`,
+      [
+        "import { defineViewAppManifest, VIEW_APP_MANIFEST_SCHEMA } from '@casys/mcp-view/contracts';",
+        "",
+        "const manifest = defineViewAppManifest({",
+        "  schemaVersion: VIEW_APP_MANIFEST_SCHEMA,",
+        "  app: { id: 'example.viewer', title: 'Example viewer', version: '1.0.0' },",
+        "  resources: [{",
+        "    uri: 'ui://example/viewer',",
+        "    resultSchemas: ['example.result/1.0'],",
+        "    components: {",
+        "      components: { summary: { title: 'Summary' } },",
+        "      defaultSurface: {",
+        "        layout: { type: 'stack' },",
+        "        components: [{ id: 'summary', component: 'summary' }],",
+        "      },",
+        "    },",
+        "  }],",
+        "});",
+        "manifest.resources[0]?.components.defaultSurface?.components[0]?.id;",
+        "",
+      ].join("\n"),
+    );
+    await runConsumerCommand(tempConsumer, "node", [
+      "node_modules/typescript/lib/tsc.js",
+      "--noEmit",
+      "--strict",
+      "--target",
+      "ES2022",
+      "--module",
+      "NodeNext",
+      "--moduleResolution",
+      "NodeNext",
+      "--lib",
+      "ES2022",
+      "contracts-no-dom.ts",
+    ]);
+    console.log("[build-npm] Node no-DOM contracts type smoke passed");
   } finally {
     await Deno.remove(tempConsumer, { recursive: true });
   }
+}
+
+async function runConsumerCommand(
+  cwd: string,
+  command: string,
+  args: readonly string[],
+): Promise<void> {
+  const result = await new Deno.Command(command, { cwd, args: [...args] }).output();
+  if (result.success) return;
+
+  const stderr = new TextDecoder().decode(result.stderr).trim();
+  const stdout = new TextDecoder().decode(result.stdout).trim();
+  throw new Error(
+    [
+      `[build-npm] consumer command failed: ${command} ${args.join(" ")}`,
+      stdout && `stdout:\n${stdout}`,
+      stderr && `stderr:\n${stderr}`,
+    ].filter(Boolean).join("\n"),
+  );
 }

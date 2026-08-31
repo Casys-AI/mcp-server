@@ -1,58 +1,30 @@
 /** Renderer-neutral component catalog and surface runtime for MCP Apps. */
 
 import type { McpUiHostContext } from "@modelcontextprotocol/ext-apps";
-import type { ViewComponentEventPorts } from "./composition-contracts.ts";
+import type {
+  AdvertisedComponentCatalog,
+  ComponentSurface,
+  ComponentSurfaceLayout,
+  JsonValue,
+  SurfaceGap,
+  ViewComponentDescriptor,
+  ViewComponentEventPorts,
+} from "./composition-contracts.ts";
 
-export type { ViewComponentEventPorts } from "./composition-contracts.ts";
+export type {
+  AdvertisedComponentCatalog,
+  ComponentSurface,
+  ComponentSurfaceItem,
+  ComponentSurfaceLayout,
+  JsonValue,
+  SurfaceGap,
+  SurfaceLayoutType,
+  ViewComponentDescriptor,
+  ViewComponentEventPorts,
+} from "./composition-contracts.ts";
 
 export const CASYS_COMPONENT_CATALOG_CAPABILITY_KEY = "io.casys.mcp.view-components/v1";
 export const CASYS_SURFACE_CONTEXT_KEY = "io.casys.mcp.surface/v1";
-
-export type SurfaceLayoutType = "stack" | "row" | "grid";
-export type SurfaceGap = "none" | "xs" | "sm" | "md" | "lg";
-export type JsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | readonly JsonValue[]
-  | { readonly [key: string]: JsonValue };
-
-export interface ComponentSurfaceLayout {
-  readonly type: SurfaceLayoutType;
-  readonly columns?: number;
-  readonly gap?: SurfaceGap;
-}
-
-export interface ComponentSurfaceItem {
-  /** Stable identity for local state and future agent patches. */
-  readonly id: string;
-  /** Component key advertised by the owning MCP App. */
-  readonly component: string;
-  /** Optional safe grid-area identifier. */
-  readonly area?: string;
-  /** JSON-only configuration interpreted by the component implementation. */
-  readonly props?: Readonly<Record<string, JsonValue>>;
-}
-
-export interface ComponentSurface {
-  readonly layout: ComponentSurfaceLayout;
-  readonly components: readonly ComponentSurfaceItem[];
-}
-
-export interface ViewComponentDescriptor {
-  readonly title: string;
-  readonly description?: string;
-  /** Discoverable ports only; the composition host remains authoritative for routing. */
-  readonly events?: ViewComponentEventPorts;
-}
-
-/** Serializable catalog advertised during `ui/initialize`. */
-export interface AdvertisedComponentCatalog {
-  readonly components: Readonly<Record<string, ViewComponentDescriptor>>;
-  /** Optional fallback for hosts that do not request a composition. */
-  readonly defaultSurface?: ComponentSurface;
-}
 
 export interface SurfaceContext {
   readonly instanceId: string;

@@ -4,7 +4,7 @@ import type {
   JsonValue,
   ViewComponentDescriptor,
   ViewComponentEventPorts,
-} from "./components.ts";
+} from "./composition-contracts.ts";
 
 export const VIEW_APP_MANIFEST_SCHEMA = "io.casys.mcp.view-app-manifest/1.0" as const;
 export const VIEWER_SESSION_APPLY_ACTION = "viewer.session.apply" as const;

@@ -23,9 +23,17 @@ export {
   validateSemanticSelection,
 } from "./src/composition-contracts.ts";
 export type {
+  AdvertisedComponentCatalog,
+  ComponentSurface,
+  ComponentSurfaceItem,
+  ComponentSurfaceLayout,
   ComposedSemanticRef,
+  JsonValue,
   SemanticSelection,
   SemanticSelectionInput,
   SemanticSelectionMode,
+  SurfaceGap,
+  SurfaceLayoutType,
+  ViewComponentDescriptor,
   ViewComponentEventPorts,
 } from "./src/composition-contracts.ts";

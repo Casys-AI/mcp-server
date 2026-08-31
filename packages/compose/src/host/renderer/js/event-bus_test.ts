@@ -739,6 +739,24 @@ Deno.test("generated event bus directly publishes only to one declared active co
       action: "session.replace",
       payload,
     }),
+    { delivered: false, reason: "component-not-active" },
+  );
+  assertEquals(
+    findPost(viewer, (message) => message.method === "ui/compose/event"),
+    undefined,
+  );
+
+  harness.emit(viewer, {
+    jsonrpc: "2.0",
+    method: "ui/notifications/initialized",
+    params: {},
+  });
+  assertEquals(
+    harness.publishComponentAction({
+      componentId: "viewer",
+      action: "session.replace",
+      payload,
+    }),
     { delivered: true },
   );
   assertEquals(
@@ -767,7 +785,7 @@ Deno.test("generated event bus directly publishes only to one declared active co
       action: "session.replace",
       payload,
     }),
-    { delivered: false, reason: "action-not-accepted" },
+    { delivered: false, reason: "component-not-active" },
   );
   assertEquals(
     viewer.posts.filter((post) =>
@@ -815,7 +833,42 @@ Deno.test("generated event bus directly publishes only to one declared active co
       action: "session.replace",
       payload,
     }),
+    { delivered: false, reason: "component-not-active" },
+  );
+  harness.emit(viewer, {
+    jsonrpc: "2.0",
+    method: "ui/notifications/initialized",
+    params: {},
+  });
+  assertEquals(
+    harness.publishComponentAction({
+      componentId: "viewer",
+      action: "session.replace",
+      payload,
+    }),
     { delivered: false, reason: "action-ambiguous" },
+  );
+
+  // A fresh handshake without a component catalog must not inherit ports from
+  // the previous document occupying the same iframe slot.
+  harness.emit(viewer, {
+    jsonrpc: "2.0",
+    id: "viewer-reinitialize-without-catalog",
+    method: "ui/initialize",
+    params: {},
+  });
+  harness.emit(viewer, {
+    jsonrpc: "2.0",
+    method: "ui/notifications/initialized",
+    params: {},
+  });
+  assertEquals(
+    harness.publishComponentAction({
+      componentId: "viewer",
+      action: "session.replace",
+      payload,
+    }),
+    { delivered: false, reason: "action-not-accepted" },
   );
 
   const firstGateway = harness.hostGateway();

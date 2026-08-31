@@ -6,6 +6,55 @@ export interface ViewComponentEventPorts {
   readonly accepts?: readonly string[];
 }
 
+/** Layout modes available to serializable component surfaces. */
+export type SurfaceLayoutType = "stack" | "row" | "grid";
+
+/** Spacing scale accepted by serializable component surfaces. */
+export type SurfaceGap = "none" | "xs" | "sm" | "md" | "lg";
+
+/** JSON-only value accepted by a serializable component surface. */
+export type JsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | readonly JsonValue[]
+  | { readonly [key: string]: JsonValue };
+
+/** Serializable layout for an App-owned component surface. */
+export interface ComponentSurfaceLayout {
+  readonly type: SurfaceLayoutType;
+  readonly columns?: number;
+  readonly gap?: SurfaceGap;
+}
+
+/** One component instance in an App-owned component surface. */
+export interface ComponentSurfaceItem {
+  readonly id: string;
+  readonly component: string;
+  readonly area?: string;
+  readonly props?: Readonly<Record<string, JsonValue>>;
+}
+
+/** Serializable surface selected by a host or used as an App default. */
+export interface ComponentSurface {
+  readonly layout: ComponentSurfaceLayout;
+  readonly components: readonly ComponentSurfaceItem[];
+}
+
+/** Metadata a component advertises to a composition host. */
+export interface ViewComponentDescriptor {
+  readonly title: string;
+  readonly description?: string;
+  readonly events?: ViewComponentEventPorts;
+}
+
+/** Serializable catalog advertised during the MCP Apps initialize handshake. */
+export interface AdvertisedComponentCatalog {
+  readonly components: Readonly<Record<string, ViewComponentDescriptor>>;
+  readonly defaultSurface?: ComponentSurface;
+}
+
 export const SEMANTIC_SELECTION_SCHEMA = "io.casys.semantic-selection/1.0" as const;
 export const SEMANTIC_SELECTION_CHANGED_EVENT = "semantic.selection.changed" as const;
 export const SEMANTIC_SELECTION_APPLY_ACTION = "semantic.selection.apply" as const;

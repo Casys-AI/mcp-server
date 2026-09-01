@@ -41,7 +41,7 @@ Deno.test("result-viewer scaffold creates a standalone component project", async
     assertStringIncludes(generatedConfig, '"@casys/mcp-view": "jsr:@casys/mcp-view@0.9.2"');
     assertStringIncludes(
       generatedConfig,
-      '"@casys/mcp-view-components": "jsr:@casys/mcp-view-components@0.3.1"',
+      '"@casys/mcp-view-components": "jsr:@casys/mcp-view-components@0.5.0"',
     );
     assertStringIncludes(generatedConfig, '"minimumDependencyAge"');
     assertStringIncludes(generatedConfig, '"jsr:@casys/mcp-view-components"');
@@ -51,7 +51,7 @@ Deno.test("result-viewer scaffold creates a standalone component project", async
       configPath,
       generatedConfig
         .replace("jsr:@casys/mcp-view@0.9.2", coreModule)
-        .replace("jsr:@casys/mcp-view-components@0.3.1", componentsModule),
+        .replace("jsr:@casys/mcp-view-components@0.5.0", componentsModule),
     );
 
     await Deno.writeTextFile(
@@ -147,3 +147,23 @@ function assertInlineScriptsParse(html: string): void {
     new Function(script);
   }
 }
+
+Deno.test("the scaffold emits the version of the package that ships it", async () => {
+  // The README said 0.5.0 while the generator still wrote 0.3.1, so
+  // `jsr:…@0.5.0/scaffold` produced a project pinned to a release without the
+  // components it had just advertised. Nothing caught it: the version lived in
+  // three files and none of them was tied to deno.json.
+  const version = JSON.parse(
+    await Deno.readTextFile(new URL("./deno.json", import.meta.url)),
+  ).version as string;
+
+  for (const path of ["scaffold.ts", "src/scaffold/result-viewer-templates.ts"]) {
+    const source = await Deno.readTextFile(new URL(`./${path}`, import.meta.url));
+    const pins = [...source.matchAll(/@casys\/mcp-view-components@([0-9][A-Za-z0-9.-]*)/g)]
+      .map((match) => match[1]);
+    assert(pins.length > 0, `${path} pins no version of its own package`);
+    for (const pin of pins) {
+      assertEquals(pin, version, `${path} emits ${pin} while the package ships ${version}`);
+    }
+  }
+});

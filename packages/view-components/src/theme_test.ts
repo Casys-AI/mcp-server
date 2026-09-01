@@ -43,6 +43,7 @@ Deno.test("shared theme exposes the MCP View v2 component vocabulary", () => {
       ".mcp-view-interval-plot",
       ".mcp-view-skeleton",
       ".mcp-view-path-bar-collapsed",
+      ".mcp-view-notice-group",
     ]
   ) {
     assertStringIncludes(MCP_VIEW_THEME_CSS, className);

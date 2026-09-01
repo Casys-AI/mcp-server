@@ -214,6 +214,41 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
 
 .mcp-view-empty { margin: 0; }
 
+.mcp-view-notice-group {
+  display: grid;
+  gap: 0.28rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--mcp-view-border);
+  border-inline-start: 3px solid var(--mcp-view-muted);
+  border-radius: var(--mcp-view-radius-sm);
+  background: var(--mcp-view-subtle);
+}
+.mcp-view-notice-group[data-tone="info"] { border-inline-start-color: var(--mcp-view-accent); }
+.mcp-view-notice-group[data-tone="success"] { border-inline-start-color: var(--mcp-view-success); }
+.mcp-view-notice-group[data-tone="warning"] { border-inline-start-color: var(--mcp-view-warning); }
+.mcp-view-notice-group[data-tone="danger"] { border-inline-start-color: var(--mcp-view-danger); }
+.mcp-view-notice-group-label {
+  color: var(--mcp-view-text);
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.mcp-view-notice-group-omitted { color: var(--mcp-view-quiet); font-size: 0.62rem; }
+.mcp-view-notice-group-items {
+  display: grid;
+  gap: 0.22rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mcp-view-notice-group-item { color: var(--mcp-view-muted); font-size: 0.72rem; }
+/* A notice the caller built from the Message primitive keeps one border. */
+.mcp-view-notice-group .mcp-view-message {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
 .mcp-view-metrics {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
@@ -1448,6 +1483,8 @@ button.mcp-view-tree-list-label:focus-visible {
 .mcp-view-element-verdict-label,
 .mcp-view-element-verdict-value,
 .mcp-view-element-provenance,
+.mcp-view-notice-group-label,
+.mcp-view-notice-group-omitted,
 .mcp-view-path-bar-kept-rank,
 .mcp-view-path-bar-kept-detail,
 .mcp-view-drill-hint-glyph,

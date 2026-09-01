@@ -1,6 +1,7 @@
 /** @jsxImportSource preact */
 /** Shared Preact presentation primitives for composable MCP Apps. */
 
+import { createElement, render } from "preact";
 import type { ComponentChildren, JSX } from "preact";
 
 export type PresentationTone =
@@ -488,6 +489,103 @@ export function Message({
       {children}
     </div>
   );
+}
+
+export interface NoticeGroupProps {
+  /** Accessible name and visible heading for the group. */
+  readonly label: string;
+  /** Caller-formatted notices. Nothing is rendered when there are none. */
+  readonly items: readonly ComponentChildren[];
+  readonly tone?: PresentationTone;
+  /** Caller-formatted statement about entries that were left out. */
+  readonly omittedLabel?: ComponentChildren;
+  readonly className?: string;
+}
+
+/**
+ * Short notices gathered under one severity heading.
+ *
+ * Renders nothing when there is nothing to say, so a caller never has to guard
+ * the call site. Truncation is stated by the caller: the group displays the
+ * notices it was handed and never counts what it was not.
+ */
+export function NoticeGroup({
+  label,
+  items,
+  tone = "neutral",
+  omittedLabel,
+  className,
+}: NoticeGroupProps): JSX.Element | null {
+  // `{count && `${count} more`}` yields 0 and `{text && text}` yields "" for a
+  // caller who means nothing was left out. Counting those as content would
+  // render the very group this contract promises to hide.
+  const omitted = omittedLabel !== undefined && omittedLabel !== null &&
+    omittedLabel !== false && omittedLabel !== "" && omittedLabel !== 0;
+  if (items.length === 0 && !omitted) return null;
+  return (
+    <section
+      aria-label={label}
+      class={classes("mcp-view-notice-group", className)}
+      data-tone={tone}
+      // One live region for the group, not one per notice. Wrapping each item
+      // in Message announced N separate alerts for what reads on screen as a
+      // single severity heading with its list underneath.
+      role={tone === "danger" ? "alert" : "status"}
+    >
+      <strong class="mcp-view-notice-group-label">{label}</strong>
+      <ul class="mcp-view-notice-group-items">
+        {items.map((item, index) => <li class="mcp-view-notice-group-item" key={index}>{item}</li>)}
+      </ul>
+      {omitted && <small class="mcp-view-notice-group-omitted">{omittedLabel}</small>}
+    </section>
+  );
+}
+
+export interface StatusMessageMount {
+  readonly title?: ComponentChildren;
+  readonly tone?: PresentationTone;
+  readonly busy?: boolean;
+  readonly className?: string;
+  /** Existing host to render into. Without one a detached `div` is created. */
+  readonly container?: HTMLElement;
+}
+
+/**
+ * Render a `StateMessage` into a real DOM node and hand that node back.
+ *
+ * `defineView` returns a native element, so every viewer built on it has to
+ * bridge Preact to the DOM itself. Hand-written bridges drift — the tone, the
+ * alert role and the class stop matching between surfaces of the same product.
+ * This is that bridge, so one status looks like every other status.
+ */
+export function renderStatusMessage(
+  detail: ComponentChildren,
+  options: StatusMessageMount = {},
+): HTMLElement {
+  const host = options.container ?? document.createElement("div");
+  render(
+    createElement(
+      StateMessage,
+      {
+        busy: options.busy,
+        className: options.className,
+        title: options.title,
+        tone: options.tone,
+      },
+      detail,
+    ),
+    host,
+  );
+  // Without a container the caller mounts what comes back — typically as the
+  // return of `defineView`, which hands its element straight to the router.
+  // Returning the bare wrapper gave them a div carrying neither the class nor
+  // the alert role, so `replaceChildren` produced a root that no viewer stylesheet
+  // and no assistive technology could see. The container form returns the node
+  // the caller already owns.
+  if (options.container) return options.container;
+  const rendered = host.firstElementChild;
+  if (!rendered) throw new Error("renderStatusMessage rendered no element");
+  return rendered as HTMLElement;
 }
 
 export interface CrossSelectionProps {

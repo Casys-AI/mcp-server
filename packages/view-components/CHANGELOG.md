@@ -1,0 +1,134 @@
+# Changelog
+
+All notable changes to `@casys/mcp-view-components` will be documented in this file.
+
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres
+to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [0.4.0] - 2026-09-01
+
+### Added
+
+- **`Skeleton`** — frame-first loading placeholder (`src/preact/components.tsx`). Draws the
+  structure of a recorded view before its values arrive so layout does not shift on load. Caller
+  supplies an accessible `label` and an optional `lines` count (default three). Throws `RangeError`
+  for non-positive `lines`.
+
+- **`DrillHint`** — affordance for one available drill-down in direction `"in-view"` or
+  `"to-model"`. Without `onActivate` the component renders plain text and no glyph, so a host that
+  cannot follow a step never advertises an action that does not exist. `actionLabel` is required
+  together with the callback and never accepted without it.
+
+- **`TypeBadge`** — inline badge that names what kind of view one level is (`"list"`, `"chart"`, or
+  `"record"`). The caller supplies all wording; the kit does not translate or invent labels.
+
+- **`StaleBanner`** — marks surrounding values as recorded earlier without hiding or replacing them.
+  Accepts a caller-formatted `message`, an optional `PresentationTone` (default `"warning"`), and an
+  optional `action` callback. Promotes its ARIA role to `alert` when tone is `"danger"`.
+
+- **`Slot3D`** — reserved area for a provider-owned 3D renderer. Without `children` the slot stays
+  visibly reserved with a placeholder mark. The kit renders no geometry.
+
+- **`TreeList`** — controlled hierarchy with caller-owned type wording and per-node coverage labels.
+  Expansion (`expandedIds`) and selection (`selectedId`) are fully caller-managed; omit `onSelect`
+  for a read-only tree. Node `coverageLabel` is displayed verbatim — the kit counts nothing.
+
+- **Plots module** (`src/preact/plots.tsx`, new) — three pure numeric-evidence marks:
+
+  - **`Sparkline`** — compact polyline for one recorded series, readable at chip and row density.
+    Requires at least two finite samples already ordered by the caller.
+  - **`SeriesChart`** — multi-series plot on a shared finite scale with an optional declared cursor
+    readout. The chart never resamples, interpolates a missing point, formats a number, picks a
+    unit, derives an extremum, or owns pointer state.
+  - **`IntervalPlot`** — caller-declared deviation intervals laid out against a shared zero line.
+    The scale must contain zero; every bound and label is caller-supplied.
+
+- **`PathBarItem.detail`** — optional recorded state for a kept level, revealed only inside the
+  collapsed disclosure.
+
+- **`PATH_BAR_DEFAULT_MAX_VISIBLE`** — exported constant (`3`) for the default inline capacity of
+  `PathBar`.
+
+- New optional `PathBar` props: `maxVisible` (inline capacity before leading items collapse),
+  `collapsedLabel` (accessible name of the collapsed disclosure), and `backLabel` (accessible name
+  of the leading step-out control; renders a button only when the current item has a predecessor).
+
+- **`SeriesChart.onScrub`** — optional `(x: number | undefined) => void` callback. Reports the
+  pointer position on the shared x scale; `undefined` signals that the pointer has left the chart.
+  The chart resolves no sample at that position. A series with no recorded point at the scrubbed x
+  is absent from the accompanying `SeriesChartCursor.readouts` rather than filled with an
+  interpolated or nearest-neighbour value: determining which recorded sample corresponds to a
+  position — or that none does — remains the provider's decision, as only the provider knows its
+  sampling strategy (a fixed-step series has a different notion of proximity than an adaptive trace
+  whose step size varies with the signal).
+
+- **`SeriesMark`** — exported string union `"line" | "bar"` that every `SeriesChartSeries` must now
+  declare via the required `mark` field:
+
+  - `"line"` draws a polyline through the samples. Using `"line"` is an assertion that the measured
+    quantity existed between the recorded points — valid when the series is sampled densely enough
+    that the intervals carry meaning.
+  - `"bar"` draws one vertical mark per recorded sample. When the scale contains zero the bar is
+    anchored on the baseline; otherwise it sits on the scale floor. `"bar"` makes no claim about the
+    interval between samples.
+
+  The chart never deduces the mark from sample spacing: the provider declares it because the
+  provider knows its sampling strategy.
+
+### Changed
+
+- **BREAKING — `@casys/mcp-view-components/preact/components` no longer re-exports theme symbols.**
+  `installMcpViewTheme`, `MCP_VIEW_THEME_CSS`, `MCP_VIEW_THEME_STYLE_ID`, `MCP_VIEW_THEME_TOKENS`,
+  `McpViewThemeDocument`, `McpViewThemeToken`, and `McpViewThemeTokens` are removed from the
+  `./preact/components` barrel and remain available from the package root
+  `@casys/mcp-view-components` only.
+
+  **Why:** the barrel unconditionally re-exported the theme sheet; `deno bundle` did not elide it.
+  An entry importing only `Card` produced 53.8 KB; it produces 11.0 KB after this change. The theme
+  is an explicit installation step (`installMcpViewTheme()`) and must cost an explicit import.
+
+  **Migration:** move theme imports to the root entry point:
+
+  ```ts
+  // before
+  import { installMcpViewTheme } from "@casys/mcp-view-components/preact/components";
+  // after
+  import { installMcpViewTheme } from "@casys/mcp-view-components";
+  ```
+
+  A test in `preact_components_test.ts` now asserts that the barrel has no module edge to
+  `src/theme.ts`. No known consumer imported theme symbols from this barrel; the migration is
+  mechanical.
+
+- **BREAKING — `SeriesChartSeries.mark` is now required.** Every series must declare a `mark` field
+  of type `SeriesMark` (`"line"` or `"bar"`). The field was absent before; adding it is the
+  migration.
+
+  **Migration:** add `mark: "line"` to restore the previous polyline rendering — but verify that a
+  line is justified for that series before doing so. Connecting two samples is an assertion that the
+  quantity existed between them; if the sampling is sparse or the intervals carry no meaning,
+  `"bar"` is the correct mark.
+
+- **BREAKING — `PathBar` return type is now `JSX.Element | null`.** A path with fewer than two items
+  returns `null`: the first level has nothing to leave, so no navigation is rendered.
+
+  **Migration — what callers must do:**
+
+  1. **TypeScript strict mode.** Any site that assigned the return value to a `JSX.Element` variable
+     or prop without `| null` now produces a type error. Widen the annotation or wrap the call:
+     `{items.length > 1 && <PathBar … />}`.
+
+  2. **Layout that relied on the `<nav>` being present for a single-item path.** The previous
+     behaviour rendered a one-crumb bar that the browser included in flow (height, border, gap). A
+     caller whose outer layout reserved that space unconditionally — via a fixed height, a flex gap,
+     or a border that depended on the element existing — must now guard the surrounding container on
+     the path length or use a `min-height` that stays consistent when the bar is absent.
+
+  3. **Consumers upgrading from 0.1.x or 0.2.x.** This breaking change lands in the same upgrade
+     that introduces several new minor features. Callers jumping multiple minors in one step should
+     audit every `PathBar` call site in a single pass before shipping.
+
+- `PathBar` validates `maxVisible` at call time and throws `RangeError` for non-positive or
+  non-integer values, consistent with the existing item-id and `currentId` guards.

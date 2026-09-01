@@ -31,18 +31,27 @@ import {
   Card,
   CodeBlock,
   CollectionCard,
+  DrillHint,
   ElementBody,
   ElementIdent,
   ElementLimit,
   ElementProvenance,
   ElementReading,
   InlineCode,
+  IntervalPlot,
   LimitGauge,
   PathBar,
   Row,
   SemanticElement,
   SemanticList,
+  SeriesChart,
+  Skeleton,
+  Slot3D,
+  Sparkline,
+  StaleBanner,
   TextInput,
+  TreeList,
+  TypeBadge,
 } from "@casys/mcp-view-components/preact";
 ```
 
@@ -51,15 +60,45 @@ import {
 Primitives:
 
 - `Card`, `Badge`, `BadgeGroup`, `Button`, `Toolbar`, `Stack`, `Row`, `TextInput`, `InlineCode`,
-  `CodeBlock`
+  `CodeBlock`, `Skeleton`
 - `Metric`, `MetricGrid`, `KeyValueList`, `DataTable`
 - `Message`, `StateMessage`, `EmptyState`, `CrossSelection`
 
 Reusable structures:
 
-- `PathBar` for local navigation inside one bounded view
+- `PathBar` for local navigation inside one bounded view; a path of one item renders nothing. New
+  optional props: `maxVisible` (inline capacity before leading items collapse; default three),
+  `collapsedLabel` (accessible name of the collapsed disclosure), `backLabel` (leading step-out
+  control), and `PathBarItem.detail` (recorded state of a kept level, revealed in the collapsed
+  disclosure).
 - `LimitGauge` for caller-supplied readings, bounds, labels, and tone
 - `ArtifactRow` for immutable artifact identity and literal verification status
+- `DrillHint` for one available drill-down, in direction `"in-view"` or `"to-model"`. Without a
+  callback the hint degrades to plain text so a host that cannot follow it never advertises a step
+  that does not exist.
+- `TypeBadge` names what kind of view one level is (`"list"`, `"chart"`, or `"record"`); the caller
+  supplies all wording.
+- `StaleBanner` marks surrounding values as recorded earlier without hiding or replacing them. Tone
+  defaults to `"warning"`; `"danger"` promotes the ARIA role to `alert`.
+- `Slot3D` reserves a bounded area for a provider-owned renderer; without `children` the slot stays
+  visibly reserved. The kit renders no geometry.
+- `TreeList` for a controlled hierarchy with caller-owned type wording and coverage labels;
+  expansion and selection state are fully caller-managed.
+
+Numeric evidence:
+
+- `Sparkline` for the compact shape of one recorded series, readable at chip and row density.
+  Requires at least two finite samples already ordered by the caller.
+- `SeriesChart` for a multi-series plot on a shared finite scale. Each series requires a `mark`
+  field (`"line"` or `"bar"`): `"line"` connects samples with a polyline — an assertion that the
+  quantity existed between them; `"bar"` draws each recorded sample as an isolated mark and claims
+  nothing about the interval. The optional `onScrub` callback reports the pointer position on the
+  shared x scale (`undefined` when the pointer leaves); a series with no recorded point at that
+  position is absent from the readout rather than filled. The kit never interpolates, aligns to a
+  nearest neighbour, draws a continuity it has not measured, or invents a value — the provider
+  declares both the mark shape and which sample a position corresponds to.
+- `IntervalPlot` for caller-declared deviation intervals laid out against a shared zero line. The
+  scale must contain zero; every bound and label is caller-supplied.
 
 Semantic composition:
 
@@ -90,6 +129,22 @@ unless the caller supplies that recorded status.
 
 Use `ElementLimit` when the record contains only an authored bound. It displays the supplied
 operator, value, and unit without inventing a measurement, range, satisfaction state, or verdict.
+
+## System states
+
+Three components express a view's readiness without hiding or fabricating content.
+
+`Skeleton` is a frame-first loading placeholder: it draws the structure before values arrive so
+layout does not shift on load. The caller supplies an accessible label and an optional line count
+(default three).
+
+`StaleBanner` keeps dated values visible while flagging that the snapshot is not current. The caller
+formats the message, including the recorded instant. The banner never refetches or replaces a value
+with a gap.
+
+`DrillHint` without a callback degrades to plain text. A host that cannot follow a drill-down step
+omits `onActivate`; the hint stays visible but renders no affordance. Providers declare every
+available next step without advertising actions the host cannot execute.
 
 ## Theme
 
@@ -122,7 +177,7 @@ session.
 The project generator intentionally uses Deno filesystem APIs and `deno fmt`. Run it from JSR:
 
 ```sh
-deno run -A jsr:@casys/mcp-view-components@0.3.1/scaffold result-viewer ./result-viewer
+deno run -A jsr:@casys/mcp-view-components@0.4.0/scaffold result-viewer ./result-viewer
 ```
 
 The npm package contains only the runtime and presentation entry points. It does not export or ship

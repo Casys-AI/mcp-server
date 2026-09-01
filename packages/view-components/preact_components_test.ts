@@ -7,9 +7,7 @@ import {
   DataTable,
   ElementLimit,
   InlineCode,
-  installMcpViewTheme,
   LimitGauge,
-  MCP_VIEW_THEME_CSS,
   PathBar,
   Row,
   SemanticElement,
@@ -26,9 +24,19 @@ Deno.test("Preact components entry exposes presentation without an MCP Apps runt
   assertEquals(typeof Row, "function");
   assertEquals(typeof LimitGauge, "function");
   assertEquals(typeof SemanticElement, "function");
-  assertEquals(typeof installMcpViewTheme, "function");
   assertEquals(typeof InlineCode, "function");
-  assert(MCP_VIEW_THEME_CSS.includes(".mcp-view-card"));
+});
+
+Deno.test("Preact components entry ships components without the stylesheet", async () => {
+  // The theme is an explicit install from the package root. Re-exporting it
+  // here put the whole sheet in every bundle that imported one component.
+  const entry = await import("./preact-components.ts") as Record<string, unknown>;
+  for (const absent of ["MCP_VIEW_THEME_CSS", "installMcpViewTheme", "MCP_VIEW_THEME_TOKENS"]) {
+    assertFalse(absent in entry, `${absent} must not ship from the components entry`);
+  }
+  const root = await import("./mod.ts") as Record<string, unknown>;
+  assertEquals(typeof root.installMcpViewTheme, "function");
+  assert(String(root.MCP_VIEW_THEME_CSS).includes(".mcp-view-card"));
 });
 
 Deno.test({
@@ -71,6 +79,7 @@ Deno.test({
         "/src/app.ts",
         "/src/lifecycle.ts",
         "/src/compose-events.ts",
+        "/src/theme.ts",
       ]
     ) {
       assertFalse(

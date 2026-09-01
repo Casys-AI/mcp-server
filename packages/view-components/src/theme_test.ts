@@ -33,6 +33,16 @@ Deno.test("shared theme exposes the MCP View v2 component vocabulary", () => {
       '[data-density="card"]',
       ":focus-visible",
       '[data-tone="danger"]',
+      ".mcp-view-drill-hint",
+      ".mcp-view-type-badge",
+      ".mcp-view-stale-banner",
+      ".mcp-view-slot-3d",
+      ".mcp-view-tree-list",
+      ".mcp-view-sparkline",
+      ".mcp-view-series-chart",
+      ".mcp-view-interval-plot",
+      ".mcp-view-skeleton",
+      ".mcp-view-path-bar-collapsed",
     ]
   ) {
     assertStringIncludes(MCP_VIEW_THEME_CSS, className);

@@ -40,7 +40,9 @@ import {
   InlineCode,
   IntervalPlot,
   LimitGauge,
+  NoticeGroup,
   PathBar,
+  renderStatusMessage,
   Row,
   SemanticElement,
   SemanticList,
@@ -62,7 +64,7 @@ Primitives:
 - `Card`, `Badge`, `BadgeGroup`, `Button`, `Toolbar`, `Stack`, `Row`, `TextInput`, `InlineCode`,
   `CodeBlock`, `Skeleton`
 - `Metric`, `MetricGrid`, `KeyValueList`, `DataTable`
-- `Message`, `StateMessage`, `EmptyState`, `CrossSelection`
+- `Message`, `StateMessage`, `EmptyState`, `CrossSelection`, `NoticeGroup`
 
 Reusable structures:
 
@@ -146,6 +148,22 @@ with a gap.
 omits `onActivate`; the hint stays visible but renders no affordance. Providers declare every
 available next step without advertising actions the host cannot execute.
 
+`NoticeGroup` gathers short notices under a single severity heading. It renders nothing when there
+are no items and no `omittedLabel`, so the caller never has to guard the call site. Truncation is
+stated by the caller via `omittedLabel`: the group displays only the items it was handed and never
+counts what it was not given.
+
+## Imperative bridge
+
+`renderStatusMessage(detail, options?)` renders a `StateMessage` into a real DOM node and returns
+it. `defineView` must return a native element, so every viewer built on it previously wrote its own
+Preact-to-DOM bridge; those bridges drifted in tone, ARIA role, and class. `renderStatusMessage` is
+that bridge, made canonical. It lives in the pure presentation module
+`@casys/mcp-view-components/preact/components` and does not import `@casys/mcp-view`, so it is
+reachable from any entry that does not need the surface lifecycle.
+
+Without `container` it creates a detached `div`; with one it renders into that node and returns it.
+
 ## Theme
 
 `installMcpViewTheme()` installs the shared CSS once. The defaults are light-first and include an
@@ -172,12 +190,54 @@ core resource lifecycle. `startPreactSurfaceApp()` accepts paired `validateSessi
 state. No individual component claims `viewer.session.apply`, so a remount cannot lose a one-shot
 session.
 
+## Common compositions
+
+The kit stays small and non-prescriptive, leaving assembly to the caller. When multiple viewers
+build the same assembly from the same primitives, this section is what they should have found first.
+
+### Named quantity section
+
+`Card` + `MetricGrid` carries one named group of measurements. Repeat the pattern for each domain
+region; `EmptyState` handles the no-data case without shifting layout.
+
+```tsx
+<Card title="Load margins">
+  {items.length === 0 ? <EmptyState>No values recorded.</EmptyState> : <MetricGrid items={items} />}
+</Card>;
+```
+
+### Artifact collection
+
+`CollectionCard` + `ArtifactRow` keeps a single outer border for a bounded list of immutable
+artifacts. Thread the count through `eyebrow` or `actions`; `EmptyState` fills the list body when
+there is nothing to show. `CollectionCard` is available since 0.3.x; the `eyebrow` slot on `Card`
+accepts any `ComponentChildren`, so a plain count string requires no extra component.
+
+```tsx
+<CollectionCard
+  label="Build artifacts"
+  title="Artifacts"
+  eyebrow={artifacts.length > 0 ? `${artifacts.length} items` : undefined}
+>
+  {artifacts.length === 0
+    ? <EmptyState>No artifacts recorded.</EmptyState>
+    : artifacts.map((a) => (
+      <ArtifactRow
+        key={a.uri}
+        label={a.label}
+        uri={a.uri}
+        verification={a.verification}
+      />
+    ))}
+</CollectionCard>;
+```
+
 ## Result-viewer scaffold (Deno/JSR only)
 
 The project generator intentionally uses Deno filesystem APIs and `deno fmt`. Run it from JSR:
 
 ```sh
-deno run -A jsr:@casys/mcp-view-components@0.4.0/scaffold result-viewer ./result-viewer
+deno run -A jsr:@casys/mcp-view-components@0.5.0/scaffold result-viewer ./result-viewer
 ```
 
 The npm package contains only the runtime and presentation entry points. It does not export or ship

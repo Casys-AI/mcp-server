@@ -7,6 +7,24 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-01
+
+### Added
+
+- **`NoticeGroup`** (`NoticeGroupProps`) — gathers short notices under a single severity heading
+  (`src/preact/components.tsx`). Renders nothing when `items` is empty and no `omittedLabel` is
+  supplied, so the caller never has to guard the call site. Truncation is stated by the caller via
+  `omittedLabel`: the group displays only the notices it was handed and never counts what it was not
+  given. Accepts an optional `PresentationTone` (default `"neutral"`).
+
+- **`renderStatusMessage`** — imperative bridge that renders a `StateMessage` into a real DOM node
+  and returns it (`src/preact/components.tsx`). `defineView` must return a native element, so every
+  viewer built on it previously wrote its own Preact-to-DOM bridge; those bridges drifted in tone,
+  ARIA role, and class. Without `container` (`StatusMessageMount`) the function creates a detached
+  `div`; with one it renders inside that node and returns it. Lives in the pure presentation module
+  (`preact/components` entry) and does not import `@casys/mcp-view`, so it is reachable from any
+  entry that does not need the surface lifecycle.
+
 ## [0.4.0] - 2026-09-01
 
 ### Added

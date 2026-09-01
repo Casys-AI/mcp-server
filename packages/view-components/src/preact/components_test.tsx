@@ -1,6 +1,6 @@
 /** @jsxImportSource preact */
 
-import { assertEquals, assertThrows } from "@std/assert";
+import { assertEquals, assertStrictEquals, assertThrows } from "@std/assert";
 import { render } from "preact";
 import {
   Badge,
@@ -16,6 +16,8 @@ import {
   Message,
   Metric,
   MetricGrid,
+  NoticeGroup,
+  renderStatusMessage,
   Row,
   Skeleton,
   Stack,
@@ -236,4 +238,154 @@ Deno.test("Skeleton rejects non-integer or sub-one lines count", () => {
   assertThrows(() => Skeleton({ label: "Loading", lines: 0 }), RangeError, "positive integer");
   assertThrows(() => Skeleton({ label: "Loading", lines: -1 }), RangeError, "positive integer");
   assertThrows(() => Skeleton({ label: "Loading", lines: 1.5 }), RangeError, "positive integer");
+});
+
+Deno.test("NoticeGroup renders null when items is empty and omittedLabel is absent", () => {
+  const result = NoticeGroup({ label: "Warnings", items: [] });
+  assertEquals(result, null);
+});
+
+Deno.test({
+  name: "NoticeGroup renders a section with label, data-tone, and one Message per item",
+  permissions: { read: true, env: true, run: true },
+  async fn() {
+    const documentModule = await import("npm:linkedom@0.18.12");
+    const dom = documentModule.parseHTML("<html><body><div id=root></div></body></html>");
+    const previousDocument = globalThis.document;
+    Object.defineProperty(globalThis, "document", { configurable: true, value: dom.document });
+    try {
+      const root = dom.document.getElementById("root") as unknown as HTMLElement;
+      render(
+        <NoticeGroup
+          label="Validation warnings"
+          items={["First notice", "Second notice"]}
+          tone="warning"
+        />,
+        root,
+      );
+
+      const section = root.querySelector("section");
+      assertEquals(section?.getAttribute("aria-label"), "Validation warnings");
+      assertEquals(section?.getAttribute("data-tone"), "warning");
+      assertEquals(
+        root.querySelector(".mcp-view-notice-group-label")?.textContent,
+        "Validation warnings",
+      );
+      const messages = root.querySelectorAll(".mcp-view-message");
+      assertEquals(messages.length, 2);
+      assertEquals(messages[0].getAttribute("data-tone"), "warning");
+      assertEquals(messages[1].getAttribute("data-tone"), "warning");
+    } finally {
+      Object.defineProperty(globalThis, "document", {
+        configurable: true,
+        value: previousDocument,
+      });
+    }
+  },
+});
+
+Deno.test({
+  name: "NoticeGroup renders the section when items is empty but omittedLabel is provided",
+  permissions: { read: true, env: true, run: true },
+  async fn() {
+    const documentModule = await import("npm:linkedom@0.18.12");
+    const dom = documentModule.parseHTML("<html><body><div id=root></div></body></html>");
+    const previousDocument = globalThis.document;
+    Object.defineProperty(globalThis, "document", { configurable: true, value: dom.document });
+    try {
+      const root = dom.document.getElementById("root") as unknown as HTMLElement;
+      render(
+        <NoticeGroup label="Errors" items={[]} omittedLabel="3 more not shown" />,
+        root,
+      );
+
+      assertEquals(root.querySelector("section") !== null, true);
+      assertEquals(root.querySelector("section")?.getAttribute("data-tone"), "neutral");
+      assertEquals(root.querySelectorAll(".mcp-view-message").length, 0);
+      assertEquals(
+        root.querySelector(".mcp-view-notice-group-omitted")?.textContent,
+        "3 more not shown",
+      );
+    } finally {
+      Object.defineProperty(globalThis, "document", {
+        configurable: true,
+        value: previousDocument,
+      });
+    }
+  },
+});
+
+Deno.test({
+  name: "renderStatusMessage without container creates a detached div containing StateMessage DOM",
+  permissions: { read: true, env: true, run: true },
+  async fn() {
+    const documentModule = await import("npm:linkedom@0.18.12");
+    const dom = documentModule.parseHTML("<html><body></body></html>");
+    const previousDocument = globalThis.document;
+    Object.defineProperty(globalThis, "document", { configurable: true, value: dom.document });
+    try {
+      const node = renderStatusMessage("Loading results");
+      assertEquals(node.querySelector(".mcp-view-state") !== null, true);
+      assertEquals(
+        node.querySelector(".mcp-view-state-detail")?.textContent,
+        "Loading results",
+      );
+    } finally {
+      Object.defineProperty(globalThis, "document", {
+        configurable: true,
+        value: previousDocument,
+      });
+    }
+  },
+});
+
+Deno.test({
+  name: "renderStatusMessage with container renders into it and returns the same node",
+  permissions: { read: true, env: true, run: true },
+  async fn() {
+    const documentModule = await import("npm:linkedom@0.18.12");
+    const dom = documentModule.parseHTML("<html><body></body></html>");
+    const previousDocument = globalThis.document;
+    Object.defineProperty(globalThis, "document", { configurable: true, value: dom.document });
+    try {
+      const container = dom.document.createElement("div") as unknown as HTMLElement;
+      const result = renderStatusMessage("Solver running", { container });
+      assertStrictEquals(result, container);
+      assertEquals(container.querySelector(".mcp-view-state") !== null, true);
+    } finally {
+      Object.defineProperty(globalThis, "document", {
+        configurable: true,
+        value: previousDocument,
+      });
+    }
+  },
+});
+
+Deno.test({
+  name: "renderStatusMessage passes tone title busy and className to StateMessage",
+  permissions: { read: true, env: true, run: true },
+  async fn() {
+    const documentModule = await import("npm:linkedom@0.18.12");
+    const dom = documentModule.parseHTML("<html><body></body></html>");
+    const previousDocument = globalThis.document;
+    Object.defineProperty(globalThis, "document", { configurable: true, value: dom.document });
+    try {
+      const node = renderStatusMessage("Solver running", {
+        tone: "info",
+        title: "Processing",
+        busy: true,
+        className: "my-status",
+      });
+      const state = node.querySelector(".mcp-view-state");
+      assertEquals(state?.getAttribute("data-tone"), "info");
+      assertEquals(state?.querySelector("strong")?.textContent, "Processing");
+      assertEquals(state?.querySelector(".mcp-view-state-busy") !== null, true);
+      assertEquals(state?.classList.contains("my-status"), true);
+    } finally {
+      Object.defineProperty(globalThis, "document", {
+        configurable: true,
+        value: previousDocument,
+      });
+    }
+  },
 });

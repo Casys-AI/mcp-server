@@ -165,7 +165,8 @@ lives in the pure presentation module `@casys/mcp-view-components/preact/compone
 import `@casys/mcp-view`, so it is reachable from any entry that does not need the surface
 lifecycle.
 
-Without `container` it creates a detached `div`; with one it renders into that node and returns it.
+Without `container` it returns the rendered `.mcp-view-state` element; with one it renders into the
+node you passed and returns that.
 
 ## Theme
 

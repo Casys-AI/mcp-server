@@ -1,6 +1,6 @@
 /** @jsxImportSource preact */
 
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertThrows } from "@std/assert";
 import { render } from "preact";
 import {
   Badge,
@@ -17,6 +17,7 @@ import {
   Metric,
   MetricGrid,
   Row,
+  Skeleton,
   Stack,
   StateMessage,
   TextInput,
@@ -188,4 +189,51 @@ Deno.test({
       });
     }
   },
+});
+
+Deno.test({
+  name: "Skeleton renders role=status aria-busy=true with caller label and N aria-hidden lines",
+  permissions: { read: true, env: true, run: true },
+  async fn() {
+    const documentModule = await import("npm:linkedom@0.18.12");
+    const dom = documentModule.parseHTML(
+      "<html><body><div id=root></div></body></html>",
+    );
+    const previousDocument = globalThis.document;
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: dom.document,
+    });
+    try {
+      const root = dom.document.getElementById("root") as unknown as HTMLElement;
+
+      // Default: 3 lines
+      render(<Skeleton label="Loading qualification results" />, root);
+
+      const el = root.querySelector(".mcp-view-skeleton");
+      assertEquals(el?.getAttribute("role"), "status");
+      assertEquals(el?.getAttribute("aria-busy"), "true");
+      assertEquals(el?.getAttribute("aria-label"), "Loading qualification results");
+      const defaultLines = root.querySelectorAll(".mcp-view-skeleton-line");
+      assertEquals(defaultLines.length, 3);
+      assertEquals(defaultLines[0].getAttribute("aria-hidden"), "true");
+      assertEquals(defaultLines[1].getAttribute("aria-hidden"), "true");
+      assertEquals(defaultLines[2].getAttribute("aria-hidden"), "true");
+
+      // Explicit line count
+      render(<Skeleton label="Loading" lines={5} />, root);
+      assertEquals(root.querySelectorAll(".mcp-view-skeleton-line").length, 5);
+    } finally {
+      Object.defineProperty(globalThis, "document", {
+        configurable: true,
+        value: previousDocument,
+      });
+    }
+  },
+});
+
+Deno.test("Skeleton rejects non-integer or sub-one lines count", () => {
+  assertThrows(() => Skeleton({ label: "Loading", lines: 0 }), RangeError, "positive integer");
+  assertThrows(() => Skeleton({ label: "Loading", lines: -1 }), RangeError, "positive integer");
+  assertThrows(() => Skeleton({ label: "Loading", lines: 1.5 }), RangeError, "positive integer");
 });

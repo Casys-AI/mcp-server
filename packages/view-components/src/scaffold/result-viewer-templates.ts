@@ -11,7 +11,11 @@ export const resultViewerTemplates: Readonly<Record<string, string>> = {
   },
   "minimumDependencyAge": {
     "age": "P1D",
-    "exclude": ["jsr:@casys/mcp-view", "jsr:@casys/mcp-view-components"]
+    "exclude": [
+      "jsr:@casys/mcp-view",
+      "jsr:@casys/mcp-view-components",
+      "jsr:@casys/mcp-view-contracts"
+    ]
   },
   "tasks": {
     "build": "deno run -A build.ts",
@@ -112,8 +116,18 @@ export interface ResultModel {
 export type DisplayState =
   | { kind: "loading" }
   | { kind: "empty" }
-  | { kind: "error"; message: string }
+  | { kind: "error"; message: string; stale?: ResultModel; recordedAt?: string }
   | { kind: "result"; result: ResultModel };
+
+/**
+ * The values a failed refresh must keep showing. A viewer that blanks its
+ * panels on error replaces the last recorded truth with a hole.
+ */
+export function shownResult(display: DisplayState): ResultModel | undefined {
+  if (display.kind === "result") return display.result;
+  if (display.kind === "error") return display.stale;
+  return undefined;
+}
 
 export function parseStructuredResult(value: unknown): ResultModel {
   if (!isRecord(value)) throw new TypeError("Expected structuredContent to be an object.");
@@ -201,19 +215,27 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   "src/render.ts": `import type { DisplayState, Metric, ResultModel } from "./model.ts";
 
 export function renderDisplay(display: DisplayState): string {
-  if (display.kind === "loading") return shell("Loading result", '<div class="state loading"><span class="spinner" aria-hidden="true"></span><p>Waiting for a structured tool result…</p></div>');
-  if (display.kind === "empty") return shell("No result data", '<div class="state empty"><h2>Nothing to display</h2><p>The tool completed without displayable fields.</p></div>');
-  if (display.kind === "error") return shell("Result unavailable", '<div class="state error" role="alert"><h2>Unable to display this result</h2><p>' + escapeHtml(display.message) + "</p></div>");
+  if (display.kind === "loading") return shell("Loading result", '<div class="mcp-view-skeleton" role="status" aria-busy="true" aria-label="Loading the recorded result"><span class="mcp-view-skeleton-line" aria-hidden="true"></span><span class="mcp-view-skeleton-line" aria-hidden="true"></span><span class="mcp-view-skeleton-line" aria-hidden="true"></span></div>');
+  if (display.kind === "empty") return shell("No result data", '<div class="mcp-view-state"><strong>Nothing to display</strong><p class="mcp-view-state-detail">The tool completed without displayable fields.</p></div>');
+  if (display.kind === "error") {
+    const banner = '<div class="mcp-view-stale-banner" data-tone="danger" role="alert"><span class="mcp-view-stale-banner-message">' + escapeHtml(display.message) + (display.recordedAt ? " — values recorded at " + escapeHtml(display.recordedAt) : "") + "</span></div>";
+    // The kept values stay on the page underneath the failure.
+    return display.stale ? shell(escapeHtml(display.stale.title), banner + renderBody(display.stale)) : shell("Result unavailable", banner);
+  }
   return renderResult(display.result);
 }
 
 export function renderResult(result: ResultModel): string {
-  const status = result.status ? '<span class="status">' + escapeHtml(result.status) + "</span>" : "";
-  const summary = result.summary ? '<p class="summary">' + escapeHtml(result.summary) + "</p>" : "";
-  return shell(escapeHtml(result.title), '<header class="result-header"><div>' + summary + "</div>" + status + "</header>" +
+  return shell(escapeHtml(result.title), renderBody(result));
+}
+
+function renderBody(result: ResultModel): string {
+  const status = result.status ? '<span class="mcp-view-badge">' + escapeHtml(result.status) + "</span>" : "";
+  const summary = result.summary ? '<p class="mcp-view-card-eyebrow">' + escapeHtml(result.summary) + "</p>" : "";
+  return '<header class="mcp-view-card-header"><div class="mcp-view-card-heading">' + summary + "</div>" + status + "</header>" +
     renderMetrics("Metrics", result.metrics, "No metrics were supplied.") +
     renderMetrics("Details", result.details, "No additional scalar details were supplied.") +
-    renderArtifacts(result));
+    renderArtifacts(result);
 }
 
 export function escapeHtml(value: string): string {
@@ -221,64 +243,47 @@ export function escapeHtml(value: string): string {
 }
 
 function shell(title: string, content: string): string {
-  return '<section class="viewer" aria-label="Structured result"><header class="masthead"><div><p class="kicker">MCP RESULT</p><h1>' + title + "</h1></div></header>" + content + "</section>";
+  return '<section class="viewer" aria-label="Structured result"><h1>' + title + "</h1>" + content + "</section>";
 }
 
 function renderMetrics(title: string, metrics: Metric[], empty: string): string {
   const rows = metrics.length
-    ? '<dl class="metric-grid">' + metrics.map((metric) => '<div><dt>' + escapeHtml(metric.label) + "</dt><dd>" + escapeHtml(metric.value) + "</dd></div>").join("") + "</dl>"
-    : '<p class="muted">' + escapeHtml(empty) + "</p>";
-  return '<section class="panel"><h2>' + title + "</h2>" + rows + "</section>";
+    ? '<dl class="mcp-view-metrics">' + metrics.map((metric) => '<div class="mcp-view-metric"><dt class="mcp-view-metric-label">' + escapeHtml(metric.label) + '</dt><dd class="mcp-view-metric-value">' + escapeHtml(metric.value) + "</dd></div>").join("") + "</dl>"
+    : '<p class="mcp-view-empty">' + escapeHtml(empty) + "</p>";
+  return '<section class="mcp-view-card"><h2 class="mcp-view-card-title">' + title + "</h2>" + rows + "</section>";
 }
 
 function renderArtifacts(result: ResultModel): string {
   const rows = result.artifacts.length
-    ? '<div class="artifact-list">' + result.artifacts.map((artifact) => '<article class="artifact"><strong>' + escapeHtml(artifact.label) + "</strong><code>" + escapeHtml(artifact.uri) + "</code>" + (artifact.sha256 ? '<small>SHA-256: <code>' + escapeHtml(artifact.sha256) + "</code></small>" : "") + (artifact.bytes === undefined ? "" : "<small>" + artifact.bytes.toLocaleString() + " bytes</small>") + "</article>").join("") + "</div>"
-    : '<p class="muted">No artifacts were supplied.</p>';
-  return '<section class="panel"><h2>Artifacts</h2>' + rows + "</section>";
+    ? '<div class="mcp-view-stack">' + result.artifacts.map((artifact) => '<article class="mcp-view-artifact-row"><span class="mcp-view-artifact-row-identity"><strong class="mcp-view-artifact-row-label">' + escapeHtml(artifact.label) + '</strong></span><code class="mcp-view-artifact-row-uri">' + escapeHtml(artifact.uri) + "</code>" + (artifact.sha256 ? '<span class="mcp-view-artifact-row-fingerprint"><span>sha256</span><code>' + escapeHtml(artifact.sha256) + "</code></span>" : "") + (artifact.bytes === undefined ? "" : '<span class="mcp-view-artifact-row-size">' + artifact.bytes.toLocaleString() + " bytes</span>") + "</article>").join("") + "</div>"
+    : '<p class="mcp-view-empty">No artifacts were supplied.</p>';
+  return '<section class="mcp-view-card"><h2 class="mcp-view-card-title">Artifacts</h2>' + rows + "</section>";
 }
 `,
-  "src/styles.css": `:root {
-  color-scheme: light dark;
-  --surface: var(--color-background-primary, #101413);
-  --panel: var(--color-background-secondary, #18201e);
-  --text: var(--color-text-primary, #edf2ef);
-  --muted: var(--color-text-secondary, #a6b3ac);
-  --line: var(--color-border-primary, #405049);
-  --accent: var(--color-accent, #8bc7a5);
-  --danger: #df827b;
-  --font-body: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
-  --font-data: var(--font-mono, ui-monospace, "SFMono-Regular", Menlo, monospace);
-}
+  "src/styles.css": `/*
+ * The kit owns the component vocabulary through installMcpViewTheme(); this
+ * file only frames the page around it.
+ */
+:root { color-scheme: light dark; }
 * { box-sizing: border-box; }
-html, body { min-width: 0; margin: 0; background: var(--surface); color: var(--text); }
-body { font: 14px/1.5 var(--font-body); }
+html, body {
+  min-width: 0;
+  margin: 0;
+  background: var(--color-background-primary, #ffffff);
+  color: var(--mcp-view-text, #101519);
+}
+body { font: 14px/1.5 var(--mcp-view-font-body, system-ui, sans-serif); }
 #root { max-width: 1040px; margin: 0 auto; padding: 16px; }
-.viewer { overflow: hidden; border: 1px solid var(--line); background: var(--panel); }
-.masthead { padding: 20px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--panel) 92%, var(--accent)); }
-.kicker { margin: 0 0 4px; color: var(--accent); font: 700 11px/1.2 var(--font-data); letter-spacing: .12em; }
-h1, h2, p { margin-top: 0; }
-h1 { margin-bottom: 0; font-size: clamp(22px, 5vw, 32px); letter-spacing: -.03em; }
-h2 { margin-bottom: 12px; font-size: 15px; }
-.result-header, .panel, .state { margin: 16px 20px; }
-.result-header { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
-.summary, .muted { color: var(--muted); }
-.status { border: 1px solid currentColor; color: var(--accent); padding: 3px 7px; font: 700 11px var(--font-data); text-transform: uppercase; }
-.panel { padding: 14px; border: 1px solid var(--line); background: color-mix(in srgb, var(--panel) 88%, var(--surface)); }
-.metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin: 0; }
-.metric-grid div { min-width: 0; border-left: 2px solid var(--line); padding-left: 9px; }
-dt, small { color: var(--muted); font-size: 11px; }
-dd { margin: 2px 0 0; overflow-wrap: anywhere; font: 600 13px var(--font-data); }
-.artifact-list { display: grid; gap: 8px; }
-.artifact { display: grid; gap: 5px; padding: 11px; border: 1px solid var(--line); }
-.artifact strong { color: var(--accent); font: 700 11px var(--font-data); text-transform: uppercase; }
-code { overflow-wrap: anywhere; font-family: var(--font-data); }
-.state { min-height: 120px; display: grid; place-content: center; text-align: center; }
-.error { color: var(--danger); }
-.spinner { width: 22px; height: 22px; margin: 0 auto 10px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
-@keyframes spin { to { transform: rotate(1turn); } }
-@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
-@media (max-width: 480px) { #root { padding: 8px; } .result-header { display: block; } .status { display: inline-block; margin-top: 8px; } }
+.viewer { display: grid; gap: 12px; min-width: 0; }
+.viewer h1 {
+  margin: 0;
+  font-family: var(--mcp-view-font-heading, system-ui, sans-serif);
+  font-size: clamp(20px, 4vw, 28px);
+  letter-spacing: -.02em;
+}
+.viewer p { margin: 0; }
+@media (max-width: 480px) { #root { padding: 8px; } }
+@media (prefers-reduced-motion: reduce) { .mcp-view-skeleton-line { animation: none; } }
 `,
   "src/main.ts": `import {
   createMcpApp,
@@ -291,14 +296,19 @@ import {
   defineCustomComponent,
   defineKeyValueComponent,
   defineMetricGridComponent,
+  installMcpViewTheme,
   mountComponentSurface,
   type MountedComponentSurface,
 } from "@casys/mcp-view-components";
-import { isEmptyResult, parseStructuredResult, toolErrorMessage, type DisplayState } from "./model.ts";
+import { isEmptyResult, parseStructuredResult, shownResult, toolErrorMessage, type DisplayState, type ResultModel } from "./model.ts";
 import { escapeHtml } from "./render.ts";
 
 interface ViewerState {
   display: DisplayState;
+  /** Last successfully parsed result, kept so a failed refresh can still show it. */
+  lastResult?: ResultModel;
+  /** When that kept result was recorded, so the banner can date it. */
+  recordedAt?: string;
 }
 
 type ViewerContext = AppContext<ViewerState>;
@@ -311,65 +321,115 @@ const components = defineComponentRegistry<ViewerState, ViewerContext>({
       title: "Result identity",
       mount(target, { data }) {
         const display = data.display;
-        const title = document.createElement("h1");
-        const summary = document.createElement("p");
         if (display.kind === "loading") {
-          title.textContent = "Loading result";
-          summary.textContent = "Waiting for a structured tool result…";
-        } else if (display.kind === "empty") {
+          // Frame first: the structure appears before the values, so nothing
+          // shifts once they arrive.
+          target.className = "mcp-view-skeleton";
+          target.setAttribute("role", "status");
+          target.setAttribute("aria-busy", "true");
+          target.setAttribute("aria-label", "Loading the recorded result");
+          for (let line = 0; line < 3; line++) {
+            const placeholder = document.createElement("span");
+            placeholder.className = "mcp-view-skeleton-line";
+            placeholder.setAttribute("aria-hidden", "true");
+            target.append(placeholder);
+          }
+          return;
+        }
+        target.className = "mcp-view-card";
+        const header = document.createElement("header");
+        header.className = "mcp-view-card-header";
+        const heading = document.createElement("div");
+        heading.className = "mcp-view-card-heading";
+        const title = document.createElement("h1");
+        title.className = "mcp-view-card-title";
+        const summary = document.createElement("p");
+        summary.className = "mcp-view-card-eyebrow";
+        const shown = shownResult(display);
+        if (display.kind === "empty") {
           title.textContent = "Nothing to display";
           summary.textContent = "The tool completed without displayable fields.";
         } else if (display.kind === "error") {
-          title.textContent = "Result unavailable";
-          summary.textContent = display.message;
-          target.setAttribute("role", "alert");
+          title.textContent = shown ? shown.title : "Result unavailable";
+          summary.textContent = shown ? shown.summary ?? "Recorded earlier" : display.message;
         } else {
           title.textContent = display.result.title;
           summary.textContent = display.result.summary ?? display.result.status ?? "Structured result";
         }
-        target.className = "masthead";
-        target.append(title, summary);
+        heading.append(summary, title);
+        header.append(heading);
+        target.append(header);
+        if (display.kind !== "error") return;
+        // The failure is announced beside the values it could not refresh,
+        // never in place of them.
+        const banner = document.createElement("div");
+        banner.className = "mcp-view-stale-banner";
+        banner.setAttribute("role", "alert");
+        banner.setAttribute("data-tone", "danger");
+        const message = document.createElement("span");
+        message.className = "mcp-view-stale-banner-message";
+        message.textContent = display.recordedAt
+          ? display.message + " — values recorded at " + display.recordedAt
+          : display.message;
+        banner.append(message);
+        target.append(banner);
       },
     }),
     "result.metrics": defineMetricGridComponent({
       title: "Metrics",
-      select: (data) => data.display.kind === "result"
-        ? data.display.result.metrics.map((metric, index) => ({
+      select: (data) =>
+        (shownResult(data.display)?.metrics ?? []).map((metric, index) => ({
           id: "metric-" + index,
           label: metric.label,
           value: metric.value,
-        }))
-        : [],
+        })),
     }),
     "result.details": defineKeyValueComponent({
       title: "Details",
-      select: (data) => data.display.kind === "result"
-        ? data.display.result.details.map((detail, index) => ({
+      select: (data) =>
+        (shownResult(data.display)?.details ?? []).map((detail, index) => ({
           key: "detail-" + index,
           label: detail.label,
           value: detail.value,
-        }))
-        : [],
+        })),
     }),
     "result.artifacts": defineCustomComponent({
       title: "Artifacts",
       mount(target, { data }) {
-        target.className = "panel artifact-list";
-        if (data.display.kind !== "result" || data.display.result.artifacts.length === 0) {
+        target.className = "mcp-view-stack";
+        const artifacts = shownResult(data.display)?.artifacts ?? [];
+        if (artifacts.length === 0) {
           const empty = document.createElement("p");
-          empty.className = "muted";
+          empty.className = "mcp-view-empty";
           empty.textContent = "No artifacts were supplied.";
           target.append(empty);
           return;
         }
-        for (const artifact of data.display.result.artifacts) {
+        for (const artifact of artifacts) {
+          // Identity, address and digest are displayed exactly as supplied;
+          // this starter verifies nothing on its own.
           const item = document.createElement("article");
-          item.className = "artifact";
+          item.className = "mcp-view-artifact-row";
+          const identity = document.createElement("span");
+          identity.className = "mcp-view-artifact-row-identity";
           const label = document.createElement("strong");
+          label.className = "mcp-view-artifact-row-label";
           label.textContent = artifact.label;
+          identity.append(label);
           const uri = document.createElement("code");
+          uri.className = "mcp-view-artifact-row-uri";
           uri.textContent = artifact.uri;
-          item.append(label, uri);
+          item.append(identity, uri);
+          if (artifact.sha256) {
+            const fingerprint = document.createElement("span");
+            fingerprint.className = "mcp-view-artifact-row-fingerprint";
+            const algorithm = document.createElement("span");
+            algorithm.textContent = "sha256";
+            const digest = document.createElement("code");
+            digest.textContent = artifact.sha256;
+            fingerprint.append(algorithm, digest);
+            item.append(fingerprint);
+          }
           target.append(item);
         }
       },
@@ -421,6 +481,7 @@ async function disposeSurface(invalidate = true): Promise<void> {
 async function boot(): Promise<void> {
   const root = document.getElementById("root");
   if (!root) throw new Error("The result viewer root is missing.");
+  installMcpViewTheme();
   await createMcpApp<ViewerState>({
     info: { name: "Result Viewer", version: "0.1.0" },
     root,
@@ -438,18 +499,31 @@ async function boot(): Promise<void> {
       await app.navigate("result");
     },
     async onToolResult(result, app) {
+      const kept = app.ctx.state.lastResult;
+      const recordedAt = app.ctx.state.recordedAt;
       if (result.isError) {
-        app.ctx.state.display = { kind: "error", message: toolErrorMessage(result) };
+        app.ctx.state.display = {
+          kind: "error",
+          message: toolErrorMessage(result),
+          stale: kept,
+          recordedAt,
+        };
       } else {
         try {
           const parsed = parseStructuredResult(result.structuredContent);
-          app.ctx.state.display = isEmptyResult(parsed)
-            ? { kind: "empty" }
-            : { kind: "result", result: parsed };
+          if (isEmptyResult(parsed)) {
+            app.ctx.state.display = { kind: "empty" };
+          } else {
+            app.ctx.state.display = { kind: "result", result: parsed };
+            app.ctx.state.lastResult = parsed;
+            app.ctx.state.recordedAt = new Date().toISOString();
+          }
         } catch (error) {
           app.ctx.state.display = {
             kind: "error",
             message: error instanceof Error ? error.message : "The result could not be read.",
+            stale: kept,
+            recordedAt,
           };
         }
       }
@@ -464,7 +538,7 @@ async function boot(): Promise<void> {
 
 void boot().catch((error) => {
   const root = document.getElementById("root");
-  if (root) root.innerHTML = '<section class="viewer"><div class="state error" role="alert"><h1>Viewer unavailable</h1><p>' + escapeHtml(error instanceof Error ? error.message : "The viewer could not start.") + "</p></div></section>";
+  if (root) root.innerHTML = '<section class="viewer"><div class="mcp-view-state" data-tone="danger" role="alert"><strong>Viewer unavailable</strong><p class="mcp-view-state-detail">' + escapeHtml(error instanceof Error ? error.message : "The viewer could not start.") + "</p></div></section>";
   console.error(error);
 });
 `,

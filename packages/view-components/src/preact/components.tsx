@@ -436,6 +436,37 @@ export function EmptyState({
   return <p class={classes("mcp-view-empty", className)}>{children}</p>;
 }
 
+export interface SkeletonProps {
+  /** Accessible description of what is still loading. */
+  readonly label: string;
+  /** Placeholder lines drawn inside the frame. Defaults to three. */
+  readonly lines?: number;
+  readonly className?: string;
+}
+
+/**
+ * Frame-first loading placeholder: the structure of a recorded view appears
+ * before its values, so nothing shifts once the values arrive.
+ */
+export function Skeleton({ label, lines = 3, className }: SkeletonProps): JSX.Element {
+  if (!Number.isInteger(lines) || lines < 1) {
+    throw new RangeError("Skeleton lines must be a positive integer");
+  }
+  return (
+    <div
+      aria-busy="true"
+      aria-label={label}
+      class={classes("mcp-view-skeleton", className)}
+      role="status"
+    >
+      {Array.from(
+        { length: lines },
+        (_unused, index) => <span aria-hidden="true" class="mcp-view-skeleton-line" key={index} />,
+      )}
+    </div>
+  );
+}
+
 export interface MessageProps {
   readonly tone?: PresentationTone;
   readonly children?: ComponentChildren;

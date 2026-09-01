@@ -234,8 +234,16 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
   text-transform: uppercase;
 }
 .mcp-view-notice-group-omitted { color: var(--mcp-view-quiet); font-size: 0.62rem; }
-/* One outer border for the group: the notices inside it carry none of their own. */
-.mcp-view-notice-group > .mcp-view-message {
+.mcp-view-notice-group-items {
+  display: grid;
+  gap: 0.22rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mcp-view-notice-group-item { color: var(--mcp-view-muted); font-size: 0.72rem; }
+/* A notice the caller built from the Message primitive keeps one border. */
+.mcp-view-notice-group .mcp-view-message {
   padding: 0;
   border: 0;
   background: none;

@@ -158,9 +158,12 @@ counts what it was not given.
 `renderStatusMessage(detail, options?)` renders a `StateMessage` into a real DOM node and returns
 it. `defineView` must return a native element, so every viewer built on it previously wrote its own
 Preact-to-DOM bridge; those bridges drifted in tone, ARIA role, and class. `renderStatusMessage` is
-that bridge, made canonical. It lives in the pure presentation module
-`@casys/mcp-view-components/preact/components` and does not import `@casys/mcp-view`, so it is
-reachable from any entry that does not need the surface lifecycle.
+that bridge, made canonical. Without `container` it returns the rendered `.mcp-view-state` element,
+so what you mount carries the class, the tone and the alert role; `className` lands on that same
+node. Pass `container` to render into a node you already own, which is then what comes back. It
+lives in the pure presentation module `@casys/mcp-view-components/preact/components` and does not
+import `@casys/mcp-view`, so it is reachable from any entry that does not need the surface
+lifecycle.
 
 Without `container` it creates a detached `div`; with one it renders into that node and returns it.
 

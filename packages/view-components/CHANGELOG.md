@@ -20,8 +20,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`renderStatusMessage`** — imperative bridge that renders a `StateMessage` into a real DOM node
   and returns it (`src/preact/components.tsx`). `defineView` must return a native element, so every
   viewer built on it previously wrote its own Preact-to-DOM bridge; those bridges drifted in tone,
-  ARIA role, and class. Without `container` (`StatusMessageMount`) the function creates a detached
-  `div`; with one it renders inside that node and returns it. Lives in the pure presentation module
+  ARIA role, and class. Without `container` (`StatusMessageMount`) it returns the rendered
+  `.mcp-view-state` element itself, so the node a caller mounts carries the class, the tone and the
+  alert role — a bare wrapper would hand `defineView` a root that no viewer stylesheet and no
+  assistive technology can see. `className` lands on that same node. With a `container` it renders
+  inside the node the caller already owns and returns it. Lives in the pure presentation module
   (`preact/components` entry) and does not import `@casys/mcp-view`, so it is reachable from any
   entry that does not need the surface lifecycle.
 

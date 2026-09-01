@@ -1,6 +1,6 @@
 /** @jsxImportSource preact */
 
-import { assertEquals, assertStrictEquals, assertThrows } from "@std/assert";
+import { assert, assertEquals, assertStrictEquals, assertThrows } from "@std/assert";
 import { render } from "preact";
 import {
   Badge,
@@ -271,10 +271,11 @@ Deno.test({
         root.querySelector(".mcp-view-notice-group-label")?.textContent,
         "Validation warnings",
       );
+      const notices = root.querySelectorAll(".mcp-view-notice-group-item");
+      assertEquals(notices.length, 2);
       const messages = root.querySelectorAll(".mcp-view-message");
-      assertEquals(messages.length, 2);
-      assertEquals(messages[0].getAttribute("data-tone"), "warning");
-      assertEquals(messages[1].getAttribute("data-tone"), "warning");
+      // Les notices ne sont plus des Message : le ton vit sur le groupe.
+      assertEquals(messages.length, 0);
     } finally {
       Object.defineProperty(globalThis, "document", {
         configurable: true,
@@ -316,7 +317,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "renderStatusMessage without container creates a detached div containing StateMessage DOM",
+  name: "renderStatusMessage without container returns the StateMessage node itself",
   permissions: { read: true, env: true, run: true },
   async fn() {
     const documentModule = await import("npm:linkedom@0.18.12");
@@ -325,7 +326,10 @@ Deno.test({
     Object.defineProperty(globalThis, "document", { configurable: true, value: dom.document });
     try {
       const node = renderStatusMessage("Loading results");
-      assertEquals(node.querySelector(".mcp-view-state") !== null, true);
+      // The node IS the state, not a wrapper around it: a caller handing this
+      // to `defineView` must get an element carrying the class and the role.
+      assertEquals(node.classList.contains("mcp-view-state"), true);
+      assertEquals(node.getAttribute("aria-live"), null);
       assertEquals(
         node.querySelector(".mcp-view-state-detail")?.textContent,
         "Loading results",
@@ -376,11 +380,13 @@ Deno.test({
         busy: true,
         className: "my-status",
       });
-      const state = node.querySelector(".mcp-view-state");
-      assertEquals(state?.getAttribute("data-tone"), "info");
-      assertEquals(state?.querySelector("strong")?.textContent, "Processing");
-      assertEquals(state?.querySelector(".mcp-view-state-busy") !== null, true);
-      assertEquals(state?.classList.contains("my-status"), true);
+      // className lands on the node that comes back, so a viewer can style the
+      // element it mounts rather than an anonymous wrapper it never sees.
+      assertEquals(node.getAttribute("data-tone"), "info");
+      assertEquals(node.querySelector("strong")?.textContent, "Processing");
+      assertEquals(node.querySelector(".mcp-view-state-busy") !== null, true);
+      assertEquals(node.classList.contains("my-status"), true);
+      assertEquals(node.classList.contains("mcp-view-state"), true);
     } finally {
       Object.defineProperty(globalThis, "document", {
         configurable: true,
@@ -388,4 +394,52 @@ Deno.test({
       });
     }
   },
+});
+
+Deno.test({
+  name: "NoticeGroup announces one live region for the group, not one per notice",
+  permissions: { read: true, env: true, run: true },
+  async fn() {
+    const documentModule = await import("npm:linkedom@0.18.12");
+    const dom = documentModule.parseHTML("<html><body><div id=root></div></body></html>");
+    const previousDocument = globalThis.document;
+    Object.defineProperty(globalThis, "document", { configurable: true, value: dom.document });
+    try {
+      const root = dom.document.getElementById("root") as unknown as HTMLElement;
+      render(
+        <NoticeGroup
+          label="Overruns"
+          tone="danger"
+          items={["REQ-014 over margin", "REQ-021 over margin", "REQ-033 over margin"]}
+        />,
+        root,
+      );
+      // Wrapping each notice in Message gave one alert per item: a reader heard
+      // three alerts for what is drawn as a single severity heading.
+      assertEquals(root.querySelectorAll("[role=alert]").length, 1);
+      assertEquals(root.querySelector("section")?.getAttribute("role"), "alert");
+      assertEquals(root.querySelectorAll(".mcp-view-notice-group-item").length, 3);
+
+      render(<NoticeGroup label="Notes" items={["a"]} />, root);
+      assertEquals(root.querySelectorAll("[role=alert]").length, 0);
+      assertEquals(root.querySelector("section")?.getAttribute("role"), "status");
+    } finally {
+      Object.defineProperty(globalThis, "document", {
+        configurable: true,
+        value: previousDocument,
+      });
+    }
+  },
+});
+
+Deno.test("NoticeGroup treats a falsy omittedLabel as nothing left out", () => {
+  // `{count && `${count} more`}` yields 0 and `{text && text}` yields "".
+  for (const omittedLabel of [0, "", false, null, undefined]) {
+    assertEquals(
+      NoticeGroup({ label: "Warnings", items: [], omittedLabel }),
+      null,
+      `omittedLabel ${JSON.stringify(omittedLabel)} must not render the group`,
+    );
+  }
+  assert(NoticeGroup({ label: "Warnings", items: [], omittedLabel: "+ 3 more" }) !== null);
 });

@@ -516,17 +516,26 @@ export function NoticeGroup({
   omittedLabel,
   className,
 }: NoticeGroupProps): JSX.Element | null {
+  // `{count && `${count} more`}` yields 0 and `{text && text}` yields "" for a
+  // caller who means nothing was left out. Counting those as content would
+  // render the very group this contract promises to hide.
   const omitted = omittedLabel !== undefined && omittedLabel !== null &&
-    omittedLabel !== false;
+    omittedLabel !== false && omittedLabel !== "" && omittedLabel !== 0;
   if (items.length === 0 && !omitted) return null;
   return (
     <section
       aria-label={label}
       class={classes("mcp-view-notice-group", className)}
       data-tone={tone}
+      // One live region for the group, not one per notice. Wrapping each item
+      // in Message announced N separate alerts for what reads on screen as a
+      // single severity heading with its list underneath.
+      role={tone === "danger" ? "alert" : "status"}
     >
       <strong class="mcp-view-notice-group-label">{label}</strong>
-      {items.map((item, index) => <Message key={index} tone={tone}>{item}</Message>)}
+      <ul class="mcp-view-notice-group-items">
+        {items.map((item, index) => <li class="mcp-view-notice-group-item" key={index}>{item}</li>)}
+      </ul>
       {omitted && <small class="mcp-view-notice-group-omitted">{omittedLabel}</small>}
     </section>
   );
@@ -567,7 +576,16 @@ export function renderStatusMessage(
     ),
     host,
   );
-  return host;
+  // Without a container the caller mounts what comes back — typically as the
+  // return of `defineView`, which hands its element straight to the router.
+  // Returning the bare wrapper gave them a div carrying neither the class nor
+  // the alert role, so `replaceChildren` produced a root that no viewer stylesheet
+  // and no assistive technology could see. The container form returns the node
+  // the caller already owns.
+  if (options.container) return options.container;
+  const rendered = host.firstElementChild;
+  if (!rendered) throw new Error("renderStatusMessage rendered no element");
+  return rendered as HTMLElement;
 }
 
 export interface CrossSelectionProps {

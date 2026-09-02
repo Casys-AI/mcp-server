@@ -1,4 +1,10 @@
-import { assertEquals, assertFalse, assertStrictEquals, assertStringIncludes } from "@std/assert";
+import {
+  assert,
+  assertEquals,
+  assertFalse,
+  assertStrictEquals,
+  assertStringIncludes,
+} from "@std/assert";
 
 import {
   installMcpViewTheme,
@@ -74,7 +80,6 @@ Deno.test("shared theme exposes offline heading body and mono typography roles",
     '.mcp-view-semantic-element[data-density="row"] .mcp-view-element-limit,',
   );
   assertStringIncludes(MCP_VIEW_THEME_CSS, "font-family: var(--mcp-view-font-heading);");
-  assertStringIncludes(MCP_VIEW_THEME_CSS, ".mcp-view-card-eyebrow,");
   assertStringIncludes(MCP_VIEW_THEME_CSS, ".mcp-view-element-provenance {");
   assertStringIncludes(MCP_VIEW_THEME_CSS, "font-family: var(--mcp-view-font-mono);");
   assertEquals(
@@ -82,6 +87,38 @@ Deno.test("shared theme exposes offline heading body and mono typography roles",
       MCP_VIEW_THEME_CSS.indexOf(".mcp-view-button {"),
     true,
   );
+
+  // The mono face is reserved for identifiers a reader compares character by
+  // character; labels, readings and statuses stay in the body face. Every rule
+  // block is scanned, so a mono face smuggled back through a component-local
+  // rule fails the same way as one added to the role layer.
+  const blocks = [...MCP_VIEW_THEME_CSS.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
+  const monoSelectors = blocks
+    .filter(([, , declarations]) =>
+      declarations.includes("font-family: var(--mcp-view-font-mono);")
+    )
+    .flatMap(([, selectors]) => selectors.split(",").map((s) => s.trim()).filter(Boolean));
+  assertEquals(monoSelectors, [
+    ".mcp-view-code-block",
+    ".mcp-view-inline-code",
+    ".mcp-view-path-bar-item + .mcp-view-path-bar-item::before",
+    ".mcp-view-artifact-row-uri",
+    ".mcp-view-artifact-row-fingerprint",
+    ".mcp-view-artifact-row-fingerprint code",
+  ]);
+  const roleLayer = MCP_VIEW_THEME_CSS.slice(MCP_VIEW_THEME_CSS.indexOf("Type is role-based"));
+  assertStringIncludes(roleLayer, ".mcp-view-key-value dd,\n");
+  assertStringIncludes(roleLayer, "font-variant-numeric: tabular-nums;");
+
+  // No role reads below 0.66rem; InlineCode scales with its parent but is floored.
+  const sizes = blocks.flatMap(([, , declarations]) =>
+    [...declarations.matchAll(/font-size:\s*([^;]+);/g)].map((m) => m[1])
+  );
+  for (const size of sizes) {
+    const rem = size.match(/^(\d*\.?\d+)rem$/);
+    if (rem) assert(Number(rem[1]) >= 0.66, `font-size ${size} is below the 0.66rem floor`);
+    else assertEquals(size, "max(0.66rem, 0.88em)");
+  }
 
   assertFalse(/@import\b/i.test(MCP_VIEW_THEME_CSS));
   assertFalse(/@font-face\b/i.test(MCP_VIEW_THEME_CSS));

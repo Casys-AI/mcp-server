@@ -63,6 +63,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `SurfaceProjection`, `SurfaceStatusTone` and `SurfaceToolResult` types.
 - `SurfaceMessageKind` gains `"notice"`; the console prefix of the default `onError` is
   `[mcp-view-components]` instead of `[mcp-view/preact]`.
+- **Typography roles** — the mono face is reserved for identifiers a reader compares character by
+  character (`ArtifactRow` URIs and fingerprints, `InlineCode`, `CodeBlock`). Metric labels,
+  key-value rows, badges, table headers, semantic-element details, provenance, notices, tree-list
+  and chart annotations now read in the body face, with tabular figures on the numeric roles. No
+  `font-size` in the shared theme is below `0.66rem` any more (`0.58`–`0.65rem` floored;
+  `InlineCode` keeps scaling with its parent through `max(0.66rem, 0.88em)`). The 0.4.0 roles had
+  never been rendered by a published viewer — every consumer was still on 0.2.0.
 
 | 0.5.0                                       | 0.6.0                                                 |
 | ------------------------------------------- | ----------------------------------------------------- |

@@ -182,7 +182,7 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
 .mcp-view-card-eyebrow {
   margin: 0 0 0.18rem;
   color: var(--mcp-view-accent);
-  font-size: 0.6rem;
+  font-size: 0.66rem;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -235,7 +235,7 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
-.mcp-view-notice-group-omitted { color: var(--mcp-view-quiet); font-size: 0.62rem; }
+.mcp-view-notice-group-omitted { color: var(--mcp-view-quiet); font-size: 0.66rem; }
 .mcp-view-notice-group-items {
   display: grid;
   gap: 0.22rem;
@@ -465,7 +465,8 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
   border-radius: var(--mcp-view-radius-sm);
   background: var(--mcp-view-subtle);
   font-family: var(--mcp-view-font-mono);
-  font-size: 0.88em;
+  /* Scales with the surrounding text, never below the kit's smallest role. */
+  font-size: max(0.66rem, 0.88em);
   overflow-wrap: anywhere;
   word-break: break-word;
 }
@@ -571,7 +572,7 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
   margin: 0 0.48rem;
   color: var(--mcp-view-quiet);
   font-family: var(--mcp-view-font-mono);
-  font-size: 0.65rem;
+  font-size: 0.66rem;
 }
 
 .mcp-view-path-bar-button {
@@ -626,7 +627,7 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
 .mcp-view-limit-gauge-status {
   grid-area: status;
   color: var(--mcp-view-gauge-tone);
-  font-size: 0.62rem;
+  font-size: 0.66rem;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-align: right;
@@ -635,7 +636,7 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
 .mcp-view-limit-gauge-limit {
   grid-area: limit;
   color: var(--mcp-view-quiet);
-  font-size: 0.62rem;
+  font-size: 0.66rem;
 }
 
 .mcp-view-limit-gauge-meter {
@@ -705,7 +706,7 @@ button.mcp-view-artifact-row:focus-visible {
   border-radius: var(--mcp-view-radius-sm);
   background: color-mix(in srgb, var(--mcp-view-accent) 10%, transparent);
   color: var(--mcp-view-accent);
-  font-size: 0.58rem;
+  font-size: 0.66rem;
   font-weight: 700;
 }
 .mcp-view-artifact-row-label { overflow-wrap: anywhere; font-size: 0.75rem; }
@@ -714,7 +715,7 @@ button.mcp-view-artifact-row:focus-visible {
   min-width: 0;
   overflow: hidden;
   color: var(--mcp-view-muted);
-  font-size: 0.65rem;
+  font-size: 0.66rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -727,13 +728,13 @@ button.mcp-view-artifact-row:focus-visible {
   grid-column: 3;
   grid-row: 1;
   color: var(--mcp-view-quiet);
-  font-size: 0.65rem;
+  font-size: 0.66rem;
   text-align: right;
 }
 .mcp-view-artifact-row-verification {
   grid-column: 3;
   color: var(--mcp-view-muted);
-  font-size: 0.62rem;
+  font-size: 0.66rem;
   text-align: right;
 }
 .mcp-view-artifact-row-verification[data-tone="info"] { color: var(--mcp-view-accent); }
@@ -825,7 +826,7 @@ button.mcp-view-artifact-row:focus-visible {
 .mcp-view-element-ident-marker {
   flex: 0 0 auto;
   color: var(--mcp-view-brand);
-  font-size: 0.65rem;
+  font-size: 0.66rem;
   font-weight: 700;
 }
 .mcp-view-element-ident-copy { display: grid; min-width: 0; gap: 0.08rem; }
@@ -844,7 +845,7 @@ button.mcp-view-artifact-row:focus-visible {
 .mcp-view-element-verdict-label,
 .mcp-view-element-provenance-label {
   color: var(--mcp-view-quiet);
-  font-size: 0.61rem;
+  font-size: 0.66rem;
 }
 
 .mcp-view-element-reading { display: grid; gap: 0.08rem; min-width: 0; }
@@ -854,7 +855,7 @@ button.mcp-view-artifact-row:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 .mcp-view-element-reading-value { font-size: 0.8rem; }
-.mcp-view-element-reading-unit { color: var(--mcp-view-muted); font-size: 0.65rem; }
+.mcp-view-element-reading-unit { color: var(--mcp-view-muted); font-size: 0.66rem; }
 .mcp-view-element-limit {
   display: grid;
   gap: 0.1rem;
@@ -886,13 +887,13 @@ button.mcp-view-artifact-row:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 .mcp-view-element-limit-value { font-size: 0.95rem; }
-.mcp-view-element-limit-unit { color: var(--mcp-view-muted); font-size: 0.65rem; }
+.mcp-view-element-limit-unit { color: var(--mcp-view-muted); font-size: 0.66rem; }
 .mcp-view-element-body { min-width: 0; }
 
 .mcp-view-element-verdict { display: grid; gap: 0.08rem; min-width: 0; }
 .mcp-view-element-verdict-value {
   color: var(--mcp-view-muted);
-  font-size: 0.65rem;
+  font-size: 0.66rem;
   font-weight: 700;
   letter-spacing: 0.04em;
 }
@@ -915,7 +916,7 @@ button.mcp-view-artifact-row:focus-visible {
   gap: 0.35rem;
   min-width: 0;
   color: var(--mcp-view-quiet);
-  font-size: 0.6rem;
+  font-size: 0.66rem;
 }
 .mcp-view-element-provenance-value {
   min-width: 0;
@@ -1040,10 +1041,10 @@ button.mcp-view-artifact-row:focus-visible {
   grid-row: 1 / span 2;
   align-self: center;
   color: var(--mcp-view-quiet);
-  font-size: 0.6rem;
+  font-size: 0.66rem;
 }
 .mcp-view-path-bar-kept-label { font-size: 0.72rem; }
-.mcp-view-path-bar-kept-detail { color: var(--mcp-view-quiet); font-size: 0.6rem; }
+.mcp-view-path-bar-kept-detail { color: var(--mcp-view-quiet); font-size: 0.66rem; }
 
 .mcp-view-drill-hint {
   display: inline-flex;
@@ -1088,7 +1089,7 @@ button.mcp-view-drill-hint:focus-visible {
   border: 1px solid var(--mcp-view-border);
   border-radius: var(--mcp-view-radius-sm);
   color: var(--mcp-view-quiet);
-  font-size: 0.6rem;
+  font-size: 0.66rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -1154,7 +1155,7 @@ button.mcp-view-drill-hint:focus-visible {
   opacity: 0.55;
   transform: rotate(45deg);
 }
-.mcp-view-slot-3d-status { color: var(--mcp-view-quiet); font-size: 0.6rem; }
+.mcp-view-slot-3d-status { color: var(--mcp-view-quiet); font-size: 0.66rem; }
 
 .mcp-view-tree-list,
 .mcp-view-tree-list-group {
@@ -1202,7 +1203,7 @@ button.mcp-view-drill-hint:focus-visible {
   border-radius: var(--mcp-view-radius-sm);
   background: var(--mcp-view-subtle);
   color: var(--mcp-view-quiet);
-  font-size: 0.58rem;
+  font-size: 0.66rem;
 }
 .mcp-view-tree-list-label {
   min-width: 0;
@@ -1225,13 +1226,13 @@ button.mcp-view-tree-list-label:focus-visible {
 }
 .mcp-view-tree-list-detail {
   color: var(--mcp-view-muted);
-  font-size: 0.65rem;
+  font-size: 0.66rem;
   font-variant-numeric: tabular-nums;
 }
 .mcp-view-tree-list-coverage {
   margin-inline-start: auto;
   color: var(--mcp-view-quiet);
-  font-size: 0.62rem;
+  font-size: 0.66rem;
   font-variant-numeric: tabular-nums;
 }
 .mcp-view-tree-list-coverage[data-tone="info"] { color: var(--mcp-view-accent); }
@@ -1299,7 +1300,7 @@ button.mcp-view-tree-list-label:focus-visible {
   display: flex;
   justify-content: space-between;
   color: var(--mcp-view-quiet);
-  font-size: 0.6rem;
+  font-size: 0.66rem;
 }
 .mcp-view-series-chart-readout {
   display: flex;
@@ -1321,7 +1322,7 @@ button.mcp-view-tree-list-label:focus-visible {
 .mcp-view-series-chart-readout-value { display: flex; align-items: baseline; gap: 0.3rem; }
 .mcp-view-series-chart-readout-value dt {
   color: var(--mcp-view-accent);
-  font-size: 0.62rem;
+  font-size: 0.66rem;
 }
 .mcp-view-series-chart-readout-value dt[data-tone="neutral"] { color: var(--mcp-view-muted); }
 .mcp-view-series-chart-readout-value dt[data-tone="success"] { color: var(--mcp-view-success); }
@@ -1337,7 +1338,7 @@ button.mcp-view-tree-list-label:focus-visible {
   gap: 0.9rem;
   flex-wrap: wrap;
   color: var(--mcp-view-muted);
-  font-size: 0.62rem;
+  font-size: 0.66rem;
 }
 .mcp-view-series-chart-summary-item { display: inline-flex; align-items: baseline; gap: 0.3rem; }
 .mcp-view-series-chart-summary-label { color: var(--mcp-view-quiet); }
@@ -1364,7 +1365,7 @@ button.mcp-view-tree-list-label:focus-visible {
   position: absolute;
   padding-inline-start: 0.4rem;
   color: var(--mcp-view-quiet);
-  font-size: 0.6rem;
+  font-size: 0.66rem;
   white-space: nowrap;
 }
 .mcp-view-interval-plot-row {
@@ -1406,7 +1407,7 @@ button.mcp-view-tree-list-label:focus-visible {
   justify-content: space-between;
   gap: 0.4rem;
   color: var(--mcp-view-muted);
-  font-size: 0.62rem;
+  font-size: 0.66rem;
   font-variant-numeric: tabular-nums;
 }
 .mcp-view-interval-plot-lower { text-align: left; }
@@ -1440,6 +1441,10 @@ button.mcp-view-tree-list-label:focus-visible {
  * Type is role-based so a provider can theme the whole kit without coupling
  * presentation components to a particular font delivery mechanism. Keep the
  * role layer after component-local font shorthands so it remains authoritative.
+ *
+ * Labels, readings and statuses read in the body face. The mono face is
+ * reserved for machine identifiers a reader compares character by character
+ * (URIs, fingerprints, code); numeric roles align through tabular figures.
  */
 .mcp-view-card-title,
 .mcp-view-metric-value,
@@ -1453,57 +1458,24 @@ button.mcp-view-tree-list-label:focus-visible {
   font-family: var(--mcp-view-font-heading);
 }
 
-.mcp-view-card-eyebrow,
-.mcp-view-metric-label,
-.mcp-view-metric-unit,
-.mcp-view-metric-detail,
-.mcp-view-badge,
-.mcp-view-table th,
-.mcp-view-table [data-align="right"],
-.mcp-view-key-value dt,
-.mcp-view-key-value dd,
-.mcp-view-button,
-.mcp-view-cross-selection-label,
-.mcp-view-cross-selection-status,
-.mcp-view-path-bar-list,
-.mcp-view-limit-gauge-reading,
-.mcp-view-limit-gauge-status,
-.mcp-view-limit-gauge-limit,
-.mcp-view-artifact-row-kind,
 .mcp-view-artifact-row-uri,
 .mcp-view-artifact-row-fingerprint,
-.mcp-view-artifact-row-fingerprint code,
+.mcp-view-artifact-row-fingerprint code {
+  font-family: var(--mcp-view-font-mono);
+}
+
+.mcp-view-table [data-align="right"],
+.mcp-view-key-value dd,
+.mcp-view-limit-gauge-reading,
+.mcp-view-limit-gauge-limit,
 .mcp-view-artifact-row-size,
-.mcp-view-artifact-row-verification,
-.mcp-view-element-ident-marker,
-.mcp-view-element-ident-detail,
-.mcp-view-element-reading-label,
-.mcp-view-element-reading-detail,
-.mcp-view-element-limit-label,
-.mcp-view-element-limit-detail,
-.mcp-view-element-limit-operator,
-.mcp-view-element-verdict-label,
-.mcp-view-element-verdict-value,
-.mcp-view-element-provenance,
-.mcp-view-notice-group-label,
-.mcp-view-notice-group-omitted,
 .mcp-view-path-bar-kept-rank,
-.mcp-view-path-bar-kept-detail,
-.mcp-view-drill-hint-glyph,
-.mcp-view-type-badge,
-.mcp-view-stale-banner,
-.mcp-view-slot-3d-status,
-.mcp-view-tree-list-type,
-.mcp-view-tree-list-detail,
 .mcp-view-tree-list-coverage,
 .mcp-view-series-chart-axis,
 .mcp-view-series-chart-readout-position,
-.mcp-view-series-chart-readout-value dt,
-.mcp-view-series-chart-summary-label,
-.mcp-view-interval-plot-label,
 .mcp-view-interval-plot-bounds,
 .mcp-view-interval-plot-zero-label {
-  font-family: var(--mcp-view-font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 @container (max-width: 440px) {

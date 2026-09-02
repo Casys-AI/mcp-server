@@ -24,6 +24,7 @@ await build({
     "./mod.ts",
     { name: "./preact", path: "./preact.ts" },
     { name: "./preact/components", path: "./preact-components.ts" },
+    { name: "./surface", path: "./surface.ts" },
   ],
   outDir: "./dist-node",
   shims: { deno: false },
@@ -59,6 +60,11 @@ packageJson.exports = {
     types: "./esm/preact-components.d.ts",
     import: "./esm/preact-components.js",
     require: "./script/preact-components.js",
+  },
+  "./surface": {
+    types: "./esm/surface.d.ts",
+    import: "./esm/surface.js",
+    require: "./script/surface.js",
   },
 };
 packageJson.dependencies ??= {};

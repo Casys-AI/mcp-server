@@ -3,33 +3,42 @@
 import { createElement, type FunctionComponent, render } from "preact";
 
 import {
-  type AppContext,
-  createMcpApp,
-  defineView,
-  readResultData,
-  type ResultData,
-} from "@casys/mcp-view";
-import {
-  activeComponentSurface,
-  applySurfaceContext,
-  componentCatalogCapabilities,
   defineViewComponent,
-  mountComponentSurface,
-  type MountedComponentSurface,
+  type JsonValue,
   type ViewComponentDefinition,
   type ViewComponentDescriptor,
-  type ViewComponentRegistry,
 } from "../components.ts";
-import { installMcpViewTheme } from "../theme.ts";
-import type { JsonValue } from "../components.ts";
+import {
+  startSurfaceApp,
+  type SurfaceAppContext,
+  SurfaceAppError,
+  type SurfaceAppHandle,
+  type SurfaceAppOptions,
+  type SurfaceAppRuntime,
+  type SurfaceAppState,
+  type SurfaceStatus,
+  type SurfaceViewerSession,
+} from "../surface-app.ts";
+import { renderStatusMessage } from "./components.tsx";
 
-export interface PreactSurfaceAppState<TData> {
-  currentData?: TData;
-}
+export type {
+  SurfaceAppErrorCode,
+  SurfaceAppHandle,
+  SurfaceAppRuntime,
+  SurfaceDisplayState,
+  SurfaceHostAccess,
+  SurfaceMessageKind,
+  SurfaceProjection,
+  SurfaceStatus,
+  SurfaceStatusTone,
+  SurfaceToolResult,
+  SurfaceViewerSession,
+} from "../surface-app.ts";
+export { SurfaceAppError } from "../surface-app.ts";
 
-export type PreactSurfaceContext<TData> = AppContext<
-  PreactSurfaceAppState<TData>
->;
+export type PreactSurfaceAppState<TData> = SurfaceAppState<TData>;
+
+export type PreactSurfaceContext<TData> = SurfaceAppContext<TData>;
 
 export interface PreactSurfaceComponentProps<
   TData,
@@ -85,180 +94,92 @@ export function definePreactComponent<
   });
 }
 
-export type SurfaceMessageKind = "loading" | "empty" | "error" | "surface-required";
-
-export interface PreactSurfaceAppOptions<TData extends ResultData, TSession = never> {
-  readonly root: HTMLElement;
-  readonly info: { readonly name: string; readonly version: string };
-  readonly registry: ViewComponentRegistry<
-    TData,
-    PreactSurfaceContext<TData>
-  >;
-  readonly validate?: (value: unknown) => value is TData;
-  /** App-owned validator for the versioned `viewer.session.apply` envelope. */
-  readonly validateSession?: (value: unknown) => value is TSession;
-  /** Convert one validated recorded session into the same data model as a tool result. */
-  readonly mapSessionToData?: (session: TSession) => TData | Promise<TData>;
-  readonly onInvalidSession?: (value: unknown) => void;
-  readonly loadingLabel?: string;
-  readonly emptyLabel?: string;
-  readonly surfaceRequiredLabel?: string;
+export interface PreactSurfaceAppOptions<TData, TSession = never>
+  extends Omit<SurfaceAppOptions<TData, TSession>, "renderStatus" | "surfaceClassName"> {
+  /** Class of the element wrapping the mounted surface. Default `mcp-view-preact-surface`. */
   readonly surfaceClassName?: string;
-  /** Install the shared mcp-view theme. Defaults to true. */
-  readonly theme?: boolean;
-  readonly renderMessage?: (message: string, kind: SurfaceMessageKind) => Node;
-  readonly onError?: (error: unknown) => void;
+  /** @deprecated Use `viewerSession.validate`. Removed in 0.7.0. */
+  readonly validateSession?: (value: unknown) => value is TSession;
+  /** @deprecated Use `viewerSession.toState`. Removed in 0.7.0. */
+  readonly mapSessionToData?: (session: TSession) => TData | Promise<TData>;
+  /** @deprecated Use `viewerSession.onInvalid`. Removed in 0.7.0. */
+  readonly onInvalidSession?: (value: unknown) => void;
+  /** Extra class on the rendered `StateMessage`, for viewer-owned styling hooks. */
+  readonly statusClassName?: string;
+  /** Replace the `StateMessage` bridge with a viewer-owned status renderer. */
+  readonly renderStatus?: (status: SurfaceStatus) => Node;
 }
 
 /**
- * Start a result-driven MCP App backed by Preact components.
- *
- * The registry may expose a default surface or be component-only. In the
- * latter case, a host-selected surface is required and no artificial
- * standalone composition is invented.
+ * Start a result-driven MCP App whose statuses render through the Preact
+ * `StateMessage`. Everything else is `startSurfaceApp`; the shell keeps the
+ * `mcp-view-preact-surface` class 0.5 viewers style.
  */
-export async function startPreactSurfaceApp<TData extends ResultData, TSession = never>(
+export async function startPreactSurfaceApp<TData, TSession = never>(
   options: PreactSurfaceAppOptions<TData, TSession>,
-): Promise<void> {
-  const sessionEnabled = options.validateSession !== undefined ||
-    options.mapSessionToData !== undefined;
-  if (sessionEnabled && (!options.validateSession || !options.mapSessionToData)) {
-    throw new TypeError(
-      "startPreactSurfaceApp requires both validateSession and mapSessionToData",
+  runtime?: SurfaceAppRuntime,
+): Promise<SurfaceAppHandle<TData>> {
+  const {
+    validateSession,
+    mapSessionToData,
+    onInvalidSession,
+    statusClassName,
+    renderStatus,
+    viewerSession,
+    surfaceClassName = "mcp-view-preact-surface",
+    ...rest
+  } = options;
+  const resolvedSession = deprecatedViewerSession(
+    { validateSession, mapSessionToData, onInvalidSession },
+    viewerSession,
+  );
+  return await startSurfaceApp<TData, TSession>({
+    ...rest,
+    surfaceClassName,
+    ...(resolvedSession ? { viewerSession: resolvedSession } : {}),
+    renderStatus: renderStatus ?? ((status) =>
+      renderStatusMessage(status.message, {
+        title: status.title,
+        tone: status.tone,
+        busy: status.busy,
+        className: statusClassName,
+      })),
+  }, runtime);
+}
+
+interface DeprecatedSessionOptions<TData, TSession> {
+  readonly validateSession?: (value: unknown) => value is TSession;
+  readonly mapSessionToData?: (session: TSession) => TData | Promise<TData>;
+  readonly onInvalidSession?: (value: unknown) => void;
+}
+
+/** The deprecated pair keeps working for one minor; mixing the two forms is a mistake. */
+function deprecatedViewerSession<TData, TSession>(
+  legacy: DeprecatedSessionOptions<TData, TSession>,
+  viewerSession: SurfaceViewerSession<TData, TSession> | undefined,
+): SurfaceViewerSession<TData, TSession> | undefined {
+  const { validateSession, mapSessionToData, onInvalidSession } = legacy;
+  const requested = validateSession !== undefined || mapSessionToData !== undefined ||
+    onInvalidSession !== undefined;
+  if (!requested) return viewerSession;
+  if (viewerSession) {
+    throw new SurfaceAppError(
+      "SURFACE_APP_SESSION_CONFLICT",
+      "startPreactSurfaceApp accepts either viewerSession or the deprecated " +
+        "validateSession/mapSessionToData pair, not both",
+      { recovery: "Move validateSession/mapSessionToData/onInvalidSession into viewerSession." },
     );
   }
-  const validateSession = options.validateSession;
-  const mapSessionToData = options.mapSessionToData;
-  if (options.theme !== false) installMcpViewTheme();
-  const state: PreactSurfaceAppState<TData> = {};
-  let mounted: MountedComponentSurface | undefined;
-  let pendingMount: Promise<void> | undefined;
-  let mountGeneration = 0;
-  let removeHostContextListener: (() => void) | undefined;
-
-  const reportError = (error: unknown): void => {
-    if (options.onError) options.onError(error);
-    else console.error("[mcp-view/preact] Component surface failed", error);
-  };
-
-  const message = (label: string, kind: SurfaceMessageKind): Node => {
-    if (options.renderMessage) return options.renderMessage(label, kind);
-    const node = document.createElement("div");
-    node.className = `mcp-view-message mcp-view-message-${kind}`;
-    node.textContent = label;
-    return node;
-  };
-
-  const disposeSurface = async (): Promise<void> => {
-    mountGeneration += 1;
-    await pendingMount;
-    pendingMount = undefined;
-    const active = mounted;
-    mounted = undefined;
-    await active?.dispose();
-  };
-
-  const surface = defineView<PreactSurfaceAppState<TData>, TData, TData>({
-    onEnter(_context, data) {
-      state.currentData = data;
-      return data;
-    },
-    render(context, data) {
-      const shell = document.createElement("div");
-      shell.className = options.surfaceClassName ?? "mcp-view-preact-surface";
-      const selected = activeComponentSurface(options.registry, context.hostContext);
-      if (!selected) {
-        shell.replaceChildren(message(
-          options.surfaceRequiredLabel ??
-            "This App exposes components and requires a host-selected surface.",
-          "surface-required",
-        ));
-        return shell;
-      }
-
-      const generation = ++mountGeneration;
-      pendingMount = mountComponentSurface({
-        root: shell,
-        registry: options.registry,
-        data,
-        appContext: context,
-        hostContext: context.hostContext,
-        surface: selected,
-      }).then(async (next) => {
-        if (generation !== mountGeneration) {
-          await next.dispose();
-          return;
-        }
-        mounted = next;
-      }).catch((error) => {
-        shell.replaceChildren(message(
-          `Component surface failed: ${error instanceof Error ? error.message : String(error)}`,
-          "error",
-        ));
-        reportError(error);
-      });
-      return shell;
-    },
-    onLeave: disposeSurface,
-  });
-
-  const handle = await createMcpApp<PreactSurfaceAppState<TData>, TSession>({
-    info: options.info,
-    root: options.root,
-    views: {
-      loading: defineView({
-        render: () => message(options.loadingLabel ?? "Waiting for data…", "loading"),
-      }),
-      empty: defineView({
-        render: () => message(options.emptyLabel ?? "No structured data received.", "empty"),
-      }),
-      surface,
-    },
-    initialView: "loading",
-    initialState: state,
-    ...(validateSession && mapSessionToData
-      ? {
-        viewerSession: {
-          validate: validateSession,
-          onSession: async (session, _payload, app) => {
-            const data = await mapSessionToData(session);
-            state.currentData = data;
-            await app.navigate("surface", data);
-          },
-          onInvalid: (payload) => options.onInvalidSession?.(payload.data),
-          onError: reportError,
-        },
-      }
-      : {}),
-    capabilities: {
-      experimental: componentCatalogCapabilities(options.registry),
-    },
-    onToolInputPartial: async (_params, app) => {
-      state.currentData = undefined;
-      await app.navigate("loading");
-    },
-    onToolResult: async (result, app) => {
-      const data = readResultData<TData>(result, {
-        fallback: "json-text",
-        ...(options.validate ? { validate: options.validate } : {}),
-      });
-      await app.navigate(data ? "surface" : "empty", data);
-    },
-    onTeardown: () => {
-      removeHostContextListener?.();
-      removeHostContextListener = undefined;
-    },
-  });
-
-  const onHostContextChanged = (): void => {
-    applySurfaceContext(handle.ctx.hostContext, document.documentElement);
-    const data = state.currentData;
-    if (!data || handle.currentView !== "surface") return;
-    void handle.navigate("surface", data).catch(reportError);
-  };
-  handle.ctx.app.addEventListener("hostcontextchanged", onHostContextChanged);
-  applySurfaceContext(handle.ctx.hostContext, document.documentElement);
-  removeHostContextListener = () => {
-    handle.ctx.app.removeEventListener("hostcontextchanged", onHostContextChanged);
+  if (!validateSession || !mapSessionToData) {
+    throw new SurfaceAppError(
+      "SURFACE_APP_SESSION_INCOMPLETE",
+      "startPreactSurfaceApp requires both validateSession and mapSessionToData",
+      { recovery: "Pass both, or the viewerSession { validate, toState } pair." },
+    );
+  }
+  return {
+    validate: validateSession,
+    toState: async (session) => ({ kind: "result", result: await mapSessionToData(session) }),
+    ...(onInvalidSession ? { onInvalid: onInvalidSession } : {}),
   };
 }

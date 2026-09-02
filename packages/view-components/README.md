@@ -20,8 +20,9 @@ whole-view App remains the exact viewer opened for that object.
 - The host composes and opens recorded views. It does not become a native CAD, Modelica, FEA, or
   SysML renderer.
 
-The package root is renderer-neutral. Preact is an optional peer and is loaded only through the
-Preact subpaths:
+The package root is renderer-neutral and carries no MCP Apps runtime: `@casys/mcp-view` and
+`@modelcontextprotocol/ext-apps` are reached only through the `/surface` entry, which owns the App
+lifecycle. Preact is an optional peer and is loaded only through the Preact subpaths:
 
 ```ts
 import { defineComponentRegistry, installMcpViewTheme } from "@casys/mcp-view-components";
@@ -188,11 +189,78 @@ fonts nor makes a network font request. Apps can override the stable variables e
 }
 ```
 
+## Surface App
+
+`startSurfaceApp()` (`/surface` entry) runs the whole result-driven App lifecycle for a component
+registry: it opens on a loading status, projects every tool result into one `SurfaceDisplayState`,
+mounts the host-selected surface (or the registry default), remounts it when the host context
+changes, guards overtaken mounts, and converts every failure into a status instead of a blank page.
+A viewer supplies its registry, the projection and how a status is rendered; everything else —
+`strict`, `theme`, the status labels, `onError`, `viewerSession` — has a documented default.
+
+```ts
+import { startSurfaceApp } from "@casys/mcp-view-components/surface";
+
+const app = await startSurfaceApp<RunModel>({
+  root,
+  info: { name: "Run viewer", version: "1.0.0" },
+  registry,
+  strict: true,
+  fromToolResult: async (result, host) => {
+    if (result.isError) return { kind: "error", message: toolErrorMessage(result) };
+    const model = parseRun(result.structuredContent);
+    if (!model) return { kind: "empty" };
+    if (model.pending) return { kind: "notice", title: "Solving", message: "…", busy: true };
+    return { kind: "result", result: model };
+  },
+  renderStatus: (status) => renderMyStatus(status),
+});
+```
+
+The projection may return a promise and may read server resources through `host.readServerResource`.
+Without a projection, `validate` (a type guard) is applied to `structuredContent` with a JSON-text
+fallback; passing both is refused with `SURFACE_APP_PROJECTION_CONFLICT`.
+
+Every non-result state reaches `renderStatus` as one `SurfaceStatus` — `kind`, `message`, `title?`,
+`tone`, `busy` and the caller's optional `code`:
+
+| `kind`             | When                                             | `tone`    | `busy`  |
+| ------------------ | ------------------------------------------------ | --------- | ------- |
+| `loading`          | before the first result, and on partial input    | `info`    | `true`  |
+| `empty`            | `{ kind: "empty" }` or a rejected `validate`     | `neutral` | `false` |
+| `error`            | `{ kind: "error" }`, a rejected session          | `danger`  | `false` |
+| `notice`           | `{ kind: "notice" }`, defaults `neutral`/`false` | given     | given   |
+| `surface-required` | component-only registry without a host selection | `warning` | `false` |
+
+`code` is passed through from a `notice` or `error` state and never invented, so a viewer can key
+its own recovery hints on it. A projection that throws becomes a `Result rejected` error status and
+wipes the previous result; to keep the last good values under the failure, return a `result` that
+carries it — the scaffold does exactly that. A mount that fails or a malformed host selection stays
+on the surface route as `Surface failed` or `Surface invalid`, so a corrected selection can recover
+in place. All three are reported to `onError` (default `console.error`) and the App keeps running.
+
+The projection and the session subscription are registered before the App connects, so nothing the
+host sends during the handshake is lost. The host context is re-applied on every
+`hostcontextchanged`, including the notifications the runtime replays from the handshake; the
+surface is remounted only while the surface route holds a result (a surface-route failure included)
+and the context object actually moved — never while a status is shown or a transition is in flight.
+`theme: false` skips the theme install at boot only — primitives still install it when they mount.
+
+`startPreactSurfaceApp()` (`/preact`) is the same App with statuses rendered through
+`renderStatusMessage`, plus `statusClassName` for viewer-owned styling hooks; its shell keeps the
+`mcp-view-preact-surface` class 0.5 viewers style (the core default is `mcp-view-surface-shell`).
+Both return a `SurfaceAppHandle` whose `show(state)` drives the App from outside the MCP lifecycle
+and whose `dispose()` tears it down. Option conflicts throw `SurfaceAppError`, a `TypeError` with a
+stable `code` (`SURFACE_APP_PROJECTION_CONFLICT`, `SURFACE_APP_SESSION_CONFLICT`,
+`SURFACE_APP_SESSION_INCOMPLETE`) and a `data.recovery` sentence; `show()` on a handle the host
+already tore down rejects with `SURFACE_APP_CLOSED`.
+
 Whole-view recorded sessions are declared in `@casys/mcp-view-contracts` and consumed through the
-core resource lifecycle. `startPreactSurfaceApp()` accepts paired `validateSession` and
-`mapSessionToData` callbacks, installs them before the App connects, and keeps mapped data in App
-state. No individual component claims `viewer.session.apply`, so a remount cannot lose a one-shot
-session.
+core resource lifecycle. `viewerSession` pairs a `validate` guard with a `toState` projection; the
+App subscribes before it connects and the runtime buffers what arrives during the handshake, so a
+one-shot session cannot be lost and no individual component claims `viewer.session.apply`. The
+deprecated `validateSession`/`mapSessionToData` pair of `startPreactSurfaceApp()` still works and is
+removed in 0.7.0; mixing it with `viewerSession` is refused.
 
 ## Common compositions
 
@@ -238,10 +306,15 @@ accepts any `ComponentChildren`, so a plain count string requires no extra compo
 
 ## Result-viewer scaffold (Deno/JSR only)
 
-The project generator intentionally uses Deno filesystem APIs and `deno fmt`. Run it from JSR:
+The project generator intentionally uses Deno filesystem APIs and `deno fmt`. The generated
+`src/main.ts` is a component registry plus one `fromToolResult` projection handed to
+`startSurfaceApp()` from `@casys/mcp-view-components/surface`; it hand-rolls no App lifecycle. Its
+`build.ts` accepts `MCP_VIEW_MODULE` and `MCP_VIEW_COMPONENTS_MODULE` overrides (the `mod.ts` of a
+local checkout); the `/surface` entry is derived from the latter unless
+`MCP_VIEW_COMPONENTS_SURFACE_MODULE` names it. Run the generator from JSR:
 
 ```sh
-deno run -A jsr:@casys/mcp-view-components@0.5.0/scaffold result-viewer ./result-viewer
+deno run -A jsr:@casys/mcp-view-components@0.6.0/scaffold result-viewer ./result-viewer
 ```
 
 The npm package contains only the runtime and presentation entry points. It does not export or ship

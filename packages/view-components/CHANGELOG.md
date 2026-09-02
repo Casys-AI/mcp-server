@@ -7,6 +7,76 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-02
+
+### Added
+
+- **`@casys/mcp-view-components/surface`** entry (`surface.ts`) — owns the MCP Apps runtime. The
+  package root stays renderer-neutral and reaches `@casys/mcp-view` only through a type edge; a
+  module graph test (`entries_test.ts`) pins that `@modelcontextprotocol/ext-apps` and the App
+  lifecycle are absent from the root and present in `/surface`.
+- **`startSurfaceApp`** (`/surface`) — the renderer-neutral result-driven App lifecycle every
+  consumer viewer had rewritten by hand: projection and session subscription registered before
+  connect, loading status as the initial view, one `fromToolResult` projection per tool result (sync
+  or async, with `host.readServerResource`), `SurfaceDisplayState` (`loading` / `empty` / `error` /
+  `notice` / `result`), host-selected or default surface, host context re-applied on every
+  `hostcontextchanged` including the ones replayed from the handshake, remount only while a result
+  is displayed and the context object moved, overtaken-mount guard, a navigation chain so a remount
+  never reads the router mid-transition, `"Surface required"` for component-only registries without
+  a host surface, a throwing projection turned into a `Result rejected` error status, and a failed
+  mount or malformed host selection kept on the surface route as `Surface failed` /
+  `Surface invalid` instead of a blank page. Statuses are rendered by the caller's
+  `renderStatus(status)`; `SurfaceStatus` carries `kind`, `title`, `message`, `tone`, `busy` and the
+  caller's optional `code`. Returns a `SurfaceAppHandle` (`show`, `dispose`). Accepts an optional
+  `SurfaceAppRuntime` seam so the lifecycle is testable without ext-apps.
+- **`SurfaceAppError`** (`/surface`, `/preact`) — a `TypeError` with a stable `code`
+  (`SURFACE_APP_PROJECTION_CONFLICT`, `SURFACE_APP_SESSION_CONFLICT`,
+  `SURFACE_APP_SESSION_INCOMPLETE`) and a frozen `data.recovery`, thrown for option conflicts;
+  `SurfaceAppHandle.show()` after a teardown rejects with `SURFACE_APP_CLOSED`.
+- **`viewerSession`** option (`SurfaceViewerSession`: `validate`, `toState`, `onInvalid`) on both
+  `startSurfaceApp` and `startPreactSurfaceApp`, projecting a recorded session into the same
+  `SurfaceDisplayState` as a tool result.
+- **`.mcp-view-surface-shell`** theme class — the default host element of `startSurfaceApp`, styled
+  as `.mcp-view-preact-surface`, which the Preact facade keeps as its own default.
+- **Scaffold**: the generated `src/main.ts` imports `startSurfaceApp` from
+  `@casys/mcp-view-components/surface` and hands it a `fromToolResult` projection whose closure
+  keeps the last recorded result under a dated failure banner; `src/render.ts` gains `renderStatus`
+  (`data-kind`, escaped `data-tone`, `aria-busy` on busy notices) and `renderViewer`; `src/model.ts`
+  replaces `DisplayState`/`shownResult` with `ViewerData`; numbers format in `en-US` so output does
+  not depend on the host locale. No `createMcpApp` call is emitted any more. `build.ts` derives the
+  `/surface` module from `MCP_VIEW_COMPONENTS_MODULE` (or takes
+  `MCP_VIEW_COMPONENTS_SURFACE_MODULE`), and the generated project is fmt-clean.
+- **Release plumbing**: `release.yml` and `scripts/release-tag.ts` know `view-components-v*` tags;
+  `deno task changelog:draft` and `deno task release:tag` in the package; the npm publish smoke
+  imports `/surface` in ESM and CJS and refuses a tarball that ships `src/testing/`.
+
+### Changed
+
+- **BREAKING —** `startPreactSurfaceApp` is now a facade over `startSurfaceApp`: statuses render
+  through `renderStatusMessage` (titled `Loading` / `Empty` / `Error`, tones `info` / `neutral` /
+  `danger`, `aria-busy` while loading) instead of bare `.mcp-view-message-<kind>` divs;
+  `statusClassName` lands on that `StateMessage`; `renderStatus` replaces `renderMessage`; the
+  function returns a `SurfaceAppHandle` instead of `void`; `TData` is no longer constrained to
+  `ResultData`. The shell keeps the `mcp-view-preact-surface` class.
+- `PreactSurfaceAppState` and `PreactSurfaceContext` are aliases of `SurfaceAppState` and
+  `SurfaceAppContext`; `/preact` re-exports the `SurfaceAppErrorCode`, `SurfaceAppRuntime`,
+  `SurfaceProjection`, `SurfaceStatusTone` and `SurfaceToolResult` types.
+- `SurfaceMessageKind` gains `"notice"`; the console prefix of the default `onError` is
+  `[mcp-view-components]` instead of `[mcp-view/preact]`.
+
+| 0.5.0                                       | 0.6.0                                                 |
+| ------------------------------------------- | ----------------------------------------------------- |
+| `renderMessage(message, kind)`              | `renderStatus(status)` with `status.kind` and `.tone` |
+| `.mcp-view-message-<kind>` selectors        | `.mcp-view-state[data-tone]` (`StateMessage`)         |
+| `await startPreactSurfaceApp(...)` → `void` | `const app = await …` → `SurfaceAppHandle`            |
+| `validateSession` + `mapSessionToData`      | `viewerSession: { validate, toState }`                |
+| `TData extends ResultData`                  | any `TData`                                           |
+
+### Deprecated
+
+- `validateSession`, `mapSessionToData` and `onInvalidSession` on `startPreactSurfaceApp`: use
+  `viewerSession`. Mixing the two forms is refused. Removed in 0.7.0.
+
 ## [0.5.0] - 2026-09-01
 
 ### Added

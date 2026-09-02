@@ -137,6 +137,7 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
 *, *::before, *::after { box-sizing: border-box; }
 
 .mcp-view-surface,
+.mcp-view-surface-shell,
 .mcp-view-preact-surface,
 .mcp-view-component {
   width: 100%;
@@ -145,6 +146,7 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
 }
 
 .mcp-view-surface,
+.mcp-view-surface-shell,
 .mcp-view-preact-surface {
   container-type: inline-size;
 }

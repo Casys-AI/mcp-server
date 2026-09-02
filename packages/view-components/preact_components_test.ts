@@ -76,7 +76,9 @@ Deno.test({
     for (
       const forbidden of [
         "@modelcontextprotocol/ext-apps",
+        "/packages/view/src/",
         "/src/app.ts",
+        "/src/surface-app.ts",
         "/src/lifecycle.ts",
         "/src/compose-events.ts",
         "/src/theme.ts",

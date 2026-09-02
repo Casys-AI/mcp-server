@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { dirname, join } from "@std/path";
+import { dirname, fromFileUrl, join } from "@std/path";
 
 import { parseScaffoldArguments, ScaffoldError, scaffoldResultViewer } from "./scaffold.ts";
 
@@ -25,13 +25,14 @@ Deno.test("result-viewer scaffold creates a standalone component project", async
       assert((await Deno.stat(join(target, path))).isFile);
     }
     const main = await Deno.readTextFile(join(target, "src/main.ts"));
-    assertStringIncludes(main, "createMcpApp");
+    assertStringIncludes(main, "startSurfaceApp");
     assertStringIncludes(main, "defineComponentRegistry");
-    assertStringIncludes(main, "mountComponentSurface");
     assertStringIncludes(main, '"result.metrics"');
-    assertStringIncludes(main, "onToolResult");
+    assertStringIncludes(main, "fromToolResult");
     assertStringIncludes(main, "before connect()");
-    assertStringIncludes(main, 'aria-busy", "false');
+    assertStringIncludes(main, "strict: true");
+    assertStringIncludes(main, 'from "@casys/mcp-view-components/surface"');
+    assert(!main.includes("createMcpApp"), "the scaffold must not hand-roll the App lifecycle");
     const styles = await Deno.readTextFile(join(target, "src/styles.css"));
     assertStringIncludes(styles, "var(--color-background-primary");
     assertStringIncludes(styles, "prefers-reduced-motion");
@@ -41,18 +42,29 @@ Deno.test("result-viewer scaffold creates a standalone component project", async
     assertStringIncludes(generatedConfig, '"@casys/mcp-view": "jsr:@casys/mcp-view@0.9.2"');
     assertStringIncludes(
       generatedConfig,
-      '"@casys/mcp-view-components": "jsr:@casys/mcp-view-components@0.5.0"',
+      '"@casys/mcp-view-components": "jsr:@casys/mcp-view-components@0.6.0"',
     );
     assertStringIncludes(generatedConfig, '"minimumDependencyAge"');
     assertStringIncludes(generatedConfig, '"jsr:@casys/mcp-view-components"');
     const coreModule = new URL("../view/mod.ts", import.meta.url).href;
     const componentsModule = new URL("./mod.ts", import.meta.url).href;
+    const surfaceModule = new URL("./surface.ts", import.meta.url).href;
+    // A local checkout cannot expand subpaths the way a jsr: package does.
     await Deno.writeTextFile(
       configPath,
       generatedConfig
         .replace("jsr:@casys/mcp-view@0.9.2", coreModule)
-        .replace("jsr:@casys/mcp-view-components@0.5.0", componentsModule),
+        .replace("jsr:@casys/mcp-view-components@0.6.0/surface", surfaceModule)
+        .replace("jsr:@casys/mcp-view-components@0.6.0", componentsModule),
     );
+
+    // A bare path is accepted where the fleet passes file URLs; /surface is derived from it.
+    const environment = {
+      MCP_VIEW_MODULE: coreModule,
+      MCP_VIEW_COMPONENTS_MODULE: fromFileUrl(componentsModule),
+    };
+    // The emitted sources are fmt-clean before the test appends its probe.
+    await runGeneratedTask(target, "fmt", environment);
 
     await Deno.writeTextFile(
       join(target, "src", "main.ts"),
@@ -60,10 +72,6 @@ Deno.test("result-viewer scaffold creates a standalone component project", async
       { append: true },
     );
 
-    const environment = {
-      MCP_VIEW_MODULE: coreModule,
-      MCP_VIEW_COMPONENTS_MODULE: componentsModule,
-    };
     await runGeneratedTask(target, "test", environment);
     await runGeneratedTask(target, "check", environment);
     await runGeneratedTask(target, "build", environment);
@@ -147,6 +155,27 @@ function assertInlineScriptsParse(html: string): void {
     new Function(script);
   }
 }
+
+Deno.test("the scaffold pins the @casys/mcp-view release it was built against", async () => {
+  // The generated project and its build step both name the core package; a
+  // core bump that skips the scaffold ships a viewer on the previous runtime.
+  const version = JSON.parse(
+    await Deno.readTextFile(new URL("../view/deno.json", import.meta.url)),
+  ).version as string;
+  const source = await Deno.readTextFile(
+    new URL("./src/scaffold/result-viewer-templates.ts", import.meta.url),
+  );
+  const pins = [...source.matchAll(/@casys\/mcp-view@([0-9][A-Za-z0-9.-]*)/g)]
+    .map((match) => match[1]);
+  assert(pins.length > 0, "the scaffold pins no version of @casys/mcp-view");
+  for (const pin of pins) {
+    assertEquals(
+      pin,
+      version,
+      `the scaffold emits mcp-view ${pin} while the core ships ${version}`,
+    );
+  }
+});
 
 Deno.test("the scaffold emits the version of the package that ships it", async () => {
   // The README said 0.5.0 while the generator still wrote 0.3.1, so

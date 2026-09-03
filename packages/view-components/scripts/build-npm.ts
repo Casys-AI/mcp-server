@@ -25,6 +25,7 @@ await build({
     { name: "./preact", path: "./preact.ts" },
     { name: "./preact/components", path: "./preact-components.ts" },
     { name: "./surface", path: "./surface.ts" },
+    { name: "./layout", path: "./layout.ts" },
     { name: "./fonts", path: "./fonts.ts" },
   ],
   outDir: "./dist-node",
@@ -66,6 +67,11 @@ packageJson.exports = {
     types: "./esm/surface.d.ts",
     import: "./esm/surface.js",
     require: "./script/surface.js",
+  },
+  "./layout": {
+    types: "./esm/layout.d.ts",
+    import: "./esm/layout.js",
+    require: "./script/layout.js",
   },
   "./fonts": {
     types: "./esm/fonts.d.ts",

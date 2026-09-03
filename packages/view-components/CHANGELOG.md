@@ -7,6 +7,35 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-04
+
+### Added
+
+- **`@casys/mcp-view-components/layout`** entry (`layout.ts`) — the responsive viewer layout ERPNext
+  proved in production, extracted with no App lifecycle: the entry takes the host context as a value
+  (`LayoutHostHints`, structurally satisfied by `McpViewHostContext`) and a module graph test pins
+  that it reaches Preact and neither `@modelcontextprotocol/ext-apps`, `@casys/mcp-view`'s App, nor
+  `/surface`.
+  - Pure decision — `resolveViewerLayout({ width, touch, forced })` returns one of three treatments,
+    `"wide" | "panel" | "mobile"` (`VIEWER_LAYOUTS`): two contexts under one `NARROW_BREAKPOINT`
+    (480px), not a width scale. Under the breakpoint a finger without hover picks `mobile`, anything
+    else `panel`; an unknown width (`null`, unmeasured) reads as wide.
+    `layoutWidth(hints, measured)` prefers the host's declared `containerDimensions.width`, then
+    `maxWidth`, then the measured width. One deliberate delta from ERPNext: a declared width that is
+    not a positive finite number is no declaration at all and falls through (ERPNext read `width: 0`
+    as a narrow width), the same guard `viewerBoundsStyle` already applied to heights.
+    `touchInput(hints, coarse)` follows the host's `deviceCapabilities` (`touch && hover !== true`)
+    and only falls back to the browser's coarse-pointer query when the host says nothing.
+    `layoutFromSearch(search)` reads `?layout=` for reviewing a treatment without the matching
+    device. `viewerBoundsStyle` bounds a root on the host's declared `height`, else `maxHeight`,
+    else not at all.
+  - Preact hooks — `useContainerWidth()` (a `ResizeObserver` on the ref'd element, `null` until
+    measured), `useCoarsePointer()` (`matchMedia("(pointer: coarse)")` with change tracking) and
+    `useViewerLayout(hints, { forced? })`, which composes them into
+    `{ ref, width, layout, boundsStyle }`. When `forced` is omitted the page query string is
+    consulted; pass `null` to ignore the URL.
+  - Published on npm as `./layout` (`esm/layout.js`, `script/layout.js`, `layout.d.ts`).
+
 ## [0.6.0] - 2026-09-02
 
 ### Added

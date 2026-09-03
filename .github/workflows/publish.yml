@@ -351,6 +351,7 @@ jobs:
               const preact = await import("@casys/mcp-view-components/preact");
               const presentation = await import("@casys/mcp-view-components/preact/components");
               const fonts = await import("@casys/mcp-view-components/fonts");
+              const layout = await import("@casys/mcp-view-components/layout");
               if (typeof contracts.defineViewAppManifest !== "function") throw new Error("contracts missing");
               if (typeof core.createMcpApp !== "function" || "installMcpViewTheme" in core) throw new Error("core boundary invalid");
               if (compatibility.VIEWER_SESSION_APPLY_ACTION !== "viewer.session.apply") throw new Error("compatibility export missing");
@@ -359,6 +360,7 @@ jobs:
               if (typeof preact.startPreactSurfaceApp !== "function") throw new Error("Preact runtime missing");
               if (typeof presentation.Card !== "function" || "createMcpApp" in presentation) throw new Error("presentation boundary invalid");
               if (typeof fonts.installMcpViewFonts !== "function" || !fonts.MCP_VIEW_FONTS_CSS.includes("@font-face") || "MCP_VIEW_FONTS_CSS" in components) throw new Error("fonts boundary invalid");
+              if (typeof layout.resolveViewerLayout !== "function" || typeof layout.useViewerLayout !== "function" || "useViewerLayout" in components) throw new Error("layout boundary invalid");
               let scaffoldRejected = false;
               try {
                 await import("@casys/mcp-view-components/scaffold");
@@ -374,11 +376,13 @@ jobs:
               const preact = require("@casys/mcp-view-components/preact");
               const presentation = require("@casys/mcp-view-components/preact/components");
               const fonts = require("@casys/mcp-view-components/fonts");
+              const layout = require("@casys/mcp-view-components/layout");
               if (typeof components.defineComponentRegistry !== "function") throw new Error("CommonJS components runtime missing");
               if (typeof surface.startSurfaceApp !== "function") throw new Error("CommonJS surface App runtime missing");
               if (typeof preact.startPreactSurfaceApp !== "function") throw new Error("CommonJS Preact runtime missing");
               if (typeof presentation.Card !== "function") throw new Error("CommonJS presentation runtime missing");
               if (typeof fonts.installMcpViewFonts !== "function") throw new Error("CommonJS fonts entry missing");
+              if (typeof layout.resolveViewerLayout !== "function" || typeof layout.useViewerLayout !== "function") throw new Error("CommonJS layout entry missing");
               let scaffoldRejected = false;
               try {
                 require("@casys/mcp-view-components/scaffold");

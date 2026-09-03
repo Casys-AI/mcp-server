@@ -36,6 +36,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     consulted; pass `null` to ignore the URL.
   - Published on npm as `./layout` (`esm/layout.js`, `script/layout.js`, `layout.d.ts`).
 
+### Removed
+
+- `validateSession`, `mapSessionToData` and `onInvalidSession` on `startPreactSurfaceApp`,
+  deprecated in 0.6.0: `viewerSession: { validate, toState, onInvalid }` is the one form. With them
+  go the `SURFACE_APP_SESSION_CONFLICT` and `SURFACE_APP_SESSION_INCOMPLETE` codes of
+  `SurfaceAppError`, which only that pair could raise. Passing one of the old options is now a type
+  error.
+
 ## [0.6.0] - 2026-09-02
 
 ### Added

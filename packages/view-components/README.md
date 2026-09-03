@@ -319,16 +319,15 @@ and the context object actually moved — never while a status is shown or a tra
 `mcp-view-preact-surface` class 0.5 viewers style (the core default is `mcp-view-surface-shell`).
 Both return a `SurfaceAppHandle` whose `show(state)` drives the App from outside the MCP lifecycle
 and whose `dispose()` tears it down. Option conflicts throw `SurfaceAppError`, a `TypeError` with a
-stable `code` (`SURFACE_APP_PROJECTION_CONFLICT`, `SURFACE_APP_SESSION_CONFLICT`,
-`SURFACE_APP_SESSION_INCOMPLETE`) and a `data.recovery` sentence; `show()` on a handle the host
-already tore down rejects with `SURFACE_APP_CLOSED`.
+stable `code` (`SURFACE_APP_PROJECTION_CONFLICT`) and a `data.recovery` sentence; `show()` on a
+handle the host already tore down rejects with `SURFACE_APP_CLOSED`.
 
 Whole-view recorded sessions are declared in `@casys/mcp-view-contracts` and consumed through the
 core resource lifecycle. `viewerSession` pairs a `validate` guard with a `toState` projection; the
 App subscribes before it connects and the runtime buffers what arrives during the handshake, so a
-one-shot session cannot be lost and no individual component claims `viewer.session.apply`. The
-deprecated `validateSession`/`mapSessionToData` pair of `startPreactSurfaceApp()` still works and is
-removed in 0.7.0; mixing it with `viewerSession` is refused.
+one-shot session cannot be lost and no individual component claims `viewer.session.apply`. The 0.6
+`validateSession`/`mapSessionToData`/`onInvalidSession` options of `startPreactSurfaceApp()` are
+gone in 0.7.0; `viewerSession: { validate, toState, onInvalid }` is the one form.
 
 ## Common compositions
 

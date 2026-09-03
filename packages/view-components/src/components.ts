@@ -252,7 +252,8 @@ function applySurfaceLayout(
     lg: "1.5rem",
   };
   target.style.display = "grid";
-  target.style.gap = gaps[layout.gap ?? "md"];
+  // Stacked components are separated by the theme's hairlines; rows and grids keep a gap.
+  target.style.gap = gaps[layout.gap ?? (layout.type === "stack" ? "none" : "md")];
   target.style.minWidth = "0";
   if (layout.type === "row") {
     target.style.gridAutoFlow = "column";

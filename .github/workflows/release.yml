@@ -12,6 +12,7 @@ on:
       - "compose-v*"
       - "bridge-v*"
       - "view-v*"
+      - "view-components-v*"
 
 jobs:
   github-release:
@@ -28,7 +29,7 @@ jobs:
         env:
           TAG: ${{ github.ref_name }}
         run: |
-          # `<pkg>-v<version>` → split on first `-v`
+          # `<pkg>-v<version>` → split on the last `-v` (`view-components-v0.6.0`)
           pkg="${TAG%-v*}"
           version="${TAG#*-v}"
           if [[ -z "$pkg" || -z "$version" ]]; then

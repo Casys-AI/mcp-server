@@ -6,6 +6,7 @@ import {
   CollectionCard,
   DataTable,
   ElementLimit,
+  ElementSection,
   InlineCode,
   LimitGauge,
   PathBar,
@@ -20,6 +21,7 @@ Deno.test("Preact components entry exposes presentation without an MCP Apps runt
   assertEquals(typeof CollectionCard, "function");
   assertEquals(typeof DataTable, "function");
   assertEquals(typeof ElementLimit, "function");
+  assertEquals(typeof ElementSection, "function");
   assertEquals(typeof PathBar, "function");
   assertEquals(typeof Row, "function");
   assertEquals(typeof LimitGauge, "function");
@@ -76,7 +78,9 @@ Deno.test({
     for (
       const forbidden of [
         "@modelcontextprotocol/ext-apps",
+        "/packages/view/src/",
         "/src/app.ts",
+        "/src/surface-app.ts",
         "/src/lifecycle.ts",
         "/src/compose-events.ts",
         "/src/theme.ts",

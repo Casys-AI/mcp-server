@@ -7,7 +7,8 @@ export const resultViewerTemplates: Readonly<Record<string, string>> = {
   },
   "imports": {
     "@casys/mcp-view": "jsr:@casys/mcp-view@0.9.2",
-    "@casys/mcp-view-components": "jsr:@casys/mcp-view-components@0.5.0"
+    "@casys/mcp-view-components": "jsr:@casys/mcp-view-components@0.6.0",
+    "@casys/mcp-view-components/surface": "jsr:@casys/mcp-view-components@0.6.0/surface"
   },
   "minimumDependencyAge": {
     "age": "P1D",
@@ -36,19 +37,24 @@ export const resultViewerTemplates: Readonly<Record<string, string>> = {
     </style>
   </head>
   <body>
-    <main id="root" aria-live="polite" aria-busy="true">Loading result…</main>
+    <main id="root" aria-live="polite">Loading result…</main>
     <script type="module">
     /* BUNDLE_PLACEHOLDER */
     </script>
   </body>
 </html>
 `,
-  "build.ts": `import { dirname, fromFileUrl, join } from "jsr:@std/path@^1.1.0";
+  "build.ts":
+    `import { dirname, fromFileUrl, join, resolve, toFileUrl } from "jsr:@std/path@^1.1.0";
 
 const here = dirname(fromFileUrl(import.meta.url));
-const mcpViewModule = Deno.env.get("MCP_VIEW_MODULE") ?? "jsr:@casys/mcp-view@0.9.2";
-const mcpViewComponentsModule = Deno.env.get("MCP_VIEW_COMPONENTS_MODULE") ??
-  "jsr:@casys/mcp-view-components@0.5.0";
+const mcpViewModule = moduleSpecifier(Deno.env.get("MCP_VIEW_MODULE") ?? "jsr:@casys/mcp-view@0.9.2");
+const mcpViewComponentsModule = moduleSpecifier(
+  Deno.env.get("MCP_VIEW_COMPONENTS_MODULE") ?? "jsr:@casys/mcp-view-components@0.6.0",
+);
+const mcpViewSurfaceModule = moduleSpecifier(
+  Deno.env.get("MCP_VIEW_COMPONENTS_SURFACE_MODULE") ?? subpathModule(mcpViewComponentsModule, "surface"),
+);
 const temporaryDirectory = await Deno.makeTempDir({ prefix: "mcp-view-result-viewer-" });
 const importMap = join(temporaryDirectory, "import-map.json");
 const bundlePath = join(temporaryDirectory, "result-viewer.js");
@@ -61,6 +67,7 @@ try {
     imports: {
       "@casys/mcp-view": mcpViewModule,
       "@casys/mcp-view-components": mcpViewComponentsModule,
+      "@casys/mcp-view-components/surface": mcpViewSurfaceModule,
       "@modelcontextprotocol/ext-apps": "npm:@modelcontextprotocol/ext-apps@^1.7.4",
       "@modelcontextprotocol/sdk": "npm:@modelcontextprotocol/sdk@^1.29.0",
       "@modelcontextprotocol/sdk/types.js": "npm:@modelcontextprotocol/sdk@^1.29.0/types.js"
@@ -91,6 +98,17 @@ try {
 } finally {
   await Deno.remove(temporaryDirectory, { recursive: true });
 }
+
+/** An override is a jsr:/npm: package, a module URL, or a path to a local mod.ts. */
+function moduleSpecifier(value: string): string {
+  return URL.canParse(value) ? value : toFileUrl(resolve(value)).href;
+}
+
+/** A registry package resolves its own subpaths; a local checkout names the file next to mod.ts. */
+function subpathModule(root: string, name: string): string {
+  if (root.startsWith("jsr:") || root.startsWith("npm:")) return root + "/" + name;
+  return new URL("./" + name + ".ts", root).href;
+}
 `,
   "src/model.ts": `export interface Metric {
   label: string;
@@ -113,20 +131,17 @@ export interface ResultModel {
   details: Metric[];
 }
 
-export type DisplayState =
-  | { kind: "loading" }
-  | { kind: "empty" }
-  | { kind: "error"; message: string; stale?: ResultModel; recordedAt?: string }
-  | { kind: "result"; result: ResultModel };
-
 /**
- * The values a failed refresh must keep showing. A viewer that blanks its
- * panels on error replaces the last recorded truth with a hole.
+ * What the surface shows. A refresh that fails keeps the last recorded result
+ * on the page: a viewer that blanks its panels on error replaces the last
+ * recorded truth with a hole.
  */
-export function shownResult(display: DisplayState): ResultModel | undefined {
-  if (display.kind === "result") return display.result;
-  if (display.kind === "error") return display.stale;
-  return undefined;
+export interface ViewerData {
+  result: ResultModel;
+  /** When the result was recorded, so a later failure can date the kept values. */
+  recordedAt: string;
+  /** The refresh that failed after the result was recorded, if any. */
+  failure?: string;
 }
 
 export function parseStructuredResult(value: unknown): ResultModel {
@@ -190,7 +205,7 @@ function artifactsFrom(value: unknown): Artifact[] {
 function formatMetricValue(value: unknown, unit: unknown): string | undefined {
   if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") return undefined;
   const formatted = typeof value === "number"
-    ? new Intl.NumberFormat(undefined, { maximumFractionDigits: 4 }).format(value)
+    ? new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 }).format(value)
     : String(value);
   const suffix = stringValue(unit);
   return suffix ? formatted + " " + suffix : formatted;
@@ -212,17 +227,23 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 `,
-  "src/render.ts": `import type { DisplayState, Metric, ResultModel } from "./model.ts";
+  "src/render.ts": `import type { SurfaceStatus } from "@casys/mcp-view-components/surface";
+import type { Metric, ResultModel, ViewerData } from "./model.ts";
 
-export function renderDisplay(display: DisplayState): string {
-  if (display.kind === "loading") return shell("Loading result", '<div class="mcp-view-skeleton" role="status" aria-busy="true" aria-label="Loading the recorded result"><span class="mcp-view-skeleton-line" aria-hidden="true"></span><span class="mcp-view-skeleton-line" aria-hidden="true"></span><span class="mcp-view-skeleton-line" aria-hidden="true"></span></div>');
-  if (display.kind === "empty") return shell("No result data", '<div class="mcp-view-state"><strong>Nothing to display</strong><p class="mcp-view-state-detail">The tool completed without displayable fields.</p></div>');
-  if (display.kind === "error") {
-    const banner = '<div class="mcp-view-stale-banner" data-tone="danger" role="alert"><span class="mcp-view-stale-banner-message">' + escapeHtml(display.message) + (display.recordedAt ? " — values recorded at " + escapeHtml(display.recordedAt) : "") + "</span></div>";
-    // The kept values stay on the page underneath the failure.
-    return display.stale ? shell(escapeHtml(display.stale.title), banner + renderBody(display.stale)) : shell("Result unavailable", banner);
-  }
-  return renderResult(display.result);
+/** Statuses shown before, between and instead of results. Loading is frame-first. */
+export function renderStatus(status: SurfaceStatus): string {
+  if (status.kind === "loading") return shell("Loading result", '<div class="mcp-view-skeleton" role="status" aria-busy="true" aria-label="' + escapeHtml(status.message) + '"><span class="mcp-view-skeleton-line" aria-hidden="true"></span><span class="mcp-view-skeleton-line" aria-hidden="true"></span><span class="mcp-view-skeleton-line" aria-hidden="true"></span></div>');
+  const title = status.title ?? "Result status";
+  const role = status.tone === "danger" ? "alert" : "status";
+  // A busy notice (a refresh in flight) is still busy for assistive technology.
+  const busy = status.busy ? ' aria-busy="true"' : "";
+  return shell(escapeHtml(title), '<div class="mcp-view-state" data-kind="' + escapeHtml(status.kind) + '" data-tone="' + escapeHtml(status.tone) + '" role="' + role + '"' + busy + "><strong>" + escapeHtml(title) + '</strong><p class="mcp-view-state-detail">' + escapeHtml(status.message) + "</p></div>");
+}
+
+export function renderViewer(data: ViewerData): string {
+  // The kept values stay on the page underneath the failure.
+  const banner = data.failure ? '<div class="mcp-view-stale-banner" data-tone="danger" role="alert"><span class="mcp-view-stale-banner-message">' + escapeHtml(data.failure) + " — values recorded at " + escapeHtml(data.recordedAt) + "</span></div>" : "";
+  return shell(escapeHtml(data.result.title), banner + renderBody(data.result));
 }
 
 export function renderResult(result: ResultModel): string {
@@ -255,7 +276,7 @@ function renderMetrics(title: string, metrics: Metric[], empty: string): string 
 
 function renderArtifacts(result: ResultModel): string {
   const rows = result.artifacts.length
-    ? '<div class="mcp-view-stack">' + result.artifacts.map((artifact) => '<article class="mcp-view-artifact-row"><span class="mcp-view-artifact-row-identity"><strong class="mcp-view-artifact-row-label">' + escapeHtml(artifact.label) + '</strong></span><code class="mcp-view-artifact-row-uri">' + escapeHtml(artifact.uri) + "</code>" + (artifact.sha256 ? '<span class="mcp-view-artifact-row-fingerprint"><span>sha256</span><code>' + escapeHtml(artifact.sha256) + "</code></span>" : "") + (artifact.bytes === undefined ? "" : '<span class="mcp-view-artifact-row-size">' + artifact.bytes.toLocaleString() + " bytes</span>") + "</article>").join("") + "</div>"
+    ? '<div class="mcp-view-stack">' + result.artifacts.map((artifact) => '<article class="mcp-view-artifact-row"><span class="mcp-view-artifact-row-identity"><strong class="mcp-view-artifact-row-label">' + escapeHtml(artifact.label) + '</strong></span><code class="mcp-view-artifact-row-uri">' + escapeHtml(artifact.uri) + "</code>" + (artifact.sha256 ? '<span class="mcp-view-artifact-row-fingerprint"><span>sha256</span><code>' + escapeHtml(artifact.sha256) + "</code></span>" : "") + (artifact.bytes === undefined ? "" : '<span class="mcp-view-artifact-row-size">' + artifact.bytes.toLocaleString("en-US") + " bytes</span>") + "</article>").join("") + "</div>"
     : '<p class="mcp-view-empty">No artifacts were supplied.</p>';
   return '<section class="mcp-view-card"><h2 class="mcp-view-card-title">Artifacts</h2>' + rows + "</section>";
 }
@@ -286,56 +307,28 @@ body { font: 14px/1.5 var(--mcp-view-font-body, system-ui, sans-serif); }
 @media (prefers-reduced-motion: reduce) { .mcp-view-skeleton-line { animation: none; } }
 `,
   "src/main.ts": `import {
-  createMcpApp,
-  defineView,
-  type AppContext,
-} from "@casys/mcp-view";
-import {
-  componentCatalogCapabilities,
   defineComponentRegistry,
   defineCustomComponent,
   defineKeyValueComponent,
   defineMetricGridComponent,
-  installMcpViewTheme,
-  mountComponentSurface,
-  type MountedComponentSurface,
 } from "@casys/mcp-view-components";
-import { isEmptyResult, parseStructuredResult, shownResult, toolErrorMessage, type DisplayState, type ResultModel } from "./model.ts";
-import { escapeHtml } from "./render.ts";
+import {
+  startSurfaceApp,
+  type SurfaceAppContext,
+  type SurfaceDisplayState,
+  type SurfaceStatus,
+  type SurfaceToolResult,
+} from "@casys/mcp-view-components/surface";
+import { isEmptyResult, parseStructuredResult, toolErrorMessage, type ViewerData } from "./model.ts";
+import { escapeHtml, renderStatus } from "./render.ts";
 
-interface ViewerState {
-  display: DisplayState;
-  /** Last successfully parsed result, kept so a failed refresh can still show it. */
-  lastResult?: ResultModel;
-  /** When that kept result was recorded, so the banner can date it. */
-  recordedAt?: string;
-}
+type ViewerContext = SurfaceAppContext<ViewerData>;
 
-type ViewerContext = AppContext<ViewerState>;
-let mountedSurface: MountedComponentSurface | undefined;
-let mountGeneration = 0;
-
-const components = defineComponentRegistry<ViewerState, ViewerContext>({
+const components = defineComponentRegistry<ViewerData, ViewerContext>({
   components: {
     "result.identity": defineCustomComponent({
       title: "Result identity",
       mount(target, { data }) {
-        const display = data.display;
-        if (display.kind === "loading") {
-          // Frame first: the structure appears before the values, so nothing
-          // shifts once they arrive.
-          target.className = "mcp-view-skeleton";
-          target.setAttribute("role", "status");
-          target.setAttribute("aria-busy", "true");
-          target.setAttribute("aria-label", "Loading the recorded result");
-          for (let line = 0; line < 3; line++) {
-            const placeholder = document.createElement("span");
-            placeholder.className = "mcp-view-skeleton-line";
-            placeholder.setAttribute("aria-hidden", "true");
-            target.append(placeholder);
-          }
-          return;
-        }
         target.className = "mcp-view-card";
         const header = document.createElement("header");
         header.className = "mcp-view-card-header";
@@ -343,23 +336,14 @@ const components = defineComponentRegistry<ViewerState, ViewerContext>({
         heading.className = "mcp-view-card-heading";
         const title = document.createElement("h1");
         title.className = "mcp-view-card-title";
+        title.textContent = data.result.title;
         const summary = document.createElement("p");
         summary.className = "mcp-view-card-eyebrow";
-        const shown = shownResult(display);
-        if (display.kind === "empty") {
-          title.textContent = "Nothing to display";
-          summary.textContent = "The tool completed without displayable fields.";
-        } else if (display.kind === "error") {
-          title.textContent = shown ? shown.title : "Result unavailable";
-          summary.textContent = shown ? shown.summary ?? "Recorded earlier" : display.message;
-        } else {
-          title.textContent = display.result.title;
-          summary.textContent = display.result.summary ?? display.result.status ?? "Structured result";
-        }
+        summary.textContent = data.result.summary ?? data.result.status ?? "Structured result";
         heading.append(summary, title);
         header.append(heading);
         target.append(header);
-        if (display.kind !== "error") return;
+        if (!data.failure) return;
         // The failure is announced beside the values it could not refresh,
         // never in place of them.
         const banner = document.createElement("div");
@@ -368,9 +352,7 @@ const components = defineComponentRegistry<ViewerState, ViewerContext>({
         banner.setAttribute("data-tone", "danger");
         const message = document.createElement("span");
         message.className = "mcp-view-stale-banner-message";
-        message.textContent = display.recordedAt
-          ? display.message + " — values recorded at " + display.recordedAt
-          : display.message;
+        message.textContent = data.failure + " — values recorded at " + data.recordedAt;
         banner.append(message);
         target.append(banner);
       },
@@ -378,7 +360,7 @@ const components = defineComponentRegistry<ViewerState, ViewerContext>({
     "result.metrics": defineMetricGridComponent({
       title: "Metrics",
       select: (data) =>
-        (shownResult(data.display)?.metrics ?? []).map((metric, index) => ({
+        data.result.metrics.map((metric, index) => ({
           id: "metric-" + index,
           label: metric.label,
           value: metric.value,
@@ -387,7 +369,7 @@ const components = defineComponentRegistry<ViewerState, ViewerContext>({
     "result.details": defineKeyValueComponent({
       title: "Details",
       select: (data) =>
-        (shownResult(data.display)?.details ?? []).map((detail, index) => ({
+        data.result.details.map((detail, index) => ({
           key: "detail-" + index,
           label: detail.label,
           value: detail.value,
@@ -397,15 +379,14 @@ const components = defineComponentRegistry<ViewerState, ViewerContext>({
       title: "Artifacts",
       mount(target, { data }) {
         target.className = "mcp-view-stack";
-        const artifacts = shownResult(data.display)?.artifacts ?? [];
-        if (artifacts.length === 0) {
+        if (data.result.artifacts.length === 0) {
           const empty = document.createElement("p");
           empty.className = "mcp-view-empty";
           empty.textContent = "No artifacts were supplied.";
           target.append(empty);
           return;
         }
-        for (const artifact of artifacts) {
+        for (const artifact of data.result.artifacts) {
           // Identity, address and digest are displayed exactly as supplied;
           // this starter verifies nothing on its own.
           const item = document.createElement("article");
@@ -436,7 +417,7 @@ const components = defineComponentRegistry<ViewerState, ViewerContext>({
     }),
   },
   defaultSurface: {
-    layout: { type: "stack", gap: "sm" },
+    layout: { type: "stack" },
     components: [
       { id: "identity", component: "result.identity" },
       { id: "metrics", component: "result.metrics" },
@@ -446,93 +427,47 @@ const components = defineComponentRegistry<ViewerState, ViewerContext>({
   },
 });
 
-const resultView = defineView<ViewerState>({
-  async onLeave() {
-    await disposeSurface();
-  },
-  render(ctx) {
-    const host = document.createElement("section");
-    host.className = "viewer component-surface-host";
-    host.setAttribute("aria-label", "Structured result");
-    const generation = ++mountGeneration;
-    queueMicrotask(async () => {
-      if (generation !== mountGeneration) return;
-      await disposeSurface(false);
-      if (generation !== mountGeneration) return;
-      mountedSurface = await mountComponentSurface({
-        root: host,
-        registry: components,
-        data: ctx.state,
-        appContext: ctx,
-        hostContext: ctx.hostContext,
-      });
-    });
-    return host;
-  },
-});
+/**
+ * One tool result, what the surface shows. startSurfaceApp registers the
+ * projection before connect(), so the initiating result cannot be lost during
+ * the MCP Apps handshake; every later ui/notifications/tool-result runs it
+ * again. The last displayable result lives in the closure, one per App: a
+ * refresh that fails keeps it on the page, dated, under the message.
+ */
+function resultProjection(): (result: SurfaceToolResult) => SurfaceDisplayState<ViewerData> {
+  let kept: ViewerData | undefined;
+  const failed = (message: string): SurfaceDisplayState<ViewerData> =>
+    kept ? { kind: "result", result: { ...kept, failure: message } } : { kind: "error", message };
+  return (result) => {
+    if (result.isError) return failed(toolErrorMessage(result));
+    let parsed;
+    try {
+      parsed = parseStructuredResult(result.structuredContent);
+    } catch (error) {
+      return failed(error instanceof Error ? error.message : "The result could not be read.");
+    }
+    if (isEmptyResult(parsed)) return { kind: "empty" };
+    kept = { result: parsed, recordedAt: new Date().toISOString() };
+    return { kind: "result", result: kept };
+  };
+}
 
-async function disposeSurface(invalidate = true): Promise<void> {
-  if (invalidate) mountGeneration++;
-  const current = mountedSurface;
-  mountedSurface = undefined;
-  await current?.dispose();
+function statusNode(status: SurfaceStatus): Node {
+  const host = document.createElement("div");
+  host.innerHTML = renderStatus(status);
+  return host.firstElementChild ?? host;
 }
 
 async function boot(): Promise<void> {
   const root = document.getElementById("root");
   if (!root) throw new Error("The result viewer root is missing.");
-  installMcpViewTheme();
-  await createMcpApp<ViewerState>({
-    info: { name: "Result Viewer", version: "0.1.0" },
+  await startSurfaceApp<ViewerData>({
     root,
-    views: { result: resultView },
-    initialView: "result",
-    initialState: { display: { kind: "loading" } },
-    capabilities: {
-      experimental: componentCatalogCapabilities(components),
-    },
-    // Registered by mcp-view before connect(), so the initiating tool result
-    // cannot be lost during the MCP Apps handshake.
-    async onToolInput(_input, app) {
-      root.setAttribute("aria-busy", "true");
-      app.ctx.state.display = { kind: "loading" };
-      await app.navigate("result");
-    },
-    async onToolResult(result, app) {
-      const kept = app.ctx.state.lastResult;
-      const recordedAt = app.ctx.state.recordedAt;
-      if (result.isError) {
-        app.ctx.state.display = {
-          kind: "error",
-          message: toolErrorMessage(result),
-          stale: kept,
-          recordedAt,
-        };
-      } else {
-        try {
-          const parsed = parseStructuredResult(result.structuredContent);
-          if (isEmptyResult(parsed)) {
-            app.ctx.state.display = { kind: "empty" };
-          } else {
-            app.ctx.state.display = { kind: "result", result: parsed };
-            app.ctx.state.lastResult = parsed;
-            app.ctx.state.recordedAt = new Date().toISOString();
-          }
-        } catch (error) {
-          app.ctx.state.display = {
-            kind: "error",
-            message: error instanceof Error ? error.message : "The result could not be read.",
-            stale: kept,
-            recordedAt,
-          };
-        }
-      }
-      root.setAttribute("aria-busy", "false");
-      await app.navigate("result");
-    },
-    async onTeardown() {
-      await disposeSurface();
-    },
+    info: { name: "Result Viewer", version: "0.1.0" },
+    registry: components,
+    fromToolResult: resultProjection(),
+    renderStatus: statusNode,
+    strict: true,
   });
 }
 
@@ -544,7 +479,7 @@ void boot().catch((error) => {
 `,
   "src/model_test.ts": `import { assertEquals, assertThrows } from "jsr:@std/assert@^1.0.0";
 import { isEmptyResult, parseStructuredResult, toolErrorMessage } from "./model.ts";
-import { escapeHtml, renderResult } from "./render.ts";
+import { escapeHtml, renderResult, renderStatus, renderViewer } from "./render.ts";
 
 Deno.test("result viewer parses generic metrics and artifacts", () => {
   const result = parseStructuredResult({
@@ -566,6 +501,25 @@ Deno.test("result viewer distinguishes empty and invalid structured content", ()
   const hostile = renderResult(parseStructuredResult({ title: '<img src=x onerror=alert(1)>', metrics: { value: '<script>' } }));
   assertEquals(hostile.includes("<img"), false);
   assertEquals(hostile.includes("&lt;script&gt;"), true);
+});
+
+Deno.test("result viewer keeps the recorded values under a later failure", () => {
+  const result = parseStructuredResult({ title: "Report", metrics: { total: 3 } });
+  const page = renderViewer({ result, recordedAt: "2026-01-01T00:00:00.000Z", failure: "Solver <offline>" });
+  assertEquals(page.includes("mcp-view-stale-banner"), true);
+  assertEquals(page.includes("Solver &lt;offline&gt;"), true);
+  assertEquals(page.includes("2026-01-01T00:00:00.000Z"), true);
+  assertEquals(page.includes(">3<"), true);
+  const loading = renderStatus({ kind: "loading", message: "Waiting", tone: "info", busy: true });
+  assertEquals(loading.includes('aria-busy="true"'), true);
+  const error = renderStatus({ kind: "error", title: "Error", message: "<bad>", tone: "danger", busy: false });
+  assertEquals(error.includes('role="alert"'), true);
+  assertEquals(error.includes("&lt;bad&gt;"), true);
+  assertEquals(error.includes("aria-busy"), false);
+  const notice = renderStatus({ kind: "notice", title: "Refreshing", message: "Again", tone: "warning", busy: true });
+  assertEquals(notice.includes('data-kind="notice"'), true);
+  assertEquals(notice.includes('aria-busy="true"'), true);
+  assertEquals(notice.includes('role="status"'), true);
 });
 `,
 };

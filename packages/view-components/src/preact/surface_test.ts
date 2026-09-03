@@ -1,7 +1,16 @@
-import { assertEquals, assertRejects, assertStrictEquals } from "@std/assert";
+import { assert, assertEquals, assertRejects, assertStrictEquals } from "@std/assert";
 
 import type { AppContext } from "@casys/mcp-view";
 import type { ViewComponentRegistry } from "../components.ts";
+import {
+  type Data,
+  fakeApp,
+  type Mounts,
+  PERMISSIONS,
+  registry,
+  until,
+  withDocument,
+} from "../testing/surface-app-double.ts";
 import {
   definePreactComponent,
   type PreactComponentRenderer,
@@ -9,11 +18,8 @@ import {
   type PreactSurfaceComponentProps,
   type PreactSurfaceContext,
   startPreactSurfaceApp,
+  SurfaceAppError,
 } from "./surface.ts";
-
-interface Data {
-  title: string;
-}
 
 type TestAppContext = AppContext<PreactSurfaceAppState<Data>>;
 
@@ -64,7 +70,7 @@ Deno.test("recorded sessions require an App validator and data mapper as one pai
   type Session = { readonly schema: "io.casys.test.session/1.0" };
   const registry = {} as ViewComponentRegistry<Result, PreactSurfaceContext<Result>>;
 
-  await assertRejects(
+  const error = await assertRejects(
     () =>
       startPreactSurfaceApp<Result, Session>({
         root: {} as HTMLElement,
@@ -74,7 +80,111 @@ Deno.test("recorded sessions require an App validator and data mapper as one pai
           typeof value === "object" && value !== null &&
           (value as { schema?: unknown }).schema === "io.casys.test.session/1.0",
       }),
-    TypeError,
+    SurfaceAppError,
     "requires both validateSession and mapSessionToData",
   );
+  assertEquals(error.code, "SURFACE_APP_SESSION_INCOMPLETE");
+  assertEquals(typeof error.data.recovery, "string");
+});
+
+Deno.test({
+  name: "statuses render through StateMessage, carrying tone, busy state and the viewer's class",
+  permissions: PERMISSIONS,
+  fn: () =>
+    withDocument(async (root) => {
+      const fake = fakeApp(root);
+      await startPreactSurfaceApp<Data>({
+        root,
+        info: { name: "Preact surface", version: "1.0.0" },
+        registry: registry({ mounted: [], cleaned: [] }),
+        loadingLabel: "Receiving the run…",
+        statusClassName: "acme-viewer-state",
+        theme: false,
+      }, fake.runtime);
+
+      const status = root.querySelector(".mcp-view-state") as HTMLElement | null;
+      assert(status, `expected a StateMessage, got ${root.innerHTML}`);
+      assertEquals(status.getAttribute("data-tone"), "info");
+      assertEquals(status.getAttribute("aria-busy"), "true");
+      assertEquals(status.getAttribute("role"), "status");
+      assert(status.classList.contains("acme-viewer-state"));
+      assertEquals(status.querySelector("strong")?.textContent, "Loading");
+      assertEquals(
+        status.querySelector(".mcp-view-state-detail")?.textContent,
+        "Receiving the run…",
+      );
+
+      await fake.toolResult({ content: [], structuredContent: { title: "Boiler" } });
+      await until(() => root.querySelector(".mcp-view-component") !== null, "the mount");
+      // 0.5 viewers style this class; the facade keeps it over the core default.
+      assertEquals(root.firstElementChild?.className, "mcp-view-preact-surface");
+    }),
+});
+
+Deno.test({
+  name: "a viewer-owned shell class replaces the facade default",
+  permissions: PERMISSIONS,
+  fn: () =>
+    withDocument(async (root) => {
+      const fake = fakeApp(root);
+      await startPreactSurfaceApp<Data>({
+        root,
+        info: { name: "Preact surface", version: "1.0.0" },
+        registry: registry({ mounted: [], cleaned: [] }),
+        surfaceClassName: "acme-viewer",
+        theme: false,
+      }, fake.runtime);
+      await fake.toolResult({ content: [], structuredContent: { title: "Boiler" } });
+      await until(() => root.querySelector(".mcp-view-component") !== null, "the mount");
+      assertEquals(root.firstElementChild?.className, "acme-viewer");
+    }),
+});
+
+Deno.test({
+  name: "the deprecated validateSession/mapSessionToData pair still projects a session to a result",
+  permissions: PERMISSIONS,
+  fn: () =>
+    withDocument(async (root) => {
+      type Session = { readonly schema: "test/1.0"; readonly title: string };
+      const mounts: Mounts = { mounted: [], cleaned: [] };
+      const invalid: unknown[] = [];
+      const fake = fakeApp(root);
+      await startPreactSurfaceApp<Data, Session>({
+        root,
+        info: { name: "Preact surface", version: "1.0.0" },
+        registry: registry(mounts),
+        theme: false,
+        validateSession: (value): value is Session =>
+          (value as { schema?: unknown })?.schema === "test/1.0",
+        mapSessionToData: (session) => Promise.resolve({ title: session.title }),
+        onInvalidSession: (value) => invalid.push(value),
+      }, fake.runtime);
+
+      await fake.session({ schema: "nope" });
+      assertEquals(invalid, [{ schema: "nope" }]);
+      await fake.session({ schema: "test/1.0", title: "Recorded" });
+      await until(() => mounts.mounted.length === 1, "the session mount");
+      assertEquals(mounts.mounted, ["Recorded"]);
+    }),
+});
+
+Deno.test("mixing viewerSession with the deprecated session pair is refused", async () => {
+  type Session = { readonly schema: "test/1.0" };
+  const isSession = (value: unknown): value is Session =>
+    (value as { schema?: unknown })?.schema === "test/1.0";
+  const error = await assertRejects(
+    () =>
+      startPreactSurfaceApp<Data, Session>({
+        root: {} as HTMLElement,
+        info: { name: "Preact surface", version: "1.0.0" },
+        registry: registry({ mounted: [], cleaned: [] }),
+        theme: false,
+        validateSession: isSession,
+        mapSessionToData: () => ({ title: "x" }),
+        viewerSession: { validate: isSession, toState: () => ({ kind: "empty" }) },
+      }),
+    SurfaceAppError,
+    "either viewerSession or the deprecated",
+  );
+  assertEquals(error.code, "SURFACE_APP_SESSION_CONFLICT");
 });

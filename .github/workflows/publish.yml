@@ -255,6 +255,10 @@ jobs:
             echo "::error::The npm components tarball must not ship the Deno-only scaffold"
             exit 1
           fi
+          if tar -tzf "$COMPONENTS_TARBALL" | grep -E '^package/(esm|script|src)/.*/testing/' >/dev/null; then
+            echo "::error::The npm components tarball must not ship the test doubles"
+            exit 1
+          fi
 
           CORE_CONSUMER_DIR=$(mktemp -d)
           (
@@ -343,14 +347,18 @@ jobs:
               const core = await import("@casys/mcp-view");
               const compatibility = await import("@casys/mcp-view/contracts");
               const components = await import("@casys/mcp-view-components");
+              const surface = await import("@casys/mcp-view-components/surface");
               const preact = await import("@casys/mcp-view-components/preact");
               const presentation = await import("@casys/mcp-view-components/preact/components");
+              const fonts = await import("@casys/mcp-view-components/fonts");
               if (typeof contracts.defineViewAppManifest !== "function") throw new Error("contracts missing");
               if (typeof core.createMcpApp !== "function" || "installMcpViewTheme" in core) throw new Error("core boundary invalid");
               if (compatibility.VIEWER_SESSION_APPLY_ACTION !== "viewer.session.apply") throw new Error("compatibility export missing");
               if (typeof components.defineComponentRegistry !== "function") throw new Error("components runtime missing");
+              if (typeof surface.startSurfaceApp !== "function" || "startSurfaceApp" in components) throw new Error("surface App boundary invalid");
               if (typeof preact.startPreactSurfaceApp !== "function") throw new Error("Preact runtime missing");
               if (typeof presentation.Card !== "function" || "createMcpApp" in presentation) throw new Error("presentation boundary invalid");
+              if (typeof fonts.installMcpViewFonts !== "function" || !fonts.MCP_VIEW_FONTS_CSS.includes("@font-face") || "MCP_VIEW_FONTS_CSS" in components) throw new Error("fonts boundary invalid");
               let scaffoldRejected = false;
               try {
                 await import("@casys/mcp-view-components/scaffold");
@@ -362,11 +370,15 @@ jobs:
             '
             node --input-type=commonjs --eval '
               const components = require("@casys/mcp-view-components");
+              const surface = require("@casys/mcp-view-components/surface");
               const preact = require("@casys/mcp-view-components/preact");
               const presentation = require("@casys/mcp-view-components/preact/components");
+              const fonts = require("@casys/mcp-view-components/fonts");
               if (typeof components.defineComponentRegistry !== "function") throw new Error("CommonJS components runtime missing");
+              if (typeof surface.startSurfaceApp !== "function") throw new Error("CommonJS surface App runtime missing");
               if (typeof preact.startPreactSurfaceApp !== "function") throw new Error("CommonJS Preact runtime missing");
               if (typeof presentation.Card !== "function") throw new Error("CommonJS presentation runtime missing");
+              if (typeof fonts.installMcpViewFonts !== "function") throw new Error("CommonJS fonts entry missing");
               let scaffoldRejected = false;
               try {
                 require("@casys/mcp-view-components/scaffold");

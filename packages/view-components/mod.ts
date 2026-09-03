@@ -1,8 +1,9 @@
 /**
  * `@casys/mcp-view-components` — optional presentation runtime for small composable viewers.
  *
- * The root stays renderer-neutral. Import Preact bindings from `/preact` or
- * pure Preact presentation primitives from `/preact/components`.
+ * The root stays renderer-neutral and carries no MCP Apps runtime. Import the
+ * App lifecycle from `/surface`, Preact bindings from `/preact` or pure Preact
+ * presentation primitives from `/preact/components`.
  *
  * @module
  */

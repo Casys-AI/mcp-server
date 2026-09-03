@@ -1,6 +1,11 @@
 /** Preact integration for `@casys/mcp-view-components` surfaces. */
 
-export { definePreactComponent, preactSurfaceRenderer, startPreactSurfaceApp } from "./surface.ts";
+export {
+  definePreactComponent,
+  preactSurfaceRenderer,
+  startPreactSurfaceApp,
+  SurfaceAppError,
+} from "./surface.ts";
 export {
   ArtifactRow,
   Badge,
@@ -17,6 +22,7 @@ export {
   ElementLimit,
   ElementProvenance,
   ElementReading,
+  ElementSection,
   ElementVerdict,
   EmptyState,
   InlineCode,
@@ -51,7 +57,17 @@ export type {
   PreactSurfaceAppState,
   PreactSurfaceComponentProps,
   PreactSurfaceContext,
+  SurfaceAppErrorCode,
+  SurfaceAppHandle,
+  SurfaceAppRuntime,
+  SurfaceDisplayState,
+  SurfaceHostAccess,
   SurfaceMessageKind,
+  SurfaceProjection,
+  SurfaceStatus,
+  SurfaceStatusTone,
+  SurfaceToolResult,
+  SurfaceViewerSession,
 } from "./surface.ts";
 export type {
   ArtifactFingerprint,
@@ -73,12 +89,14 @@ export type {
   ElementLimitProps,
   ElementProvenanceProps,
   ElementReadingProps,
+  ElementSectionProps,
   ElementVerdictProps,
   EmptyStateProps,
   InlineCodeProps,
   IntervalPlotInterval,
   IntervalPlotProps,
   KeyValueItem,
+  KeyValueLayout,
   KeyValueListProps,
   LimitGaugeLimit,
   LimitGaugeProps,

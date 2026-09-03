@@ -417,7 +417,7 @@ const components = defineComponentRegistry<ViewerData, ViewerContext>({
     }),
   },
   defaultSurface: {
-    layout: { type: "stack", gap: "sm" },
+    layout: { type: "stack" },
     components: [
       { id: "identity", component: "result.identity" },
       { id: "metrics", component: "result.metrics" },

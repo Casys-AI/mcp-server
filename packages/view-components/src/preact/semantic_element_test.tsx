@@ -53,6 +53,25 @@ Deno.test({
 });
 
 Deno.test({
+  name: "an empty readings list renders no strip",
+  permissions: { read: true, env: true, run: true },
+  async fn() {
+    await withDom((root) => {
+      render(
+        <SemanticElement
+          reference={REFERENCE}
+          density="card"
+          ident={<ElementIdent label="Run A" />}
+          reading={[]}
+        />,
+        root,
+      );
+      assertEquals(root.querySelector(".mcp-view-element-readings"), null);
+    });
+  },
+});
+
+Deno.test({
   name: "CollectionCard hosts a SemanticList inside one Card",
   permissions: { read: true, env: true, run: true },
   async fn() {
@@ -167,7 +186,15 @@ Deno.test({
           root.querySelector("[data-element-slot=ident]")?.textContent,
           "TOutlet temperatureSensor T-04",
         );
-        assertEquals(root.querySelector("[data-element-slot=reading]")?.textContent, "Reading94°C");
+        // Readings sit in one strip so card density can lay them out as a grid.
+        const readings = root.querySelector(
+          ":scope > .mcp-view-semantic-element > .mcp-view-element-readings",
+        );
+        assertEquals(readings?.getAttribute("data-element-slot"), "readings");
+        assertEquals(
+          readings?.querySelector(":scope > [data-element-slot=reading]")?.textContent,
+          "Reading94°C",
+        );
         assertEquals(
           root.querySelector("[data-element-slot=body]")?.textContent,
           "bounded provider content",

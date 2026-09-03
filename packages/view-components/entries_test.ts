@@ -56,6 +56,28 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name: "the embedded fonts are reached only through the /fonts entry, which loads no App runtime",
+  permissions: { read: true, run: true, env: true },
+  async fn() {
+    for (const entry of ["./mod.ts", "./surface.ts", "./preact.ts", "./preact-components.ts"]) {
+      const reached = await runtimeModules(new URL(entry, import.meta.url));
+      assertFalse(
+        reached.some((specifier) => specifier.endsWith("/src/fonts-data.ts")),
+        `${entry} must not carry the ~137 KB font payload`,
+      );
+    }
+    const fonts = await runtimeModules(new URL("./fonts.ts", import.meta.url));
+    assert(fonts.some((specifier) => specifier.endsWith("/src/fonts-data.ts")));
+    for (const forbidden of ["@modelcontextprotocol/ext-apps", "/view/src/app.ts", "preact"]) {
+      assertFalse(
+        fonts.some((specifier) => specifier.includes(forbidden)),
+        `the /fonts entry must not load ${forbidden}`,
+      );
+    }
+  },
+});
+
 Deno.test("the root and the /surface entry split the registry from the App lifecycle", async () => {
   const root = await import("./mod.ts") as Record<string, unknown>;
   const surface = await import("./surface.ts") as Record<string, unknown>;

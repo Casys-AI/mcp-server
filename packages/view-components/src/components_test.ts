@@ -4,6 +4,7 @@ import {
   advertisedComponentCatalog,
   CASYS_SURFACE_CONTEXT_KEY,
   componentCatalogCapabilities,
+  type ComponentSurfaceLayout,
   defineComponentRegistry,
   defineComponentSurface,
   defineViewComponent,
@@ -204,6 +205,42 @@ Deno.test({
       await mounted.dispose();
       assertEquals(cleanup, ["second", "first"]);
       assertEquals(root.textContent, "");
+    } finally {
+      Object.defineProperty(globalThis, "document", {
+        configurable: true,
+        value: previousDocument,
+      });
+    }
+  },
+});
+
+Deno.test({
+  name: "a stack surface defaults to hairline separation while rows and grids keep a gap",
+  permissions: { read: true, env: true, run: true },
+  async fn() {
+    const documentModule = await import("npm:linkedom@0.18.12");
+    const dom = documentModule.parseHTML("<html><body><div id=root></div></body></html>");
+    const previousDocument = globalThis.document;
+    Object.defineProperty(globalThis, "document", { configurable: true, value: dom.document });
+    try {
+      const root = dom.document.getElementById("root") as unknown as HTMLElement;
+      const gapOf = async (layout: ComponentSurfaceLayout) => {
+        const mounted = await mountComponentSurface({
+          root,
+          registry: registry(),
+          data: { status: "succeeded" },
+          appContext: {},
+          hostContext: {},
+          surface: { layout, components: [{ id: "only", component: "test.status" }] },
+        });
+        const gap = (root.firstElementChild as HTMLElement).style.gap;
+        await mounted.dispose();
+        return gap;
+      };
+      assertEquals(await gapOf({ type: "stack" }), "0");
+      assertEquals(await gapOf({ type: "row" }), "1rem");
+      assertEquals(await gapOf({ type: "grid", columns: 2 }), "1rem");
+      assertEquals(await gapOf({ type: "stack", gap: "sm" }), "0.5rem");
     } finally {
       Object.defineProperty(globalThis, "document", {
         configurable: true,

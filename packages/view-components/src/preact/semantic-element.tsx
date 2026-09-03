@@ -286,7 +286,11 @@ export function SemanticElement({
         : undefined}
     >
       {ident}
-      {reading}
+      {isPresent(reading) && (
+        <div class="mcp-view-element-readings" data-element-slot="readings">
+          {reading}
+        </div>
+      )}
       {body}
       {verdict}
       {provenance}
@@ -326,7 +330,8 @@ function verdictBorder(tone: PresentationTone): string {
 }
 
 function isPresent(value: ComponentChildren): boolean {
-  return value !== undefined && value !== null && value !== false;
+  if (value === undefined || value === null || value === false) return false;
+  return !(Array.isArray(value) && value.length === 0);
 }
 
 function classes(...values: Array<string | undefined>): string {

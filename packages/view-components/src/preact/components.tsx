@@ -186,15 +186,29 @@ export interface KeyValueItem {
   readonly value: ComponentChildren;
 }
 
+/**
+ * `inspector` (default): mono key, value flush right, hairline between rows.
+ * `facts`: one aligned label column, each value read right after its label.
+ */
+export type KeyValueLayout = "inspector" | "facts";
+
 export interface KeyValueListProps {
   readonly items: readonly KeyValueItem[];
+  readonly layout?: KeyValueLayout;
   readonly className?: string;
 }
 
 /** Provenance and identity facts with safe wrapping for hashes and URIs. */
-export function KeyValueList({ items, className }: KeyValueListProps): JSX.Element {
+export function KeyValueList({
+  items,
+  layout = "inspector",
+  className,
+}: KeyValueListProps): JSX.Element {
   return (
-    <dl class={classes("mcp-view-key-values", className)}>
+    <dl
+      class={classes("mcp-view-key-values", className)}
+      data-layout={layout === "inspector" ? undefined : layout}
+    >
       {items.map((item) => (
         <div class="mcp-view-key-value" key={item.id}>
           <dt>{item.label}</dt>

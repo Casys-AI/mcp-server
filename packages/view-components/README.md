@@ -112,6 +112,7 @@ Semantic composition:
 - required `ElementIdent`
 - optional `ElementReading` or caller-declared `ElementLimit`, plus `ElementBody`, `ElementVerdict`,
   and `ElementProvenance`
+- `ElementSection` for one titled group inside the body
 
 `viewer` is deliberately not a `SemanticElement` density. It is the provider's whole-view App,
 usually composed from one `card` plus an optional `PathBar`.
@@ -303,6 +304,45 @@ region; `EmptyState` handles the no-data case without shifting layout.
 <Card title="Load margins">
   {items.length === 0 ? <EmptyState>No values recorded.</EmptyState> : <MetricGrid items={items} />}
 </Card>;
+```
+
+### Datasheet body
+
+A card-density `SemanticElement` reads as a datasheet only while every figure has one place. The
+readings strip is the headline, so it shows either every measurement or none — a subset picked by
+position is not a headline. Its tiles wrap into rows and a short last row widens them, so five
+readings are four and one wide, never four and a hole. The body is `ElementSection`s, each naming
+what it holds: measurements in a `DataTable` (one row per quantity, the unit in its own column),
+documentary facts in a `KeyValueList layout="facts"`, artifacts in an `ArtifactRow`. Labels are
+worded for the reader, never raw field names. One fingerprint closes the sheet in
+`ElementProvenance`; nothing shown in a section is repeated there.
+
+```tsx
+<SemanticElement
+  reference={reference}
+  density="card"
+  ident={<ElementIdent marker="OP" label="Operating point" detail="Admitted result · r150" />}
+  reading={observables.length <= READING_STRIP_LIMIT ? observables.map(toReading) : []}
+  body={
+    <ElementBody>
+      {observables.length > READING_STRIP_LIMIT && (
+        <ElementSection title="Observables">
+          <DataTable
+            label="Observables"
+            rows={observables}
+            columns={QUANTITY_COLUMNS}
+            rowKey={rowKey}
+          />
+        </ElementSection>
+      )}
+      <ElementSection title="Provenance">
+        <KeyValueList layout="facts" items={provenanceFacts} />
+        <ArtifactRow label="Admitted result" uri={artifact.id} fingerprint={artifact.fingerprint} />
+      </ElementSection>
+    </ElementBody>
+  }
+  provenance={<ElementProvenance label="Projection" value={projectionFingerprint} />}
+/>;
 ```
 
 ### Artifact collection

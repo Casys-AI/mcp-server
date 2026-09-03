@@ -618,6 +618,16 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
   text-align: right;
 }
 
+/* Facts: one aligned label column, each value read right after its label. */
+.mcp-view-key-values[data-layout="facts"] {
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: baseline;
+  column-gap: 14px;
+  row-gap: 5px;
+}
+.mcp-view-key-values[data-layout="facts"] .mcp-view-key-value { display: contents; }
+.mcp-view-key-values[data-layout="facts"] dd { text-align: left; }
+
 .mcp-view-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -1131,6 +1141,21 @@ button.mcp-view-artifact-row:focus-visible {
 .mcp-view-element-limit-unit { color: var(--mcp-view-quiet); font-size: var(--mcp-view-size-meta); }
 .mcp-view-element-body { min-width: 0; }
 
+/* A datasheet body is sections, not one list; the title names the facts under it. */
+.mcp-view-element-section {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.mcp-view-element-section + .mcp-view-element-section { margin-top: 14px; }
+.mcp-view-element-section-title {
+  color: var(--mcp-view-quiet);
+  font-size: var(--mcp-view-size-micro);
+  font-weight: 500;
+  letter-spacing: var(--mcp-view-tracking-label);
+  text-transform: uppercase;
+}
+
 .mcp-view-element-verdict { display: grid; gap: 2px; min-width: 0; }
 .mcp-view-element-verdict-value {
   color: var(--mcp-view-muted);
@@ -1211,10 +1236,11 @@ button.mcp-view-artifact-row:focus-visible {
   padding-inline-start: 12px;
   text-align: right;
 }
-/* The readings wrapper is a hairline strip in card density and transparent elsewhere. */
+/* The readings wrapper is a hairline strip in card density and transparent elsewhere.
+   Tiles wrap and grow, so a last row with fewer tiles widens them instead of leaving holes. */
 .mcp-view-semantic-element[data-density="card"] .mcp-view-element-readings {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 1px;
   flex: 1 0 100%;
   min-width: 0;
@@ -1225,6 +1251,7 @@ button.mcp-view-artifact-row:focus-visible {
 }
 .mcp-view-semantic-element[data-density="card"] .mcp-view-element-reading,
 .mcp-view-semantic-element[data-density="card"] .mcp-view-element-limit {
+  flex: 1 1 9rem;
   gap: 4px;
   padding: 10px 12px;
   border: 0;
@@ -1738,6 +1765,7 @@ button.mcp-view-tree-list-label:focus-visible {
 .mcp-view-table th,
 .mcp-view-notice-group-label,
 .mcp-view-key-value dt,
+.mcp-view-element-section-title,
 .mcp-view-element-ident-marker,
 .mcp-view-element-reading-label,
 .mcp-view-element-reading-unit,
@@ -1802,8 +1830,9 @@ button.mcp-view-tree-list-label:focus-visible {
   .mcp-view-semantic-element[data-density="row"] .mcp-view-element-provenance {
     justify-self: start;
   }
-  .mcp-view-semantic-element[data-density="card"] .mcp-view-element-readings {
-    grid-template-columns: minmax(0, 1fr);
+  .mcp-view-semantic-element[data-density="card"] .mcp-view-element-reading,
+  .mcp-view-semantic-element[data-density="card"] .mcp-view-element-limit {
+    flex-basis: 100%;
   }
   .mcp-view-series-chart-readout { align-items: flex-start; flex-direction: column; }
   .mcp-view-interval-plot-row {

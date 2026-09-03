@@ -11,6 +11,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`ElementSection`** — one titled group inside an `ElementBody` (`.mcp-view-element-section`, a
+  `role="group"` named by `aria-label` like `SemanticList`, never a landmark; mono uppercase title).
+  A datasheet body is sections, not one list: each fact belongs to exactly one, and the section
+  names what its facts are.
+- **`KeyValueList` `layout`** — `"inspector"` (default, unchanged: mono key, value flush right,
+  hairline between rows) or `"facts"` (`data-layout="facts"`: one aligned label column, each value
+  read right after its label, no hairlines). Existing callers render exactly as before.
+
 - **`@casys/mcp-view-components/surface`** entry (`surface.ts`) — owns the MCP Apps runtime. The
   package root stays renderer-neutral and reaches `@casys/mcp-view` only through a type edge; a
   module graph test (`entries_test.ts`) pins that `@modelcontextprotocol/ext-apps` and the App
@@ -53,7 +61,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   values, all mirrored in `MCP_VIEW_THEME_TOKENS`.
 - **`.mcp-view-element-readings`** (`data-element-slot="readings"`) — `SemanticElement` wraps its
   reading and limit slots in one strip. `display: contents` in chip and row density, so those
-  layouts are unchanged; card density lays the strip out as a hairline grid.
+  layouts are unchanged; card density lays the strip out as hairline tiles.
 - **Scaffold**: the generated `src/main.ts` imports `startSurfaceApp` from
   `@casys/mcp-view-components/surface` and hands it a `fromToolResult` projection whose closure
   keeps the last recorded result under a dated failure banner; `src/render.ts` gains `renderStatus`
@@ -68,6 +76,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- The card-density readings strip wraps its tiles as a flex row (`flex: 1 1 9rem`) instead of an
+  `auto-fit` grid: a last row with fewer tiles widens them rather than leaving hairline-coloured
+  holes beside an orphan reading.
 - **BREAKING —** `startPreactSurfaceApp` is now a facade over `startSurfaceApp`: statuses render
   through `renderStatusMessage` (titled `Loading` / `Empty` / `Error`, tones `info` / `neutral` /
   `danger`, `aria-busy` while loading) instead of bare `.mcp-view-message-<kind>` divs;

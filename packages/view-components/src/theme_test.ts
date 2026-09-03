@@ -31,6 +31,8 @@ Deno.test("shared theme exposes the MCP View v2 component vocabulary", () => {
       ".mcp-view-limit-gauge",
       ".mcp-view-artifact-row",
       ".mcp-view-semantic-element",
+      ".mcp-view-element-section",
+      '.mcp-view-key-values[data-layout="facts"]',
       ".mcp-view-collection-card",
       ".mcp-view-collection-card > .mcp-view-card-header",
       ".mcp-view-collection-card > .mcp-view-semantic-list",
@@ -110,6 +112,7 @@ Deno.test("shared theme exposes offline heading body and mono typography roles",
     ".mcp-view-table th",
     ".mcp-view-notice-group-label",
     ".mcp-view-key-value dt",
+    ".mcp-view-element-section-title",
     ".mcp-view-element-ident-marker",
     ".mcp-view-element-reading-label",
     ".mcp-view-element-reading-unit",
@@ -233,8 +236,27 @@ Deno.test("the surface frames the viewer once and stacks its components with hai
     '.mcp-view-semantic-element[data-density="card"] .mcp-view-element-readings {',
   );
   const strip = MCP_VIEW_THEME_CSS.slice(stripStart, MCP_VIEW_THEME_CSS.indexOf("}", stripStart));
-  assertStringIncludes(strip, "display: grid;");
+  assertStringIncludes(strip, "display: flex;");
+  assertStringIncludes(strip, "flex-wrap: wrap;");
+  assertStringIncludes(strip, "gap: 1px;");
+  assertStringIncludes(strip, "overflow: hidden;");
   assertStringIncludes(strip, "flex: 1 0 100%;");
+  // A short last row widens its tiles rather than leaving hairline-coloured holes.
+  const tileStart = MCP_VIEW_THEME_CSS.indexOf(
+    '.mcp-view-semantic-element[data-density="card"] .mcp-view-element-reading,',
+  );
+  const tile = MCP_VIEW_THEME_CSS.slice(tileStart, MCP_VIEW_THEME_CSS.indexOf("}", tileStart));
+  assertStringIncludes(tile, "flex: 1 1 9rem;");
+  // In a narrow container every tile takes its own row, as the old single column did.
+  const narrowStart = MCP_VIEW_THEME_CSS.indexOf(
+    '.mcp-view-semantic-element[data-density="card"] .mcp-view-element-reading,',
+    tileStart + 1,
+  );
+  const narrow = MCP_VIEW_THEME_CSS.slice(
+    narrowStart,
+    MCP_VIEW_THEME_CSS.indexOf("}", narrowStart),
+  );
+  assertStringIncludes(narrow, "flex-basis: 100%;");
 });
 
 Deno.test("collection card keeps one outer border by flattening the nested list", () => {

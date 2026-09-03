@@ -10,6 +10,7 @@ import {
   ElementLimit,
   ElementProvenance,
   ElementReading,
+  ElementSection,
   ElementVerdict,
   SemanticElement,
   type SemanticElementDensity,
@@ -48,6 +49,45 @@ Deno.test({
       assertEquals(list?.getAttribute("aria-label"), "Simulation runs");
       assertEquals(list?.getAttribute("data-scrollable"), "true");
       assertEquals(list?.querySelectorAll(".mcp-view-semantic-element").length, 2);
+    });
+  },
+});
+
+Deno.test({
+  name: "ElementSection names one titled group inside the body",
+  permissions: { read: true, env: true, run: true },
+  async fn() {
+    await withDom((root) => {
+      render(
+        <SemanticElement
+          reference={REFERENCE}
+          density="card"
+          ident={<ElementIdent label="Run A" />}
+          body={
+            <ElementBody>
+              <ElementSection title="Execution">
+                <span>ngspice 44</span>
+              </ElementSection>
+              <ElementSection title="Provenance">
+                <span>bench-rc@r4</span>
+              </ElementSection>
+            </ElementBody>
+          }
+        />,
+        root,
+      );
+      const sections = root.querySelectorAll(".mcp-view-element-body .mcp-view-element-section");
+      assertEquals(sections.length, 2);
+      assertEquals(sections[0].getAttribute("aria-label"), "Execution");
+      // A group, not a landmark: sections nest inside cards that may be controls.
+      assertEquals(sections[0].tagName.toLowerCase(), "div");
+      assertEquals(sections[0].getAttribute("role"), "group");
+      assertEquals(sections[0].getAttribute("data-element-slot"), "section");
+      assertEquals(
+        sections[0].querySelector(".mcp-view-element-section-title")?.textContent,
+        "Execution",
+      );
+      assertEquals(sections[1].textContent, "Provenancebench-rc@r4");
     });
   },
 });
@@ -186,7 +226,7 @@ Deno.test({
           root.querySelector("[data-element-slot=ident]")?.textContent,
           "TOutlet temperatureSensor T-04",
         );
-        // Readings sit in one strip so card density can lay them out as a grid.
+        // Readings sit in one strip so card density can lay them out as tiles.
         const readings = root.querySelector(
           ":scope > .mcp-view-semantic-element > .mcp-view-element-readings",
         );

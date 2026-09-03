@@ -68,6 +68,10 @@ Deno.test({
           <KeyValueList
             items={[{ id: "model", label: "Model", value: "CM-01" }]}
           />
+          <KeyValueList
+            layout="facts"
+            items={[{ id: "engine", label: "Engine", value: "ngspice 44" }]}
+          />
           <Toolbar label="Qualification actions">
             <Button pressed>Pin</Button>
             <TextInput
@@ -93,6 +97,10 @@ Deno.test({
       assertEquals(root.querySelector(".mcp-view-badge")?.getAttribute("data-tone"), "success");
       assertEquals(root.querySelector("[data-metric=temperature]")?.textContent, "Temperature94°C");
       assertEquals(root.querySelector(".mcp-view-key-value")?.textContent, "ModelCM-01");
+      // The inspector layout is the unmarked default; facts opt in by attribute.
+      const [inspector, facts] = root.querySelectorAll(".mcp-view-key-values");
+      assertEquals(inspector.getAttribute("data-layout"), null);
+      assertEquals(facts.getAttribute("data-layout"), "facts");
       assertEquals(root.querySelector(".mcp-view-toolbar")?.getAttribute("role"), "group");
       assertEquals(root.querySelector(".mcp-view-button")?.getAttribute("aria-pressed"), "true");
       assertEquals(

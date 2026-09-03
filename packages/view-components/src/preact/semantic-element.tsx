@@ -166,6 +166,35 @@ export function ElementBody({ children, className }: ElementBodyProps): JSX.Elem
   );
 }
 
+export interface ElementSectionProps {
+  /** Visible heading and accessible name of the group; the caller words it. */
+  readonly title: string;
+  readonly className?: string;
+  readonly children?: ComponentChildren;
+}
+
+/**
+ * One titled group inside an ElementBody. A datasheet body is sections, not one
+ * list: each fact belongs to exactly one, and the section names what its facts are.
+ */
+export function ElementSection({
+  title,
+  className,
+  children,
+}: ElementSectionProps): JSX.Element {
+  return (
+    <div
+      aria-label={title}
+      class={classes("mcp-view-element-section", className)}
+      data-element-slot="section"
+      role="group"
+    >
+      <span class="mcp-view-element-section-title">{title}</span>
+      {children}
+    </div>
+  );
+}
+
 /** Caller-authored verdict. Tone remains an explicit SemanticElement concern. */
 export function ElementVerdict({
   value,

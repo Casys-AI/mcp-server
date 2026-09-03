@@ -131,14 +131,33 @@ Deno.test({
 
 Deno.test("the 0.6 validateSession/mapSessionToData pair is gone from the options type", () => {
   type Session = { readonly schema: "test/1.0" };
-  const options = {
+  const base = {
     root: {} as HTMLElement,
     info: { name: "Preact surface", version: "1.0.0" },
     registry: registry({ mounted: [], cleaned: [] }),
+  };
+  // One literal per option: TypeScript reports only the first excess property of a literal.
+  const validate = {
+    ...base,
     // @ts-expect-error removed in 0.7.0: use viewerSession.validate
     validateSession: (value: unknown): value is Session => value !== null,
   } satisfies PreactSurfaceAppOptions<Data, Session>;
-  assertEquals(typeof options.validateSession, "function");
+  const map = {
+    ...base,
+    // @ts-expect-error removed in 0.7.0: use viewerSession.toState
+    mapSessionToData: (): Data => ({ title: "x" }),
+  } satisfies PreactSurfaceAppOptions<Data, Session>;
+  const invalid = {
+    ...base,
+    // @ts-expect-error removed in 0.7.0: use viewerSession.onInvalid
+    onInvalidSession: () => {},
+  } satisfies PreactSurfaceAppOptions<Data, Session>;
+  assertEquals(
+    [validate.validateSession, map.mapSessionToData, invalid.onInvalidSession].map((option) =>
+      typeof option
+    ),
+    ["function", "function", "function"],
+  );
 });
 
 Deno.test({

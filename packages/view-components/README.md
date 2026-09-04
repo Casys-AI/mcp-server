@@ -307,6 +307,15 @@ carries it — the scaffold does exactly that. A mount that fails or a malformed
 on the surface route as `Surface failed` or `Surface invalid`, so a corrected selection can recover
 in place. All three are reported to `onError` (default `console.error`) and the App keeps running.
 
+`surfaceFor(data)` lets a result own its composition: a returned surface is mounted as is, with
+neither the host selection nor the registry default consulted, so a recorded session that replaces
+the whole read model composes itself while live results keep following the host. `undefined` keeps
+the host flow. It is asked on every mount of that result, remounts included; a malformed owned
+surface stays on the route as `Surface invalid` and names its owner. `onTeardown` runs once when the
+host tears the App down or `dispose()` runs, before the surface is disposed — the place to close
+what the App holds outside its surface, such as a bridge to the parent page. Its throw goes to
+`onError`.
+
 The projection and the session subscription are registered before the App connects, so nothing the
 host sends during the handshake is lost. The host context is re-applied on every
 `hostcontextchanged`, including the notifications the runtime replays from the handshake; the

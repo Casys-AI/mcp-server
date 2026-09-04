@@ -1,7 +1,6 @@
 import { assert, assertEquals, assertStrictEquals } from "@std/assert";
 
 import type { AppContext } from "@casys/mcp-view";
-import type { ViewComponentRegistry } from "../components.ts";
 import {
   type Data,
   fakeApp,
@@ -17,7 +16,6 @@ import {
   type PreactSurfaceAppOptions,
   type PreactSurfaceAppState,
   type PreactSurfaceComponentProps,
-  type PreactSurfaceContext,
   startPreactSurfaceApp,
 } from "./surface.ts";
 

@@ -24,6 +24,8 @@ import {
   activeComponentSurface,
   applySurfaceContext,
   componentCatalogCapabilities,
+  type ComponentSurface,
+  defineComponentSurface,
   mountComponentSurface,
   type MountedComponentSurface,
   type ViewComponentRegistry,
@@ -131,6 +133,14 @@ export interface SurfaceAppOptions<TData, TSession = never> {
   /** Domain guard for the default projection. Exclusive with `fromToolResult`. */
   readonly validate?: (value: unknown) => value is TData;
   readonly viewerSession?: SurfaceViewerSession<TData, TSession>;
+  /**
+   * The surface a result owns. A returned surface composes that result as is:
+   * neither the host selection nor the registry default is consulted, so a
+   * recorded session that replaces the whole read model can compose itself.
+   * `undefined` keeps the host flow (host-selected surface, then the registry
+   * default). Called on every mount of the result, remounts included.
+   */
+  readonly surfaceFor?: (data: TData) => ComponentSurface | undefined;
   /** Detail of the `loading` status. Default `Waiting for data…`. */
   readonly loadingLabel?: string;
   /** Detail of the `empty` status. Default `No structured data received.`. */
@@ -154,6 +164,13 @@ export interface SurfaceAppOptions<TData, TSession = never> {
   readonly renderStatus: (status: SurfaceStatus) => Node;
   /** Receives every failure the lifecycle absorbs. Default `console.error`. */
   readonly onError?: (error: unknown) => void;
+  /**
+   * Runs once when the host tears the App down or `dispose()` runs, before
+   * the router disposes the surface. For what the App holds outside its
+   * surface — a bridge to the parent page, a subscription — since the handle
+   * has no other end-of-life signal. A throw is absorbed through `onError`.
+   */
+  readonly onTeardown?: () => void | Promise<void>;
 }
 
 export interface SurfaceAppHandle<TData> {
@@ -350,15 +367,22 @@ export async function startSurfaceApp<TData, TSession = never>(
       const shell = document.createElement("div");
       shell.className = options.surfaceClassName ?? "mcp-view-surface-shell";
       let selected: ReturnType<typeof activeComponentSurface>;
+      // Named before the call: a `surfaceFor` that throws is the data-owned
+      // path failing, not the host selection it was asked to replace.
+      let owner = options.surfaceFor ? "data-owned" : "host-selected";
       try {
-        selected = activeComponentSurface(options.registry, context.hostContext);
+        const owned = options.surfaceFor?.(data);
+        if (!owned) owner = "host-selected";
+        selected = owned
+          ? defineComponentSurface(owned)
+          : activeComponentSurface(options.registry, context.hostContext);
       } catch (error) {
-        // A malformed host selection must not unmount the route: the App
-        // stays on its surface view and says why nothing is composed.
+        // A malformed surface must not unmount the route: the App stays on
+        // its surface view and says why nothing is composed.
         reportError(error);
         shell.replaceChildren(options.renderStatus(failure(
           "Surface invalid",
-          `The host-selected component surface is invalid: ${errorMessage(error)}`,
+          `The ${owner} component surface is invalid: ${errorMessage(error)}`,
         )));
         return shell;
       }
@@ -439,11 +463,16 @@ export async function startSurfaceApp<TData, TSession = never>(
       );
       await show(app.navigate, next);
     },
-    onTeardown: () => {
+    onTeardown: async () => {
       // The router runs the active view's onLeave, which disposes the surface.
       closed = true;
       removeHostContextListener?.();
       removeHostContextListener = undefined;
+      try {
+        await options.onTeardown?.();
+      } catch (error) {
+        reportError(error);
+      }
     },
   });
 

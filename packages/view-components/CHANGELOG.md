@@ -11,6 +11,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `startSurfaceApp()`/`startPreactSurfaceApp()` take `surfaceFor(data)`: a returned surface composes
+  that result as is, consulting neither the host selection nor the registry default, so a recorded
+  session that replaces the whole read model can compose itself; `undefined` keeps the host flow. A
+  malformed owned surface stays on the route as `Surface invalid` and names its owner.
+- `onTeardown` on the same options: runs once when the host tears the App down or `dispose()` runs,
+  before the surface is disposed, for what the App holds outside its surface (a bridge to the parent
+  page); a throw is absorbed through `onError`.
+- The result-viewer scaffold pins `@casys/mcp-view` 0.9.3.
+
 - **`@casys/mcp-view-components/layout`** entry (`layout.ts`) — the responsive viewer layout ERPNext
   proved in production, extracted with no App lifecycle: the entry takes the host context as a value
   (`LayoutHostHints`, structurally satisfied by `McpViewHostContext`) and a module graph test pins

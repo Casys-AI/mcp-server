@@ -215,7 +215,7 @@ export function fakeApp(root: HTMLElement, options: FakeAppOptions = {}): FakeAp
       return queue;
     };
     /** `TeardownDispatcher.run`: the author callback, then the router, both always. */
-    const teardown = async (reason: "host" | "dispose"): Promise<void> => {
+    const runTeardown = async (reason: "host" | "dispose"): Promise<void> => {
       let failure: unknown;
       try {
         await next.onTeardown?.(handle!, reason);
@@ -227,6 +227,10 @@ export function fakeApp(root: HTMLElement, options: FakeAppOptions = {}): FakeAp
       await leave();
       if (failure !== undefined) throw failure;
     };
+    /** `TeardownDispatcher.request`: one run per App, whoever asks first. */
+    let teardownPromise: Promise<void> | undefined;
+    const teardown = (reason: "host" | "dispose"): Promise<void> =>
+      teardownPromise ??= runTeardown(reason);
     await goto(next.initialView, next.initialArgs);
     handle = {
       ctx,

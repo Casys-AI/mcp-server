@@ -7,12 +7,22 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-09-04
+
+### Changed
+
+- The README describes the surface Apps of `@casys/mcp-view-components` 0.7.0 through their
+  `viewerSession: { validate, toState }` pair. The `validateSession`/`mapSessionToData` pair it
+  named is gone from 0.7.0. Documentation only; the runtime is the 0.9.2 one.
+- The scaffold command in the README pins `@casys/mcp-view-components` 0.7.0, the version whose
+  generated viewer it describes.
+
 ## [0.9.2] - 2026-08-31
 
 ### Changed
 
-- Point the result-viewer scaffold and documentation at `@casys/mcp-view-components` 0.2.1,
-  which adds the v2 typography roles used by the compact provider viewers.
+- Point the result-viewer scaffold and documentation at `@casys/mcp-view-components` 0.2.1, which
+  adds the v2 typography roles used by the compact provider viewers.
 
 ## [0.9.1] - 2026-08-31
 

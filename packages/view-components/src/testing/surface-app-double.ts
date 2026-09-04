@@ -125,6 +125,7 @@ export interface FakeApp {
   config(): AppConfig<State, unknown>;
   handle(): AppHandle<State>;
   toolResult(result: unknown): Promise<void>;
+  toolInput(): Promise<void>;
   toolInputPartial(): Promise<void>;
   session(value: unknown): Promise<void>;
   /** Merge one partial host context into a new object, then notify, like the runtime. */
@@ -215,7 +216,7 @@ export function fakeApp(root: HTMLElement, options: FakeAppOptions = {}): FakeAp
       return queue;
     };
     /** `TeardownDispatcher.run`: the author callback, then the router, both always. */
-    const teardown = async (reason: "host" | "dispose"): Promise<void> => {
+    const runTeardown = async (reason: "host" | "dispose"): Promise<void> => {
       let failure: unknown;
       try {
         await next.onTeardown?.(handle!, reason);
@@ -227,6 +228,10 @@ export function fakeApp(root: HTMLElement, options: FakeAppOptions = {}): FakeAp
       await leave();
       if (failure !== undefined) throw failure;
     };
+    /** `TeardownDispatcher.request`: one run per App, whoever asks first. */
+    let teardownPromise: Promise<void> | undefined;
+    const teardown = (reason: "host" | "dispose"): Promise<void> =>
+      teardownPromise ??= runTeardown(reason);
     await goto(next.initialView, next.initialArgs);
     handle = {
       ctx,
@@ -255,6 +260,7 @@ export function fakeApp(root: HTMLElement, options: FakeAppOptions = {}): FakeAp
     handle: () => current().handle,
     toolResult: (result) =>
       notify(() => current().config.onToolResult?.(result as never, current().handle)),
+    toolInput: () => notify(() => current().config.onToolInput?.({} as never, current().handle)),
     toolInputPartial: () =>
       notify(() => current().config.onToolInputPartial?.({} as never, current().handle)),
     session: (value) =>

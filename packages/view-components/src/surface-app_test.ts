@@ -188,6 +188,22 @@ Deno.test({
 });
 
 Deno.test({
+  name: "complete tool input returns the App to loading too, for hosts that never stream",
+  permissions: PERMISSIONS,
+  fn: () =>
+    withDocument(async (root) => {
+      const mounts: Mounts = { mounted: [], cleaned: [] };
+      const fake = fakeApp(root);
+      await startSurfaceApp(options(root, registry(mounts)), fake.runtime);
+      await fake.toolResult({ content: [], structuredContent: { title: "Boiler" } });
+      await fake.toolInput();
+      assertEquals(statusOf(root).kind, "loading");
+      assertEquals(mounts.cleaned, ["Boiler"]);
+      assertEquals(fake.handle().ctx.state.currentData, undefined);
+    }),
+});
+
+Deno.test({
   name: "partial tool input returns the App to loading and drops the remembered result",
   permissions: PERMISSIONS,
   fn: () =>
@@ -242,6 +258,108 @@ Deno.test({
       assertEquals(mounts.cleaned, ["caption:Boiler"]);
       assertEquals(html.casysSurfaceInstance, "i-2");
       assertEquals(root.querySelector(".mcp-view-component")?.textContent, "Boiler");
+    }),
+});
+
+Deno.test({
+  name: "a data-owned surface composes the result over the host selection and its default",
+  permissions: PERMISSIONS,
+  fn: () =>
+    withDocument(async (root) => {
+      const mounts: Mounts = { mounted: [], cleaned: [] };
+      const fake = fakeApp(root, { hostContext: surfaceSelection("i-1", CAPTION_SURFACE) });
+      const seen: string[] = [];
+      await startSurfaceApp(
+        options(root, registry(mounts), {
+          surfaceFor: (data) => {
+            seen.push(data.title);
+            // A recorded result owns its composition; a live one follows the host.
+            return data.title.startsWith("recorded:") ? CAPTION_SURFACE : undefined;
+          },
+        }),
+        fake.runtime,
+      );
+      await fake.toolResult({ content: [], structuredContent: { title: "recorded:Boiler" } });
+      await until(() => mounts.mounted.length === 1, "the owned mount");
+      assertEquals(mounts.mounted, ["caption:recorded:Boiler"]);
+
+      // The host moves its selection: the owned surface is asked again and still wins.
+      fake.hostContextChanged(surfaceSelection("i-2", {
+        layout: { type: "stack", gap: "sm" },
+        components: [{ id: "title", component: "test.title" }],
+      }));
+      await fake.idle();
+      await until(() => mounts.mounted.length === 2, "the remount");
+      assertEquals(mounts.mounted, ["caption:recorded:Boiler", "caption:recorded:Boiler"]);
+      assertEquals(seen, ["recorded:Boiler", "recorded:Boiler"]);
+
+      // `undefined` hands the result back to the host flow — and it is the host
+      // selection that composes it, not the registry default.
+      fake.hostContextChanged(surfaceSelection("i-3", CAPTION_SURFACE));
+      await fake.idle();
+      await until(() => mounts.mounted.length === 3, "the remount");
+      await fake.toolResult({ content: [], structuredContent: { title: "Boiler" } });
+      await until(() => mounts.mounted.length === 4, "the host-selected mount");
+      assertEquals(mounts.mounted.at(-1), "caption:Boiler");
+      assertEquals(seen.at(-1), "Boiler");
+    }),
+});
+
+Deno.test({
+  name: "a malformed data-owned surface keeps the surface route and names its owner",
+  permissions: PERMISSIONS,
+  fn: () =>
+    withDocument(async (root) => {
+      const mounts: Mounts = { mounted: [], cleaned: [] };
+      const errors: unknown[] = [];
+      const fake = fakeApp(root);
+      await startSurfaceApp(
+        options(root, registry(mounts), {
+          onError: (error) => errors.push(error),
+          surfaceFor: () => ({ layout: { type: "stack" }, components: [] }),
+        }),
+        fake.runtime,
+      );
+      await fake.toolResult({ content: [], structuredContent: { title: "Boiler" } });
+      assertEquals(statusOf(root).title, "Surface invalid");
+      assertEquals(
+        statusOf(root).message,
+        "The data-owned component surface is invalid: " +
+          "Component surface must contain at least one component",
+      );
+      assertEquals(fake.handle().currentView, "surface");
+      assertEquals(errors.length, 1);
+      assertEquals(mounts.mounted, []);
+    }),
+});
+
+Deno.test({
+  name: "a `surfaceFor` that throws is reported against the data-owned owner",
+  permissions: PERMISSIONS,
+  fn: () =>
+    withDocument(async (root) => {
+      const mounts: Mounts = { mounted: [], cleaned: [] };
+      const errors: unknown[] = [];
+      // The host has a valid selection: only the owner naming distinguishes them.
+      const fake = fakeApp(root, { hostContext: surfaceSelection("i-1", CAPTION_SURFACE) });
+      await startSurfaceApp(
+        options(root, registry(mounts), {
+          onError: (error) => errors.push(error),
+          surfaceFor: () => {
+            throw new TypeError("the recorded session has no anchor");
+          },
+        }),
+        fake.runtime,
+      );
+      await fake.toolResult({ content: [], structuredContent: { title: "Boiler" } });
+      assertEquals(statusOf(root).title, "Surface invalid");
+      assertEquals(
+        statusOf(root).message,
+        "The data-owned component surface is invalid: the recorded session has no anchor",
+      );
+      assertEquals(fake.handle().currentView, "surface");
+      assertEquals(errors.length, 1);
+      assertEquals(mounts.mounted, []);
     }),
 });
 
@@ -605,6 +723,55 @@ Deno.test({
       assertEquals(fake.listeners.get("hostcontextchanged")?.size, 0);
       assertEquals(mounts.cleaned, ["Boiler"]);
       assertEquals(fake.config().strict, undefined);
+    }),
+});
+
+Deno.test({
+  name:
+    "onTeardown runs once per App end of life, before the surface is disposed, and its throw is absorbed",
+  permissions: PERMISSIONS,
+  fn: () =>
+    withDocument(async (root) => {
+      const mounts: Mounts = { mounted: [], cleaned: [] };
+      const log: string[] = [];
+      const errors: unknown[] = [];
+      const fake = fakeApp(root);
+      await startSurfaceApp(
+        options(root, registry(mounts), {
+          onError: (error) => errors.push(error),
+          onTeardown: () => {
+            log.push(`teardown cleaned=${mounts.cleaned.length}`);
+            throw new Error("bridge already closed");
+          },
+        }),
+        fake.runtime,
+      );
+      await fake.toolResult({ content: [], structuredContent: { title: "Boiler" } });
+      await until(() => mounts.mounted.length === 1, "the mount");
+      await fake.teardown();
+      assertEquals(log, ["teardown cleaned=0"]);
+      assertEquals(mounts.cleaned, ["Boiler"]);
+      assertEquals(errors.length, 1);
+      assertEquals((errors[0] as Error).message, "bridge already closed");
+
+      // A second end of life on the same App runs nothing again.
+      await fake.teardown();
+      assertEquals(log, ["teardown cleaned=0"]);
+      assertEquals(mounts.cleaned, ["Boiler"]);
+
+      // Manual disposal is the other end of life; a torn-down App has none left.
+      const manual = fakeApp(root);
+      const calls: string[] = [];
+      const handle = await startSurfaceApp(
+        options(root, registry({ mounted: [], cleaned: [] }), {
+          onTeardown: () => {
+            calls.push("manual");
+          },
+        }),
+        manual.runtime,
+      );
+      await handle.dispose();
+      assertEquals(calls, ["manual"]);
     }),
 });
 

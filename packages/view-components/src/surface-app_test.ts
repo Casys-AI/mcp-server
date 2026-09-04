@@ -188,6 +188,22 @@ Deno.test({
 });
 
 Deno.test({
+  name: "complete tool input returns the App to loading too, for hosts that never stream",
+  permissions: PERMISSIONS,
+  fn: () =>
+    withDocument(async (root) => {
+      const mounts: Mounts = { mounted: [], cleaned: [] };
+      const fake = fakeApp(root);
+      await startSurfaceApp(options(root, registry(mounts)), fake.runtime);
+      await fake.toolResult({ content: [], structuredContent: { title: "Boiler" } });
+      await fake.toolInput();
+      assertEquals(statusOf(root).kind, "loading");
+      assertEquals(mounts.cleaned, ["Boiler"]);
+      assertEquals(fake.handle().ctx.state.currentData, undefined);
+    }),
+});
+
+Deno.test({
   name: "partial tool input returns the App to loading and drops the remembered result",
   permissions: PERMISSIONS,
   fn: () =>

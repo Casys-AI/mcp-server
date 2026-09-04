@@ -453,6 +453,11 @@ export async function startSurfaceApp<TData, TSession = never>(
     capabilities: {
       experimental: componentCatalogCapabilities(options.registry),
     },
+    // Either notification means a run is under way: a host that does not
+    // stream arguments sends only the complete `tool-input`.
+    onToolInput: async (_params, app) => {
+      await show(app.navigate, { kind: "loading" });
+    },
     onToolInputPartial: async (_params, app) => {
       await show(app.navigate, { kind: "loading" });
     },

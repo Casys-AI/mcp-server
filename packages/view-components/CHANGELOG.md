@@ -19,6 +19,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   before the surface is disposed, for what the App holds outside its surface (a bridge to the parent
   page); a throw is absorbed through `onError`.
 - The result-viewer scaffold pins `@casys/mcp-view` 0.9.3.
+- A complete `tool-input` notification returns the App to `loading` like a partial one does: a host
+  that does not stream arguments sends only the complete form, and the previous result was staying
+  on screen until the new one arrived.
 
 - **`@casys/mcp-view-components/layout`** entry (`layout.ts`) — the responsive viewer layout ERPNext
   proved in production, extracted with no App lifecycle: the entry takes the host context as a value

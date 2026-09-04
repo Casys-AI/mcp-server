@@ -294,7 +294,7 @@ Every non-result state reaches `renderStatus` as one `SurfaceStatus` — `kind`,
 
 | `kind`             | When                                             | `tone`    | `busy`  |
 | ------------------ | ------------------------------------------------ | --------- | ------- |
-| `loading`          | before the first result, and on partial input    | `info`    | `true`  |
+| `loading`          | before the first result, and on tool input       | `info`    | `true`  |
 | `empty`            | `{ kind: "empty" }` or a rejected `validate`     | `neutral` | `false` |
 | `error`            | `{ kind: "error" }`, a rejected session          | `danger`  | `false` |
 | `notice`           | `{ kind: "notice" }`, defaults `neutral`/`false` | given     | given   |

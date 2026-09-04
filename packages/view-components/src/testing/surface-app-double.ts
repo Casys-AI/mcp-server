@@ -125,6 +125,7 @@ export interface FakeApp {
   config(): AppConfig<State, unknown>;
   handle(): AppHandle<State>;
   toolResult(result: unknown): Promise<void>;
+  toolInput(): Promise<void>;
   toolInputPartial(): Promise<void>;
   session(value: unknown): Promise<void>;
   /** Merge one partial host context into a new object, then notify, like the runtime. */
@@ -259,6 +260,7 @@ export function fakeApp(root: HTMLElement, options: FakeAppOptions = {}): FakeAp
     handle: () => current().handle,
     toolResult: (result) =>
       notify(() => current().config.onToolResult?.(result as never, current().handle)),
+    toolInput: () => notify(() => current().config.onToolInput?.({} as never, current().handle)),
     toolInputPartial: () =>
       notify(() => current().config.onToolInputPartial?.({} as never, current().handle)),
     session: (value) =>

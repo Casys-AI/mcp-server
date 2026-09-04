@@ -1,6 +1,6 @@
 {
   "name": "@casys/mcp-view-components",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "license": "MIT",
   "exports": {
     ".": "./mod.ts",
@@ -8,6 +8,7 @@
     "./preact/components": "./preact-components.ts",
     "./scaffold": "./scaffold.ts",
     "./surface": "./surface.ts",
+    "./layout": "./layout.ts",
     "./fonts": "./fonts.ts"
   },
   "publish": {
@@ -17,6 +18,7 @@
       "preact-components.ts",
       "scaffold.ts",
       "surface.ts",
+      "layout.ts",
       "fonts.ts",
       "src/**/*.ts",
       "src/**/*.tsx",
@@ -28,7 +30,7 @@
   "tasks": {
     "build:npm": "deno run -A scripts/build-npm.ts",
     "test": "deno test --allow-read --allow-write --allow-run --allow-env src/ entries_test.ts preact_components_test.ts scaffold_test.ts",
-    "check": "deno check mod.ts preact.ts preact-components.ts scaffold.ts surface.ts fonts.ts scripts/fetch-fonts.ts",
+    "check": "deno check mod.ts preact.ts preact-components.ts scaffold.ts surface.ts layout.ts fonts.ts scripts/fetch-fonts.ts",
     "fonts:fetch": "deno run --allow-net=fonts.googleapis.com,fonts.gstatic.com --allow-read --allow-write scripts/fetch-fonts.ts",
     "fonts:check": "deno run --allow-net=fonts.googleapis.com,fonts.gstatic.com --allow-read scripts/fetch-fonts.ts --check",
     "lint": "deno lint",

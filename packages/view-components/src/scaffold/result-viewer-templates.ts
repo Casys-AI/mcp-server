@@ -7,8 +7,8 @@ export const resultViewerTemplates: Readonly<Record<string, string>> = {
   },
   "imports": {
     "@casys/mcp-view": "jsr:@casys/mcp-view@0.9.2",
-    "@casys/mcp-view-components": "jsr:@casys/mcp-view-components@0.6.0",
-    "@casys/mcp-view-components/surface": "jsr:@casys/mcp-view-components@0.6.0/surface"
+    "@casys/mcp-view-components": "jsr:@casys/mcp-view-components@0.7.0",
+    "@casys/mcp-view-components/surface": "jsr:@casys/mcp-view-components@0.7.0/surface"
   },
   "minimumDependencyAge": {
     "age": "P1D",
@@ -50,7 +50,7 @@ export const resultViewerTemplates: Readonly<Record<string, string>> = {
 const here = dirname(fromFileUrl(import.meta.url));
 const mcpViewModule = moduleSpecifier(Deno.env.get("MCP_VIEW_MODULE") ?? "jsr:@casys/mcp-view@0.9.2");
 const mcpViewComponentsModule = moduleSpecifier(
-  Deno.env.get("MCP_VIEW_COMPONENTS_MODULE") ?? "jsr:@casys/mcp-view-components@0.6.0",
+  Deno.env.get("MCP_VIEW_COMPONENTS_MODULE") ?? "jsr:@casys/mcp-view-components@0.7.0",
 );
 const mcpViewSurfaceModule = moduleSpecifier(
   Deno.env.get("MCP_VIEW_COMPONENTS_SURFACE_MODULE") ?? subpathModule(mcpViewComponentsModule, "surface"),

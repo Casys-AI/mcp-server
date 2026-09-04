@@ -177,8 +177,6 @@ export interface SurfaceAppRuntime {
 
 export type SurfaceAppErrorCode =
   | "SURFACE_APP_PROJECTION_CONFLICT"
-  | "SURFACE_APP_SESSION_CONFLICT"
-  | "SURFACE_APP_SESSION_INCOMPLETE"
   | "SURFACE_APP_CLOSED";
 
 /** Options refused at the boundary. Match on `code`, not on `message`. */

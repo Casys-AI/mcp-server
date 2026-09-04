@@ -11,13 +11,11 @@ import {
 import {
   startSurfaceApp,
   type SurfaceAppContext,
-  SurfaceAppError,
   type SurfaceAppHandle,
   type SurfaceAppOptions,
   type SurfaceAppRuntime,
   type SurfaceAppState,
   type SurfaceStatus,
-  type SurfaceViewerSession,
 } from "../surface-app.ts";
 import { renderStatusMessage } from "./components.tsx";
 
@@ -98,12 +96,6 @@ export interface PreactSurfaceAppOptions<TData, TSession = never>
   extends Omit<SurfaceAppOptions<TData, TSession>, "renderStatus" | "surfaceClassName"> {
   /** Class of the element wrapping the mounted surface. Default `mcp-view-preact-surface`. */
   readonly surfaceClassName?: string;
-  /** @deprecated Use `viewerSession.validate`. Removed in 0.7.0. */
-  readonly validateSession?: (value: unknown) => value is TSession;
-  /** @deprecated Use `viewerSession.toState`. Removed in 0.7.0. */
-  readonly mapSessionToData?: (session: TSession) => TData | Promise<TData>;
-  /** @deprecated Use `viewerSession.onInvalid`. Removed in 0.7.0. */
-  readonly onInvalidSession?: (value: unknown) => void;
   /** Extra class on the rendered `StateMessage`, for viewer-owned styling hooks. */
   readonly statusClassName?: string;
   /** Replace the `StateMessage` bridge with a viewer-owned status renderer. */
@@ -120,23 +112,14 @@ export async function startPreactSurfaceApp<TData, TSession = never>(
   runtime?: SurfaceAppRuntime,
 ): Promise<SurfaceAppHandle<TData>> {
   const {
-    validateSession,
-    mapSessionToData,
-    onInvalidSession,
     statusClassName,
     renderStatus,
-    viewerSession,
     surfaceClassName = "mcp-view-preact-surface",
     ...rest
   } = options;
-  const resolvedSession = deprecatedViewerSession(
-    { validateSession, mapSessionToData, onInvalidSession },
-    viewerSession,
-  );
   return await startSurfaceApp<TData, TSession>({
     ...rest,
     surfaceClassName,
-    ...(resolvedSession ? { viewerSession: resolvedSession } : {}),
     renderStatus: renderStatus ?? ((status) =>
       renderStatusMessage(status.message, {
         title: status.title,
@@ -145,41 +128,4 @@ export async function startPreactSurfaceApp<TData, TSession = never>(
         className: statusClassName,
       })),
   }, runtime);
-}
-
-interface DeprecatedSessionOptions<TData, TSession> {
-  readonly validateSession?: (value: unknown) => value is TSession;
-  readonly mapSessionToData?: (session: TSession) => TData | Promise<TData>;
-  readonly onInvalidSession?: (value: unknown) => void;
-}
-
-/** The deprecated pair keeps working for one minor; mixing the two forms is a mistake. */
-function deprecatedViewerSession<TData, TSession>(
-  legacy: DeprecatedSessionOptions<TData, TSession>,
-  viewerSession: SurfaceViewerSession<TData, TSession> | undefined,
-): SurfaceViewerSession<TData, TSession> | undefined {
-  const { validateSession, mapSessionToData, onInvalidSession } = legacy;
-  const requested = validateSession !== undefined || mapSessionToData !== undefined ||
-    onInvalidSession !== undefined;
-  if (!requested) return viewerSession;
-  if (viewerSession) {
-    throw new SurfaceAppError(
-      "SURFACE_APP_SESSION_CONFLICT",
-      "startPreactSurfaceApp accepts either viewerSession or the deprecated " +
-        "validateSession/mapSessionToData pair, not both",
-      { recovery: "Move validateSession/mapSessionToData/onInvalidSession into viewerSession." },
-    );
-  }
-  if (!validateSession || !mapSessionToData) {
-    throw new SurfaceAppError(
-      "SURFACE_APP_SESSION_INCOMPLETE",
-      "startPreactSurfaceApp requires both validateSession and mapSessionToData",
-      { recovery: "Pass both, or the viewerSession { validate, toState } pair." },
-    );
-  }
-  return {
-    validate: validateSession,
-    toState: async (session) => ({ kind: "result", result: await mapSessionToData(session) }),
-    ...(onInvalidSession ? { onInvalid: onInvalidSession } : {}),
-  };
 }

@@ -22,8 +22,10 @@ whole-view App remains the exact viewer opened for that object.
 
 The package root is renderer-neutral and carries no MCP Apps runtime: `@casys/mcp-view` and
 `@modelcontextprotocol/ext-apps` are reached only through the `/surface` entry, which owns the App
-lifecycle. The embedded webfonts are reached only through the `/fonts` entry. Preact is an optional
-peer and is loaded only through the Preact subpaths:
+lifecycle. The responsive layout decision and its hooks live in the `/layout` entry, which takes the
+host context as a value and loads no App runtime. The embedded webfonts are reached only through the
+`/fonts` entry. Preact is an optional peer and is loaded only through the Preact subpaths and
+`/layout`, whose hooks are Preact:
 
 ```ts
 import { defineComponentRegistry, installMcpViewTheme } from "@casys/mcp-view-components";
@@ -171,6 +173,44 @@ lifecycle.
 Without `container` it returns the rendered `.mcp-view-state` element; with one it renders into the
 node you passed and returns that.
 
+## Viewer layout
+
+`useViewerLayout(hints, options?)` (`/layout` entry) decides one of three treatments for one viewer
+root — `"wide" | "panel" | "mobile"` — from the host's word first, the browser's measure as fallback
+and an explicit override on top. The three treatments are two contexts under one breakpoint
+(`NARROW_BREAKPOINT`, 480px), not a width scale: under it, a finger without hover picks `mobile`,
+anything else `panel`; a tablet under a finger but with room keeps `wide`. The hook measures the
+element you attach `ref` to, not the window, because an iframe's width says nothing about the
+screen's; the host's declared `containerDimensions.width` (then `maxWidth`) outranks that measure
+because it describes the room actually granted. `boundsStyle` bounds the root on the host's declared
+`height` (else `maxHeight`) instead of `100vh`, and is `undefined` when the host declares none so
+the viewer stays intrinsic and lets the host auto-resize.
+
+```tsx
+import { useViewerLayout } from "@casys/mcp-view-components/layout";
+
+const Viewer = ({ data, context }: PreactSurfaceComponentProps<RunModel>) => {
+  const { ref, layout, boundsStyle } = useViewerLayout<HTMLDivElement>(context.hostContext);
+  return (
+    <div ref={ref} data-layout={layout} style={boundsStyle}>
+      {layout === "wide"
+        ? <RunTable data={data} />
+        : <RunRows data={data} touch={layout === "mobile"} />}
+    </div>
+  );
+};
+```
+
+`hints` is any `{ deviceCapabilities?, containerDimensions? }` — the kit's `McpViewHostContext`
+satisfies it structurally, so the entry never imports `@casys/mcp-view`. Touch follows the host's
+`deviceCapabilities` (`touch && hover !== true`: a touch-screen laptop driven by a mouse is no
+phone) and only falls back to `matchMedia("(pointer: coarse)")` when the host says nothing.
+`?layout=mobile` in the page query string forces a treatment for reviewing it without the matching
+device; pass `{ forced: null }` to ignore the URL, or `{ forced: "panel" }` to pin one. The decision
+itself — `resolveViewerLayout`, `layoutWidth`, `touchInput`, `layoutFromSearch`, `viewerBoundsStyle`
+— is exported pure, and the two measuring hooks, `useContainerWidth()` and `useCoarsePointer()`, are
+exported on their own.
+
 ## Theme
 
 `installMcpViewTheme()` installs the shared CSS once. The defaults are light-first and include an
@@ -279,16 +319,15 @@ and the context object actually moved — never while a status is shown or a tra
 `mcp-view-preact-surface` class 0.5 viewers style (the core default is `mcp-view-surface-shell`).
 Both return a `SurfaceAppHandle` whose `show(state)` drives the App from outside the MCP lifecycle
 and whose `dispose()` tears it down. Option conflicts throw `SurfaceAppError`, a `TypeError` with a
-stable `code` (`SURFACE_APP_PROJECTION_CONFLICT`, `SURFACE_APP_SESSION_CONFLICT`,
-`SURFACE_APP_SESSION_INCOMPLETE`) and a `data.recovery` sentence; `show()` on a handle the host
-already tore down rejects with `SURFACE_APP_CLOSED`.
+stable `code` (`SURFACE_APP_PROJECTION_CONFLICT`) and a `data.recovery` sentence; `show()` on a
+handle the host already tore down rejects with `SURFACE_APP_CLOSED`.
 
 Whole-view recorded sessions are declared in `@casys/mcp-view-contracts` and consumed through the
 core resource lifecycle. `viewerSession` pairs a `validate` guard with a `toState` projection; the
 App subscribes before it connects and the runtime buffers what arrives during the handshake, so a
-one-shot session cannot be lost and no individual component claims `viewer.session.apply`. The
-deprecated `validateSession`/`mapSessionToData` pair of `startPreactSurfaceApp()` still works and is
-removed in 0.7.0; mixing it with `viewerSession` is refused.
+one-shot session cannot be lost and no individual component claims `viewer.session.apply`. The 0.6
+`validateSession`/`mapSessionToData`/`onInvalidSession` options of `startPreactSurfaceApp()` are
+gone in 0.7.0; `viewerSession: { validate, toState, onInvalid }` is the one form.
 
 ## Common compositions
 
@@ -381,7 +420,7 @@ local checkout); the `/surface` entry is derived from the latter unless
 `MCP_VIEW_COMPONENTS_SURFACE_MODULE` names it. Run the generator from JSR:
 
 ```sh
-deno run -A jsr:@casys/mcp-view-components@0.6.0/scaffold result-viewer ./result-viewer
+deno run -A jsr:@casys/mcp-view-components@0.7.0/scaffold result-viewer ./result-viewer
 ```
 
 The npm package contains only the runtime and presentation entry points. It does not export or ship

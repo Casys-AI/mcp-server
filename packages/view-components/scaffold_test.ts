@@ -42,7 +42,7 @@ Deno.test("result-viewer scaffold creates a standalone component project", async
     assertStringIncludes(generatedConfig, '"@casys/mcp-view": "jsr:@casys/mcp-view@0.9.2"');
     assertStringIncludes(
       generatedConfig,
-      '"@casys/mcp-view-components": "jsr:@casys/mcp-view-components@0.6.0"',
+      '"@casys/mcp-view-components": "jsr:@casys/mcp-view-components@0.7.0"',
     );
     assertStringIncludes(generatedConfig, '"minimumDependencyAge"');
     assertStringIncludes(generatedConfig, '"jsr:@casys/mcp-view-components"');
@@ -54,8 +54,8 @@ Deno.test("result-viewer scaffold creates a standalone component project", async
       configPath,
       generatedConfig
         .replace("jsr:@casys/mcp-view@0.9.2", coreModule)
-        .replace("jsr:@casys/mcp-view-components@0.6.0/surface", surfaceModule)
-        .replace("jsr:@casys/mcp-view-components@0.6.0", componentsModule),
+        .replace("jsr:@casys/mcp-view-components@0.7.0/surface", surfaceModule)
+        .replace("jsr:@casys/mcp-view-components@0.7.0", componentsModule),
     );
 
     // A bare path is accepted where the fleet passes file URLs; /surface is derived from it.

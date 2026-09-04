@@ -60,7 +60,15 @@ Deno.test({
   name: "the embedded fonts are reached only through the /fonts entry, which loads no App runtime",
   permissions: { read: true, run: true, env: true },
   async fn() {
-    for (const entry of ["./mod.ts", "./surface.ts", "./preact.ts", "./preact-components.ts"]) {
+    for (
+      const entry of [
+        "./mod.ts",
+        "./surface.ts",
+        "./preact.ts",
+        "./preact-components.ts",
+        "./layout.ts",
+      ]
+    ) {
       const reached = await runtimeModules(new URL(entry, import.meta.url));
       assertFalse(
         reached.some((specifier) => specifier.endsWith("/src/fonts-data.ts")),
@@ -73,6 +81,28 @@ Deno.test({
       assertFalse(
         fonts.some((specifier) => specifier.includes(forbidden)),
         `the /fonts entry must not load ${forbidden}`,
+      );
+    }
+  },
+});
+
+Deno.test({
+  name: "the /layout entry takes the host context as a value and loads no App runtime",
+  permissions: { read: true, run: true, env: true },
+  async fn() {
+    const layout = await runtimeModules(new URL("./layout.ts", import.meta.url));
+    assert(layout.some((specifier) => specifier.includes("preact")), "the hooks are Preact");
+    for (
+      const forbidden of [
+        "@modelcontextprotocol/ext-apps",
+        "/view/src/app.ts",
+        "/surface-app.ts",
+        "/src/components.ts",
+      ]
+    ) {
+      assertFalse(
+        layout.some((specifier) => specifier.includes(forbidden)),
+        `the /layout entry must not load ${forbidden}, got ${layout.join("\n")}`,
       );
     }
   },

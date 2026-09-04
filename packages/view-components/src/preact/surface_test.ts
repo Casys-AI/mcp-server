@@ -1,4 +1,4 @@
-import { assert, assertEquals, assertRejects, assertStrictEquals } from "@std/assert";
+import { assert, assertEquals, assertStrictEquals } from "@std/assert";
 
 import type { AppContext } from "@casys/mcp-view";
 import type { ViewComponentRegistry } from "../components.ts";
@@ -14,11 +14,11 @@ import {
 import {
   definePreactComponent,
   type PreactComponentRenderer,
+  type PreactSurfaceAppOptions,
   type PreactSurfaceAppState,
   type PreactSurfaceComponentProps,
   type PreactSurfaceContext,
   startPreactSurfaceApp,
-  SurfaceAppError,
 } from "./surface.ts";
 
 type TestAppContext = AppContext<PreactSurfaceAppState<Data>>;
@@ -65,28 +65,6 @@ Deno.test("definePreactComponent forwards component surface context and cleans u
   assertEquals(events, ["mount", "unmount"]);
 });
 
-Deno.test("recorded sessions require an App validator and data mapper as one pair", async () => {
-  type Result = Record<string, unknown>;
-  type Session = { readonly schema: "io.casys.test.session/1.0" };
-  const registry = {} as ViewComponentRegistry<Result, PreactSurfaceContext<Result>>;
-
-  const error = await assertRejects(
-    () =>
-      startPreactSurfaceApp<Result, Session>({
-        root: {} as HTMLElement,
-        info: { name: "Session test", version: "1.0.0" },
-        registry,
-        validateSession: (value): value is Session =>
-          typeof value === "object" && value !== null &&
-          (value as { schema?: unknown }).schema === "io.casys.test.session/1.0",
-      }),
-    SurfaceAppError,
-    "requires both validateSession and mapSessionToData",
-  );
-  assertEquals(error.code, "SURFACE_APP_SESSION_INCOMPLETE");
-  assertEquals(typeof error.data.recovery, "string");
-});
-
 Deno.test({
   name: "statuses render through StateMessage, carrying tone, busy state and the viewer's class",
   permissions: PERMISSIONS,
@@ -122,6 +100,67 @@ Deno.test({
 });
 
 Deno.test({
+  name: "a recorded session projects to a result through the Preact facade",
+  permissions: PERMISSIONS,
+  fn: () =>
+    withDocument(async (root) => {
+      type Session = { readonly schema: "test/1.0"; readonly title: string };
+      const mounts: Mounts = { mounted: [], cleaned: [] };
+      const invalid: unknown[] = [];
+      const fake = fakeApp(root);
+      await startPreactSurfaceApp<Data, Session>({
+        root,
+        info: { name: "Preact surface", version: "1.0.0" },
+        registry: registry(mounts),
+        theme: false,
+        viewerSession: {
+          validate: (value): value is Session =>
+            (value as { schema?: unknown })?.schema === "test/1.0",
+          toState: (session) => ({ kind: "result", result: { title: session.title } }),
+          onInvalid: (value) => invalid.push(value),
+        },
+      }, fake.runtime);
+
+      await fake.session({ schema: "nope" });
+      assertEquals(invalid, [{ schema: "nope" }]);
+      await fake.session({ schema: "test/1.0", title: "Recorded" });
+      await until(() => mounts.mounted.length === 1, "the session mount");
+      assertEquals(mounts.mounted, ["Recorded"]);
+    }),
+});
+
+Deno.test("the 0.6 validateSession/mapSessionToData pair is gone from the options type", () => {
+  type Session = { readonly schema: "test/1.0" };
+  const base = {
+    root: {} as HTMLElement,
+    info: { name: "Preact surface", version: "1.0.0" },
+    registry: registry({ mounted: [], cleaned: [] }),
+  };
+  // One literal per option: TypeScript reports only the first excess property of a literal.
+  const validate = {
+    ...base,
+    // @ts-expect-error removed in 0.7.0: use viewerSession.validate
+    validateSession: (value: unknown): value is Session => value !== null,
+  } satisfies PreactSurfaceAppOptions<Data, Session>;
+  const map = {
+    ...base,
+    // @ts-expect-error removed in 0.7.0: use viewerSession.toState
+    mapSessionToData: (): Data => ({ title: "x" }),
+  } satisfies PreactSurfaceAppOptions<Data, Session>;
+  const invalid = {
+    ...base,
+    // @ts-expect-error removed in 0.7.0: use viewerSession.onInvalid
+    onInvalidSession: () => {},
+  } satisfies PreactSurfaceAppOptions<Data, Session>;
+  assertEquals(
+    [validate.validateSession, map.mapSessionToData, invalid.onInvalidSession].map((option) =>
+      typeof option
+    ),
+    ["function", "function", "function"],
+  );
+});
+
+Deno.test({
   name: "a viewer-owned shell class replaces the facade default",
   permissions: PERMISSIONS,
   fn: () =>
@@ -138,53 +177,4 @@ Deno.test({
       await until(() => root.querySelector(".mcp-view-component") !== null, "the mount");
       assertEquals(root.firstElementChild?.className, "acme-viewer");
     }),
-});
-
-Deno.test({
-  name: "the deprecated validateSession/mapSessionToData pair still projects a session to a result",
-  permissions: PERMISSIONS,
-  fn: () =>
-    withDocument(async (root) => {
-      type Session = { readonly schema: "test/1.0"; readonly title: string };
-      const mounts: Mounts = { mounted: [], cleaned: [] };
-      const invalid: unknown[] = [];
-      const fake = fakeApp(root);
-      await startPreactSurfaceApp<Data, Session>({
-        root,
-        info: { name: "Preact surface", version: "1.0.0" },
-        registry: registry(mounts),
-        theme: false,
-        validateSession: (value): value is Session =>
-          (value as { schema?: unknown })?.schema === "test/1.0",
-        mapSessionToData: (session) => Promise.resolve({ title: session.title }),
-        onInvalidSession: (value) => invalid.push(value),
-      }, fake.runtime);
-
-      await fake.session({ schema: "nope" });
-      assertEquals(invalid, [{ schema: "nope" }]);
-      await fake.session({ schema: "test/1.0", title: "Recorded" });
-      await until(() => mounts.mounted.length === 1, "the session mount");
-      assertEquals(mounts.mounted, ["Recorded"]);
-    }),
-});
-
-Deno.test("mixing viewerSession with the deprecated session pair is refused", async () => {
-  type Session = { readonly schema: "test/1.0" };
-  const isSession = (value: unknown): value is Session =>
-    (value as { schema?: unknown })?.schema === "test/1.0";
-  const error = await assertRejects(
-    () =>
-      startPreactSurfaceApp<Data, Session>({
-        root: {} as HTMLElement,
-        info: { name: "Preact surface", version: "1.0.0" },
-        registry: registry({ mounted: [], cleaned: [] }),
-        theme: false,
-        validateSession: isSession,
-        mapSessionToData: () => ({ title: "x" }),
-        viewerSession: { validate: isSession, toState: () => ({ kind: "empty" }) },
-      }),
-    SurfaceAppError,
-    "either viewerSession or the deprecated",
-  );
-  assertEquals(error.code, "SURFACE_APP_SESSION_CONFLICT");
 });

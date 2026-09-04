@@ -106,8 +106,8 @@ and `app.ctx.navigate` on the session callback facade. It does not wait for or c
 callback code already in flight; that code may finish, but it cannot navigate late through the
 revoked facade. The underlying router remains independently fail-closed after App disposal.
 
-The Preact adapter in `@casys/mcp-view-components/preact` exposes paired `validateSession` and
-`mapSessionToData` callbacks for the same flow and keeps mapped data in App state across remounts.
+The surface Apps of `@casys/mcp-view-components` (`/surface`, `/preact`) take the same flow as a
+`viewerSession: { validate, toState }` pair and keep the projected state across remounts.
 
 ## Host tool notifications
 

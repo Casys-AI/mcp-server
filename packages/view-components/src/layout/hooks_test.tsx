@@ -55,11 +55,11 @@ class FakeMediaQueryList extends EventTarget {
  */
 async function withDom(
   fn: (root: HTMLElement, coarse: FakeMediaQueryList) => Promise<void> | void,
-  { apis = true }: { apis?: boolean } = {},
+  { apis = true, coarseMatches = false }: { apis?: boolean; coarseMatches?: boolean } = {},
 ): Promise<void> {
   const documentModule = await import("npm:linkedom@0.18.12");
   const dom = documentModule.parseHTML("<html><body><div id=root></div></body></html>");
-  const coarse = new FakeMediaQueryList(false);
+  const coarse = new FakeMediaQueryList(coarseMatches);
   const previous = {
     document: globalThis.document,
     ResizeObserver: (globalThis as { ResizeObserver?: unknown }).ResizeObserver,
@@ -217,6 +217,68 @@ Deno.test({
           render(<Viewer forced={forced} hints={{ containerDimensions: { width: 1200 } }} />, root)
         );
         assertEquals(element.dataset.layout, forced);
+      }
+    });
+  },
+});
+
+Deno.test({
+  name: "the coarse pointer is read before the first paint",
+  permissions: { read: true, env: true, run: true },
+  async fn() {
+    await withDom((root) => {
+      const hints: LayoutHostHints = { containerDimensions: { width: 390 } };
+      // No `act`: the first synchronous render must already be `mobile`.
+      render(<Viewer hints={hints} />, root);
+      const element = root.firstElementChild as HTMLElement;
+      assertEquals(element.dataset.layout, "mobile");
+
+      act(() => {
+        // Flush the change-listener subscription; the treatment must not flip.
+      });
+      assertEquals(element.dataset.layout, "mobile");
+    }, { coarseMatches: true });
+  },
+});
+
+Deno.test({
+  name: "the container is measured before the paint, in the content box",
+  permissions: { read: true, env: true, run: true },
+  async fn() {
+    await withDom(async (root) => {
+      const createElement = document.createElement.bind(document);
+      document.createElement = ((tagName: string, options?: ElementCreationOptions) => {
+        const element = createElement(tagName, options);
+        Object.defineProperty(element, "clientWidth", {
+          configurable: true,
+          value: 380,
+        });
+        return element;
+      }) as typeof document.createElement;
+      const previousGetComputedStyle =
+        (globalThis as { getComputedStyle?: unknown }).getComputedStyle;
+      Object.defineProperty(globalThis, "getComputedStyle", {
+        configurable: true,
+        value: () => ({ paddingLeft: "10px", paddingRight: "10px" }),
+      });
+      try {
+        // No `act`: it would also drain the after-paint `useEffect` queue and
+        // hide the difference. The layout effect runs in the commit and its
+        // `setWidth` re-renders on a microtask; a `useEffect` waits for the
+        // next frame, so after one microtask it would still read `wide`.
+        render(<Viewer />, root);
+        await Promise.resolve();
+        const element = root.firstElementChild as HTMLElement;
+        assertEquals(element.dataset.layout, "panel");
+        assertEquals(element.dataset.width, "360");
+        const [observer] = FakeResizeObserver.instances;
+        assertStrictEquals(observer.observed[0], element);
+      } finally {
+        document.createElement = createElement;
+        Object.defineProperty(globalThis, "getComputedStyle", {
+          configurable: true,
+          value: previousGetComputedStyle,
+        });
       }
     });
   },

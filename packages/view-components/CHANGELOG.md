@@ -7,6 +7,22 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-09-04
+
+### Fixed
+
+- **`useCoarsePointer` reads `matchMedia` synchronously before the first paint.** The hook started
+  at `false` and corrected itself in `useEffect`, so a narrow phone without host
+  `deviceCapabilities` first painted `panel` (stacked rows) and then `mobile` (touch table) — two
+  structures, not two densities. Ported from mcp-erpnext's first-paint fix so a viewer importing
+  `/layout` does not regress.
+- **`useContainerWidth` measures the content box in `useLayoutEffect` before the paint.** A
+  `ResizeObserver` entry arrives after paint and `isNarrow(null)` is false, so a narrow container
+  flashed `wide` for one frame; `getBoundingClientRect` also includes the shell's 1px borders and
+  would flash the other way when the observer corrected it. The initial read now matches
+  `contentRect` (clientWidth minus paddings). Ported from mcp-erpnext so a viewer importing
+  `/layout` does not regress.
+
 ## [0.7.0] - 2026-09-04
 
 ### Added

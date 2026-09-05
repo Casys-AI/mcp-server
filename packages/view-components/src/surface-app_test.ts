@@ -35,6 +35,109 @@ function options(
 }
 
 Deno.test({
+  name: "generic interface messages follow the host locale, including visible statuses",
+  permissions: PERMISSIONS,
+  fn: () =>
+    withDocument(async (root) => {
+      const fake = fakeApp(root, { hostContext: { locale: "fr-CA" } });
+      const handle = await startSurfaceApp(
+        options(root, registry({ mounted: [], cleaned: [] })),
+        fake.runtime,
+      );
+      await until(() => statusOf(root).title === "Chargement", "localized handshake loading");
+      assertEquals(statusOf(root).message, "En attente des données…");
+      await handle.show({ kind: "empty" });
+      assertEquals(statusOf(root).title, "Aucune donnée");
+      fake.hostContextChanged({ locale: "en-US" });
+      await until(() => statusOf(root).title === "Empty", "localized visible status");
+      await handle.show({
+        kind: "notice",
+        title: "unresolved",
+        message: "TRACE GAP",
+        code: "missing-proof",
+      });
+      fake.hostContextChanged({ locale: "fr" });
+      await fake.idle();
+      assertEquals(statusOf(root).title, "unresolved");
+      assertEquals(statusOf(root).message, "TRACE GAP");
+      assertEquals(statusOf(root).code, "missing-proof");
+      await handle.dispose();
+    }),
+});
+
+Deno.test({
+  name: "localized label callbacks override only interface wording",
+  permissions: PERMISSIONS,
+  fn: () =>
+    withDocument(async (root) => {
+      const fake = fakeApp(root, { hostContext: { locale: "fr" } });
+      const handle = await startSurfaceApp(
+        options(root, registry({ mounted: [], cleaned: [] }), {
+          loadingLabel: (locale) => locale === "fr" ? "Réception du modèle…" : "Receiving model…",
+        }),
+        fake.runtime,
+      );
+      await until(
+        () => statusOf(root).message === "Réception du modèle…",
+        "provider loading label",
+      );
+      fake.hostContextChanged({ locale: "en" });
+      await until(
+        () => statusOf(root).message === "Receiving model…",
+        "changed provider loading label",
+      );
+      await handle.dispose();
+    }),
+});
+
+Deno.test({
+  name:
+    "in-place theme updates retain the mounted renderer but locale and dimensions still remount",
+  permissions: PERMISSIONS,
+  fn: () =>
+    withDocument(async (root) => {
+      const mounts: Mounts = { mounted: [], cleaned: [] };
+      const fake = fakeApp(root, { hostContext: { theme: "light", locale: "en" } });
+      const handle = await startSurfaceApp(
+        options(root, registry(mounts), {
+          themeUpdates: "in-place",
+        }),
+        fake.runtime,
+      );
+      await fake.toolResult({ content: [], structuredContent: { title: "Boiler" } });
+      const element = root.querySelector(".mcp-view-component");
+      fake.hostContextChanged({ theme: "dark" });
+      await fake.idle();
+      fake.hostContextChanged({ theme: "light" });
+      await fake.idle();
+      assertStrictEquals(root.querySelector(".mcp-view-component"), element);
+      assertEquals(mounts.mounted.length, 1);
+      assertEquals(mounts.cleaned.length, 0);
+      fake.hostContextChanged({ locale: "fr" });
+      await until(() => mounts.mounted.length === 2, "locale remount");
+      fake.hostContextChanged({ containerDimensions: { width: 420 } });
+      await until(() => mounts.mounted.length === 3, "dimensions remount");
+      await handle.dispose();
+      assertEquals(mounts.cleaned.length, 3);
+    }),
+});
+
+Deno.test({
+  name: "default theme changes still remount components that read the theme at mount",
+  permissions: PERMISSIONS,
+  fn: () =>
+    withDocument(async (root) => {
+      const mounts: Mounts = { mounted: [], cleaned: [] };
+      const fake = fakeApp(root, { hostContext: { theme: "light" } });
+      const handle = await startSurfaceApp(options(root, registry(mounts)), fake.runtime);
+      await fake.toolResult({ content: [], structuredContent: { title: "Boiler" } });
+      fake.hostContextChanged({ theme: "dark" });
+      await until(() => mounts.mounted.length === 2, "default theme remount");
+      await handle.dispose();
+    }),
+});
+
+Deno.test({
   name: "the App opens on a busy loading status and a structured result mounts the default surface",
   permissions: PERMISSIONS,
   fn: () =>

@@ -34,6 +34,8 @@ Deno.test("shared theme exposes the MCP View v2 component vocabulary", () => {
       ".mcp-view-element-section",
       '.mcp-view-key-values[data-layout="facts"]',
       ".mcp-view-collection-card",
+      ".mcp-view-focused-view",
+      ".mcp-view-disclosure-summary:focus-visible",
       ".mcp-view-collection-card > .mcp-view-card-header",
       ".mcp-view-collection-card > .mcp-view-semantic-list",
       '[data-density="chip"]',

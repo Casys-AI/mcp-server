@@ -7,8 +7,8 @@ export const resultViewerTemplates: Readonly<Record<string, string>> = {
   },
   "imports": {
     "@casys/mcp-view": "jsr:@casys/mcp-view@0.9.3",
-    "@casys/mcp-view-components": "jsr:@casys/mcp-view-components@0.7.1",
-    "@casys/mcp-view-components/surface": "jsr:@casys/mcp-view-components@0.7.1/surface"
+    "@casys/mcp-view-components": "jsr:@casys/mcp-view-components@0.8.0",
+    "@casys/mcp-view-components/surface": "jsr:@casys/mcp-view-components@0.8.0/surface"
   },
   "minimumDependencyAge": {
     "age": "P1D",
@@ -50,7 +50,7 @@ export const resultViewerTemplates: Readonly<Record<string, string>> = {
 const here = dirname(fromFileUrl(import.meta.url));
 const mcpViewModule = moduleSpecifier(Deno.env.get("MCP_VIEW_MODULE") ?? "jsr:@casys/mcp-view@0.9.3");
 const mcpViewComponentsModule = moduleSpecifier(
-  Deno.env.get("MCP_VIEW_COMPONENTS_MODULE") ?? "jsr:@casys/mcp-view-components@0.7.1",
+  Deno.env.get("MCP_VIEW_COMPONENTS_MODULE") ?? "jsr:@casys/mcp-view-components@0.8.0",
 );
 const mcpViewSurfaceModule = moduleSpecifier(
   Deno.env.get("MCP_VIEW_COMPONENTS_SURFACE_MODULE") ?? subpathModule(mcpViewComponentsModule, "surface"),
@@ -112,7 +112,8 @@ function subpathModule(root: string, name: string): string {
 `,
   "src/model.ts": `export interface Metric {
   label: string;
-  value: string;
+  value: string | number;
+  unit?: string;
 }
 
 export interface Artifact {
@@ -173,16 +174,16 @@ function metricsFrom(value: unknown): Metric[] {
     return value.flatMap((item) => {
       if (!isRecord(item)) return [];
       const label = stringValue(item.label) ?? stringValue(item.name);
-      const metric = formatMetricValue(item.value, item.unit);
-      return label && metric ? [{ label, value: metric }] : [];
+      const metric = metricValue(item.value, item.unit);
+      return label && metric ? [{ label, ...metric }] : [];
     });
   }
   if (!isRecord(value)) return [];
   return Object.entries(value).flatMap(([label, metric]) => {
-    const formatted = isRecord(metric)
-      ? formatMetricValue(metric.value, metric.unit)
-      : formatMetricValue(metric, undefined);
-    return formatted ? [{ label: humanize(label), value: formatted }] : [];
+    const reading = isRecord(metric)
+      ? metricValue(metric.value, metric.unit)
+      : metricValue(metric, undefined);
+    return reading ? [{ label: humanize(label), ...reading }] : [];
   });
 }
 
@@ -202,13 +203,24 @@ function artifactsFrom(value: unknown): Artifact[] {
   });
 }
 
-function formatMetricValue(value: unknown, unit: unknown): string | undefined {
+function metricValue(value: unknown, unit: unknown): Pick<Metric, "value" | "unit"> | undefined {
   if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") return undefined;
-  const formatted = typeof value === "number"
-    ? new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 }).format(value)
-    : String(value);
   const suffix = stringValue(unit);
-  return suffix ? formatted + " " + suffix : formatted;
+  return { value: typeof value === "number" ? value : String(value), ...(suffix ? { unit: suffix } : {}) };
+}
+
+/** Format at render time so a host locale change can re-render the same recorded values. */
+export function formatNumber(value: number, locale?: string): string {
+  try {
+    return new Intl.NumberFormat(locale ?? "en", { maximumFractionDigits: 4 }).format(value);
+  } catch {
+    return new Intl.NumberFormat("en", { maximumFractionDigits: 4 }).format(value);
+  }
+}
+
+export function formatMetricValue(metric: Metric, locale?: string): string {
+  const formatted = typeof metric.value === "number" ? formatNumber(metric.value, locale) : metric.value;
+  return metric.unit ? formatted + " " + metric.unit : formatted;
 }
 
 function humanize(value: string): string {
@@ -228,7 +240,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 `,
   "src/render.ts": `import type { SurfaceStatus } from "@casys/mcp-view-components/surface";
-import type { Metric, ResultModel, ViewerData } from "./model.ts";
+import { formatMetricValue, formatNumber, type Metric, type ResultModel, type ViewerData } from "./model.ts";
 
 /** Statuses shown before, between and instead of results. Loading is frame-first. */
 export function renderStatus(status: SurfaceStatus): string {
@@ -240,23 +252,23 @@ export function renderStatus(status: SurfaceStatus): string {
   return shell(escapeHtml(title), '<div class="mcp-view-state" data-kind="' + escapeHtml(status.kind) + '" data-tone="' + escapeHtml(status.tone) + '" role="' + role + '"' + busy + "><strong>" + escapeHtml(title) + '</strong><p class="mcp-view-state-detail">' + escapeHtml(status.message) + "</p></div>");
 }
 
-export function renderViewer(data: ViewerData): string {
+export function renderViewer(data: ViewerData, locale?: string): string {
   // The kept values stay on the page underneath the failure.
   const banner = data.failure ? '<div class="mcp-view-stale-banner" data-tone="danger" role="alert"><span class="mcp-view-stale-banner-message">' + escapeHtml(data.failure) + " — values recorded at " + escapeHtml(data.recordedAt) + "</span></div>" : "";
-  return shell(escapeHtml(data.result.title), banner + renderBody(data.result));
+  return shell(escapeHtml(data.result.title), banner + renderBody(data.result, locale));
 }
 
-export function renderResult(result: ResultModel): string {
-  return shell(escapeHtml(result.title), renderBody(result));
+export function renderResult(result: ResultModel, locale?: string): string {
+  return shell(escapeHtml(result.title), renderBody(result, locale));
 }
 
-function renderBody(result: ResultModel): string {
+function renderBody(result: ResultModel, locale?: string): string {
   const status = result.status ? '<span class="mcp-view-badge">' + escapeHtml(result.status) + "</span>" : "";
   const summary = result.summary ? '<p class="mcp-view-card-eyebrow">' + escapeHtml(result.summary) + "</p>" : "";
   return '<header class="mcp-view-card-header"><div class="mcp-view-card-heading">' + summary + "</div>" + status + "</header>" +
-    renderMetrics("Metrics", result.metrics, "No metrics were supplied.") +
-    renderMetrics("Details", result.details, "No additional scalar details were supplied.") +
-    renderArtifacts(result);
+    renderMetrics("Metrics", result.metrics, "No metrics were supplied.", locale) +
+    renderMetrics("Details", result.details, "No additional scalar details were supplied.", locale) +
+    renderArtifacts(result, locale);
 }
 
 export function escapeHtml(value: string): string {
@@ -267,16 +279,16 @@ function shell(title: string, content: string): string {
   return '<section class="viewer" aria-label="Structured result"><h1>' + title + "</h1>" + content + "</section>";
 }
 
-function renderMetrics(title: string, metrics: Metric[], empty: string): string {
+function renderMetrics(title: string, metrics: Metric[], empty: string, locale?: string): string {
   const rows = metrics.length
-    ? '<dl class="mcp-view-metrics">' + metrics.map((metric) => '<div class="mcp-view-metric"><dt class="mcp-view-metric-label">' + escapeHtml(metric.label) + '</dt><dd class="mcp-view-metric-value">' + escapeHtml(metric.value) + "</dd></div>").join("") + "</dl>"
+    ? '<dl class="mcp-view-metrics">' + metrics.map((metric) => '<div class="mcp-view-metric"><dt class="mcp-view-metric-label">' + escapeHtml(metric.label) + '</dt><dd class="mcp-view-metric-value">' + escapeHtml(formatMetricValue(metric, locale)) + "</dd></div>").join("") + "</dl>"
     : '<p class="mcp-view-empty">' + escapeHtml(empty) + "</p>";
   return '<section class="mcp-view-card"><h2 class="mcp-view-card-title">' + title + "</h2>" + rows + "</section>";
 }
 
-function renderArtifacts(result: ResultModel): string {
+function renderArtifacts(result: ResultModel, locale?: string): string {
   const rows = result.artifacts.length
-    ? '<div class="mcp-view-stack">' + result.artifacts.map((artifact) => '<article class="mcp-view-artifact-row"><span class="mcp-view-artifact-row-identity"><strong class="mcp-view-artifact-row-label">' + escapeHtml(artifact.label) + '</strong></span><code class="mcp-view-artifact-row-uri">' + escapeHtml(artifact.uri) + "</code>" + (artifact.sha256 ? '<span class="mcp-view-artifact-row-fingerprint"><span>sha256</span><code>' + escapeHtml(artifact.sha256) + "</code></span>" : "") + (artifact.bytes === undefined ? "" : '<span class="mcp-view-artifact-row-size">' + artifact.bytes.toLocaleString("en-US") + " bytes</span>") + "</article>").join("") + "</div>"
+    ? '<div class="mcp-view-stack">' + result.artifacts.map((artifact) => '<article class="mcp-view-artifact-row"><span class="mcp-view-artifact-row-identity"><strong class="mcp-view-artifact-row-label">' + escapeHtml(artifact.label) + '</strong></span><code class="mcp-view-artifact-row-uri">' + escapeHtml(artifact.uri) + "</code>" + (artifact.sha256 ? '<span class="mcp-view-artifact-row-fingerprint"><span>sha256</span><code>' + escapeHtml(artifact.sha256) + "</code></span>" : "") + (artifact.bytes === undefined ? "" : '<span class="mcp-view-artifact-row-size">' + formatNumber(artifact.bytes, locale) + " bytes</span>") + "</article>").join("") + "</div>"
     : '<p class="mcp-view-empty">No artifacts were supplied.</p>';
   return '<section class="mcp-view-card"><h2 class="mcp-view-card-title">Artifacts</h2>' + rows + "</section>";
 }
@@ -319,7 +331,7 @@ import {
   type SurfaceStatus,
   type SurfaceToolResult,
 } from "@casys/mcp-view-components/surface";
-import { isEmptyResult, parseStructuredResult, toolErrorMessage, type ViewerData } from "./model.ts";
+import { formatMetricValue, formatNumber, isEmptyResult, parseStructuredResult, toolErrorMessage, type ViewerData } from "./model.ts";
 import { escapeHtml, renderStatus } from "./render.ts";
 
 type ViewerContext = SurfaceAppContext<ViewerData>;
@@ -357,14 +369,18 @@ const components = defineComponentRegistry<ViewerData, ViewerContext>({
         target.append(banner);
       },
     }),
-    "result.metrics": defineMetricGridComponent({
+    "result.metrics": defineCustomComponent({
       title: "Metrics",
-      select: (data) =>
-        data.result.metrics.map((metric, index) => ({
-          id: "metric-" + index,
-          label: metric.label,
-          value: metric.value,
-        })),
+      mount(target, props) {
+        return defineMetricGridComponent<ViewerData, ViewerContext>({
+          title: "Metrics",
+          select: (data) => data.result.metrics.map((metric, index) => ({
+            id: "metric-" + index,
+            label: metric.label,
+            value: formatMetricValue(metric, props.appContext.hostContext.locale),
+          })),
+        }).mount(target, props);
+      },
     }),
     "result.details": defineKeyValueComponent({
       title: "Details",
@@ -377,7 +393,7 @@ const components = defineComponentRegistry<ViewerData, ViewerContext>({
     }),
     "result.artifacts": defineCustomComponent({
       title: "Artifacts",
-      mount(target, { data }) {
+      mount(target, { data, appContext }) {
         target.className = "mcp-view-stack";
         if (data.result.artifacts.length === 0) {
           const empty = document.createElement("p");
@@ -410,6 +426,12 @@ const components = defineComponentRegistry<ViewerData, ViewerContext>({
             digest.textContent = artifact.sha256;
             fingerprint.append(algorithm, digest);
             item.append(fingerprint);
+          }
+          if (artifact.bytes !== undefined) {
+            const size = document.createElement("span");
+            size.className = "mcp-view-artifact-row-size";
+            size.textContent = formatNumber(artifact.bytes, appContext.hostContext.locale) + " bytes";
+            item.append(size);
           }
           target.append(item);
         }
@@ -478,7 +500,7 @@ void boot().catch((error) => {
 });
 `,
   "src/model_test.ts": `import { assertEquals, assertThrows } from "jsr:@std/assert@^1.0.0";
-import { isEmptyResult, parseStructuredResult, toolErrorMessage } from "./model.ts";
+import { formatMetricValue, formatNumber, isEmptyResult, parseStructuredResult, toolErrorMessage } from "./model.ts";
 import { escapeHtml, renderResult, renderStatus, renderViewer } from "./render.ts";
 
 Deno.test("result viewer parses generic metrics and artifacts", () => {
@@ -488,9 +510,25 @@ Deno.test("result viewer parses generic metrics and artifacts", () => {
     metrics: { total: { value: 12.5, unit: "ms" } },
     artifacts: [{ name: "Output", uri: "casys://result.json", bytes: 42 }],
   });
-  assertEquals(result.metrics, [{ label: "total", value: "12.5 ms" }]);
+  assertEquals(result.metrics, [{ label: "total", value: 12.5, unit: "ms" }]);
   assertEquals(result.artifacts[0]?.uri, "casys://result.json");
   assertEquals(renderResult(result).includes("12.5 ms"), true);
+});
+
+Deno.test("result viewer formats the same recorded numbers in the host locale", () => {
+  const result = parseStructuredResult({
+    status: "documentary",
+    metrics: [{ label: "Displacement", value: 12.5, unit: "mm" }],
+    artifacts: [{ uri: "casys://part.glb", bytes: 12345 }],
+  });
+  assertEquals(formatMetricValue(result.metrics[0], "en-US"), "12.5 mm");
+  assertEquals(formatMetricValue(result.metrics[0], "fr-FR"), "12,5 mm");
+  const french = renderResult(result, "fr-FR");
+  assertEquals(french.includes("12,5 mm"), true);
+  assertEquals(french.includes(new Intl.NumberFormat("fr-FR").format(12345) + " bytes"), true);
+  assertEquals(french.includes("documentary"), true);
+  assertEquals(result.metrics[0].value, 12.5);
+  assertEquals(formatNumber(12.5, "invalid_locale"), "12.5");
 });
 
 Deno.test("result viewer distinguishes empty and invalid structured content", () => {

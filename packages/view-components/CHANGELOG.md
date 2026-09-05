@@ -7,6 +7,28 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-05
+
+### Added
+
+- `FocusedView` makes one visualization the primary surface and keeps technical details in a closed
+  disclosure. Critical status remains outside it. `Disclosure` provides native keyboard semantics
+  and both use the existing light/dark tokens without adding window shadows.
+- Renderer-neutral `createTranslator` supports typed, contributable message dictionaries, exact
+  locale and language fallbacks, and plain-text interpolation. Shared interface messages ship in
+  English and French; providers retain ownership of their wording and all domain data.
+- Surface Apps translate their generic states using the host locale, including visible loading and
+  empty states after a locale change. Label callbacks and the `messages` option accept provider
+  customizations; projection helpers receive the presentation locale without changing validation.
+- Opt-in `themeUpdates: "in-place"` preserves mounted renderers that already follow theme tokens. It
+  skips only theme-only remounts; locale, dimensions and surface selection still use the normal
+  lifecycle. Existing Apps keep their default remount behavior.
+
+### Fixed
+
+- The result-viewer scaffold keeps numeric values unformatted until rendering and uses the host
+  locale for readings and artifact sizes instead of forcing English formatting.
+
 ## [0.7.1] - 2026-09-04
 
 ### Fixed

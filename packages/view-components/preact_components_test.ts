@@ -5,8 +5,10 @@ import {
   Card,
   CollectionCard,
   DataTable,
+  Disclosure,
   ElementLimit,
   ElementSection,
+  FocusedView,
   InlineCode,
   LimitGauge,
   PathBar,
@@ -20,6 +22,8 @@ Deno.test("Preact components entry exposes presentation without an MCP Apps runt
   assertEquals(typeof Card, "function");
   assertEquals(typeof CollectionCard, "function");
   assertEquals(typeof DataTable, "function");
+  assertEquals(typeof Disclosure, "function");
+  assertEquals(typeof FocusedView, "function");
   assertEquals(typeof ElementLimit, "function");
   assertEquals(typeof ElementSection, "function");
   assertEquals(typeof PathBar, "function");

@@ -130,6 +130,9 @@ export type {
   SemanticListProps,
 } from "./src/preact/semantic-element.tsx";
 
+export { Disclosure, FocusedView } from "./src/preact/focused-view.tsx";
+export type { DisclosureProps, FocusedViewProps } from "./src/preact/focused-view.tsx";
+
 // The stylesheet and its types ship from the package root with
 // `installMcpViewTheme`, never from this entry. Re-exporting them here handed
 // the whole sheet to every caller that only wanted one component: the theme is

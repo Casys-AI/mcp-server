@@ -61,3 +61,11 @@ export {
   MCP_VIEW_THEME_TOKENS,
 } from "./src/theme.ts";
 export type { McpViewThemeDocument, McpViewThemeToken, McpViewThemeTokens } from "./src/theme.ts";
+
+export {
+  createTranslator,
+  MCP_VIEW_MESSAGES_EN,
+  MCP_VIEW_MESSAGES_FR,
+  mcpViewMessages,
+} from "./src/i18n.ts";
+export type { McpViewMessages, MessageCatalog, MessageValues, Translator } from "./src/i18n.ts";

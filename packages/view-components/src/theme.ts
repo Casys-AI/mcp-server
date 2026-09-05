@@ -267,6 +267,70 @@ export const MCP_VIEW_THEME_CSS: string = String.raw`
   background: var(--mcp-view-panel);
 }
 
+.mcp-view-focused-view {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.mcp-view-focused-status {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.mcp-view-focused-primary {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.mcp-view-disclosure {
+  flex: 0 0 auto;
+  min-width: 0;
+  border-top: 1px solid var(--mcp-view-border-soft);
+}
+
+.mcp-view-disclosure-summary {
+  box-sizing: border-box;
+  min-height: 32px;
+  padding: 8px 12px;
+  color: var(--mcp-view-muted);
+  font-family: var(--mcp-view-font-body);
+  font-size: var(--mcp-view-size-meta);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.mcp-view-disclosure-summary::marker {
+  color: var(--mcp-view-quiet);
+}
+
+.mcp-view-disclosure-summary:hover {
+  background: var(--mcp-view-hover);
+  color: var(--mcp-view-text);
+}
+
+.mcp-view-disclosure-summary:focus-visible {
+  outline: 2px solid var(--mcp-view-accent);
+  outline-offset: -2px;
+}
+
+.mcp-view-disclosure-body {
+  min-width: 0;
+  padding: 4px 12px 12px;
+  overflow-wrap: anywhere;
+}
+
+.mcp-view-focused-view[data-layout="mobile"] > .mcp-view-disclosure > .mcp-view-disclosure-summary {
+  min-height: 40px;
+  padding-block: 11px;
+}
+
 .mcp-view-surface::before {
   content: "";
   position: absolute;

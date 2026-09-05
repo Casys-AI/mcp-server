@@ -211,6 +211,37 @@ itself — `resolveViewerLayout`, `layoutWidth`, `touchInput`, `layoutFromSearch
 — is exported pure, and the two measuring hooks, `useContainerWidth()` and `useCoarsePointer()`, are
 exported on their own.
 
+## Focused viewers and technical details
+
+`FocusedView` keeps one primary visualization or reading prominent and puts optional technical
+metadata behind a closed `Disclosure`. Its `status` slot stays outside that disclosure: warnings,
+unavailable evidence and literal verification state remain visible. The existing surface supplies
+the frame, so the preset adds no card, shadow or application chrome.
+
+```tsx
+import { FocusedView } from "@casys/mcp-view-components/preact/components";
+
+<FocusedView
+  label={labels.geometry}
+  hostContext={context.hostContext}
+  status={<StateMessage title={recorded.status}>{recorded.message}</StateMessage>}
+  primary={<GeometryCanvas geometry={recorded.geometry} />}
+  detailsLabel={labels.technicalDetails}
+  details={<KeyValueList layout="facts" items={recorded.provenance} />}
+/>;
+```
+
+The preset calls `useViewerLayout` with the host hints and applies its container ref, `data-layout`
+and height bounds. At a narrow desktop width it uses `panel`; under a finger it uses `mobile` with a
+larger disclosure target. Pass `layout` only to review a forced treatment. The primary remains
+provider-owned; the preset never invents a preview, a status or an evidence value.
+
+Use `Disclosure` on its own for an inline technical section: `label` is supplied by the caller,
+`children` hold the detail, and optional `open` / `onToggle(open)` expose its native state. Native
+`details` / `summary` provide keyboard behavior and expanded state. Omit `open` to start closed.
+`FocusedView` requires a `detailsLabel` whenever it receives `details`; omit both to render no
+technical control. Keep consequential state in `status` or `primary`.
+
 ## Theme
 
 `installMcpViewTheme()` installs the shared CSS once. The defaults are light-first and include an
@@ -323,6 +354,17 @@ surface is remounted only while the surface route holds a result (a surface-rout
 and the context object actually moved — never while a status is shown or a transition is in flight.
 `theme: false` skips the theme install at boot only — primitives still install it when they mount.
 
+For a renderer that already follows the CSS theme tokens, `themeUpdates: "in-place"` keeps that
+renderer mounted when only the host theme changes. This preserves local camera or interaction state.
+The default remains `"remount"`; do not opt in if a component reads theme colors only at mount.
+Locale, dimensions and component selection changes still remount normally in either mode.
+
+Generic loading, empty and failure headings follow the host locale. `loadingLabel`, `emptyLabel` and
+`surfaceRequiredLabel` also accept `(locale) => string`; the `messages` option accepts a
+`createTranslator` catalog for additional languages. Domain messages, literal states and codes
+remain unchanged. Tool-result and session projections receive `host.locale` for interface wording,
+never for interpreting or validating domain values.
+
 `startPreactSurfaceApp()` (`/preact`) is the same App with statuses rendered through
 `renderStatusMessage`, plus `statusClassName` for viewer-owned styling hooks; its shell keeps the
 `mcp-view-preact-surface` class 0.5 viewers style (the core default is `mcp-view-surface-shell`).
@@ -419,6 +461,55 @@ accepts any `ComponentChildren`, so a plain count string requires no extra compo
 </CollectionCard>;
 ```
 
+## Contributing interface translations
+
+`createTranslator` is a small renderer-neutral dictionary helper from the package root. Keep stable
+keys in a complete base dictionary, and add language dictionaries as partial overrides. Select the
+translator from the current host locale when rendering, so the same recorded result can change its
+interface language without changing its data.
+
+```ts
+import { createTranslator } from "@casys/mcp-view-components";
+
+const en = {
+  technicalDetails: "Technical details",
+  revisionLabel: "Revision {revision}",
+};
+const fr: Partial<Record<keyof typeof en, string>> = {
+  technicalDetails: "Détails techniques",
+  revisionLabel: "Révision {revision}",
+};
+const messages = createTranslator({ defaultLocale: "en", messages: en, translations: { fr } });
+const t = messages(context.hostContext.locale);
+t("technicalDetails");
+t("revisionLabel", { revision: 17 });
+```
+
+Lookup falls back **per key** through the exact locale, its language parents, then the base
+dictionary: with an English base, `fr-CA` → `fr` → English. A missing entry in a partial dictionary
+does not hide the base text. An absent or invalid host locale uses the configured default locale;
+there is no global mutable locale. Keep interpolation names such as `{revision}` intact. Render
+returned messages as text, never as HTML.
+
+Translate interface labels and helper text only. Preserve authored names, payload values, units,
+identifiers, digests, server messages and literal contract states such as `documentary`,
+`unverified`, `unresolved` or `TRACE GAP`. Use `Intl.NumberFormat` and `Intl.DateTimeFormat` with
+the host locale for presentation; formatting must not convert units or overwrite the stored
+evidence.
+
+For a new locale contribution, use this short PR checklist:
+
+- Name the locale tag and the dictionary being extended (shared interface or a particular MCP).
+- Keep existing keys stable; add any new key to the base dictionary first.
+- List deliberately missing translations and preserve every interpolation placeholder.
+- Include one small example showing a translated label and fallback for an untranslated key.
+- Check the changed wording in a narrow viewer, including accessible labels and technical details.
+- Confirm that authored data and contract states retain their original bytes and meaning.
+
+The kit exports its English and French interface dictionaries as `MCP_VIEW_MESSAGES_EN` and
+`MCP_VIEW_MESSAGES_FR`. MCPs keep their domain-specific interface dictionaries beside their viewers;
+they can reuse the same helper without importing a new localization runtime.
+
 ## Result-viewer scaffold (Deno/JSR only)
 
 The project generator intentionally uses Deno filesystem APIs and `deno fmt`. The generated
@@ -429,7 +520,7 @@ local checkout); the `/surface` entry is derived from the latter unless
 `MCP_VIEW_COMPONENTS_SURFACE_MODULE` names it. Run the generator from JSR:
 
 ```sh
-deno run -A jsr:@casys/mcp-view-components@0.7.1/scaffold result-viewer ./result-viewer
+deno run -A jsr:@casys/mcp-view-components@0.8.0/scaffold result-viewer ./result-viewer
 ```
 
 The npm package contains only the runtime and presentation entry points. It does not export or ship

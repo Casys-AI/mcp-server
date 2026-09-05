@@ -32,6 +32,9 @@ import {
 } from "./components.ts";
 import type { ComponentTone } from "./component-primitives.ts";
 import { installMcpViewTheme } from "./theme.ts";
+import { type McpViewMessages, mcpViewMessages, type Translator } from "./i18n.ts";
+
+export type SurfaceLabel = string | ((locale?: string) => string);
 
 export interface SurfaceAppState<TData> {
   currentData?: TData;
@@ -48,6 +51,8 @@ type HostApp = AppContext<SurfaceAppState<unknown>>["app"];
 
 /** The server reads an App may need while projecting a result or a session. */
 export interface SurfaceHostAccess {
+  /** Presentation locale at projection time, never an input to domain validation. */
+  readonly locale?: string;
   readonly readServerResource: (
     uri: string,
   ) => ReturnType<HostApp["readServerResource"]>;
@@ -142,14 +147,22 @@ export interface SurfaceAppOptions<TData, TSession = never> {
    */
   readonly surfaceFor?: (data: TData) => ComponentSurface | undefined;
   /** Detail of the `loading` status. Default `Waiting for data…`. */
-  readonly loadingLabel?: string;
+  readonly loadingLabel?: SurfaceLabel;
   /** Detail of the `empty` status. Default `No structured data received.`. */
-  readonly emptyLabel?: string;
+  readonly emptyLabel?: SurfaceLabel;
   /**
    * Detail of the `surface-required` status. Default
    * `This App exposes components and requires a host-selected surface.`.
    */
-  readonly surfaceRequiredLabel?: string;
+  readonly surfaceRequiredLabel?: SurfaceLabel;
+  /** Translate interface wording only; domain messages and codes remain caller-owned. */
+  readonly messages?: (locale?: string) => Translator<keyof McpViewMessages>;
+  /**
+   * Opt into in-place theme-only updates when components follow CSS tokens (or
+   * observe them, e.g. a 3D scene). Other context changes still remount the surface.
+   * Default `remount` preserves components that read the theme only at mount.
+   */
+  readonly themeUpdates?: "remount" | "in-place";
   /** Class of the element wrapping the mounted surface. Default `mcp-view-surface-shell`. */
   readonly surfaceClassName?: string;
   /**
@@ -245,6 +258,9 @@ export async function startSurfaceApp<TData, TSession = never>(
   let mountGeneration = 0;
   let navigation: Promise<void> = Promise.resolve();
   let renderedHostContext: HostContext | undefined;
+  let hostLocale: string | undefined;
+  let renderedStatusLocale: string | undefined;
+  let activeStatus: SurfaceStatusState<TData> | undefined = { kind: "loading" };
   let closed = false;
   let removeHostContextListener: (() => void) | undefined;
 
@@ -253,28 +269,33 @@ export async function startSurfaceApp<TData, TSession = never>(
     else console.error("[mcp-view-components] Surface App failed", error);
   };
 
+  const message: Translator<keyof McpViewMessages> = (key, values) =>
+    (options.messages ?? mcpViewMessages)(hostLocale)(key, values);
+  const label = (override: SurfaceLabel | undefined, key: keyof McpViewMessages): string =>
+    typeof override === "function" ? override(hostLocale) : override ?? message(key);
+
   const resolve = (display: SurfaceStatusState<TData>): SurfaceStatus => {
     switch (display.kind) {
       case "loading":
         return {
           kind: "loading",
-          title: "Loading",
-          message: options.loadingLabel ?? "Waiting for data…",
+          title: message("loadingTitle"),
+          message: label(options.loadingLabel, "loadingMessage"),
           tone: "info",
           busy: true,
         };
       case "empty":
         return {
           kind: "empty",
-          title: "Empty",
-          message: options.emptyLabel ?? "No structured data received.",
+          title: message("emptyTitle"),
+          message: label(options.emptyLabel, "emptyMessage"),
           tone: "neutral",
           busy: false,
         };
       case "error":
         return {
           kind: "error",
-          title: display.title ?? "Error",
+          title: display.title ?? message("errorTitle"),
           message: display.message,
           tone: "danger",
           busy: false,
@@ -316,11 +337,12 @@ export async function startSurfaceApp<TData, TSession = never>(
     navigate: AppHandle<State>["navigate"],
     display: SurfaceDisplayState<TData>,
   ): Promise<void> =>
-    enqueue(() =>
-      display.kind === "result"
+    enqueue(() => {
+      activeStatus = display.kind === "result" ? undefined : display;
+      return display.kind === "result"
         ? navigate("surface", display.result)
-        : navigate("status", resolve(display))
-    );
+        : navigate("status", resolve(display));
+    });
 
   /** A projection that throws shows its failure; it never breaks the lifecycle. */
   const settle = async (
@@ -336,6 +358,7 @@ export async function startSurfaceApp<TData, TSession = never>(
   };
 
   const hostAccess = (app: AppHandle<State>): SurfaceHostAccess => ({
+    locale: app.ctx.hostContext.locale,
     readServerResource: (uri) => app.ctx.app.readServerResource({ uri }),
   });
 
@@ -353,7 +376,11 @@ export async function startSurfaceApp<TData, TSession = never>(
       state.currentData = undefined;
       return next;
     },
-    render: (_context, next) => options.renderStatus(next),
+    render: (context, next) => {
+      hostLocale = context.hostContext.locale;
+      renderedStatusLocale = hostLocale;
+      return options.renderStatus(activeStatus ? resolve(activeStatus) : next);
+    },
     onLeave: disposeSurface,
   });
 
@@ -363,6 +390,7 @@ export async function startSurfaceApp<TData, TSession = never>(
       return data;
     },
     render(context, data) {
+      hostLocale = context.hostContext.locale;
       renderedHostContext = context.hostContext;
       const shell = document.createElement("div");
       shell.className = options.surfaceClassName ?? "mcp-view-surface-shell";
@@ -381,17 +409,16 @@ export async function startSurfaceApp<TData, TSession = never>(
         // its surface view and says why nothing is composed.
         reportError(error);
         shell.replaceChildren(options.renderStatus(failure(
-          "Surface invalid",
-          `The ${owner} component surface is invalid: ${errorMessage(error)}`,
+          message("surfaceInvalidTitle"),
+          message("surfaceInvalidMessage", { owner, error: errorMessage(error) }),
         )));
         return shell;
       }
       if (!selected) {
         shell.replaceChildren(options.renderStatus({
           kind: "surface-required",
-          title: "Surface required",
-          message: options.surfaceRequiredLabel ??
-            "This App exposes components and requires a host-selected surface.",
+          title: message("surfaceRequiredTitle"),
+          message: label(options.surfaceRequiredLabel, "surfaceRequiredMessage"),
           tone: "warning",
           busy: false,
         }));
@@ -417,8 +444,8 @@ export async function startSurfaceApp<TData, TSession = never>(
         // A superseded mount that fails must not overwrite the newer route.
         if (generation !== mountGeneration) return;
         shell.replaceChildren(options.renderStatus(failure(
-          "Surface failed",
-          `Component surface failed: ${errorMessage(error)}`,
+          message("surfaceFailedTitle"),
+          message("surfaceFailedMessage", { error: errorMessage(error) }),
         )));
       });
       return shell;
@@ -439,9 +466,10 @@ export async function startSurfaceApp<TData, TSession = never>(
         viewerSession: {
           validate: session.validate,
           onSession: async (value, _payload, app) => {
+            hostLocale = app.ctx.hostContext.locale;
             const next = await settle(
               () => session.toState(value, hostAccess(app)),
-              "Session rejected",
+              message("sessionRejectedTitle"),
             );
             await show(app.navigate, next);
           },
@@ -462,9 +490,10 @@ export async function startSurfaceApp<TData, TSession = never>(
       await show(app.navigate, { kind: "loading" });
     },
     onToolResult: async (result, app) => {
+      hostLocale = app.ctx.hostContext.locale;
       const next = await settle(
         () => project(result, hostAccess(app)),
-        "Result rejected",
+        message("resultRejectedTitle"),
       );
       await show(app.navigate, next);
     },
@@ -501,13 +530,28 @@ export async function startSurfaceApp<TData, TSession = never>(
   const remountIfStale = (): Promise<void> =>
     enqueue(async () => {
       const data = state.currentData;
-      if (closed || data === undefined || handle.ctx.hostContext === renderedHostContext) {
+      if (closed) return;
+      if (data === undefined) {
+        if (activeStatus && hostLocale !== renderedStatusLocale) {
+          await handle.navigate("status", resolve(activeStatus));
+        }
+        return;
+      }
+      if (handle.ctx.hostContext === renderedHostContext) {
+        return;
+      }
+      if (
+        options.themeUpdates === "in-place" && renderedHostContext &&
+        onlyThemeChanged(renderedHostContext, handle.ctx.hostContext)
+      ) {
+        renderedHostContext = handle.ctx.hostContext;
         return;
       }
       await handle.navigate("surface", data);
     });
 
   const onHostContextChanged = (): void => {
+    hostLocale = handle.ctx.hostContext.locale;
     applySurfaceContext(handle.ctx.hostContext, document.documentElement);
     remountIfStale().catch(reportError);
   };
@@ -520,6 +564,15 @@ export async function startSurfaceApp<TData, TSession = never>(
   onHostContextChanged();
 
   return surfaceHandle;
+}
+
+/** Conservative: any other changed field retains the normal remount behavior. */
+function onlyThemeChanged(
+  previous: Record<string, unknown>,
+  next: Record<string, unknown>,
+): boolean {
+  const keys = new Set([...Object.keys(previous), ...Object.keys(next)]);
+  return [...keys].every((key) => key === "theme" || previous[key] === next[key]);
 }
 
 function defaultProjection<TData>(

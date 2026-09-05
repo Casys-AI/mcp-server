@@ -25,6 +25,7 @@ export type {
   SurfaceAppRuntime,
   SurfaceDisplayState,
   SurfaceHostAccess,
+  SurfaceLabel,
   SurfaceMessageKind,
   SurfaceProjection,
   SurfaceStatus,

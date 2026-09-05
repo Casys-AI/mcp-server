@@ -5,7 +5,30 @@ All notable changes to `@casys/mcp-view-components` will be documented in this f
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.9.0] - 2026-09-05
+
+### Added
+
+- Re-export the `SurfaceLabel` type from `/preact` so viewer adapters do not need a local alias.
+- `error` and `notice` `title`/`message` accept `SurfaceLabel` callbacks, resolved on each visible
+  status render so a provider interface dictionary can follow a host locale change without
+  re-running result or session projection I/O. Literal strings and `code` stay unchanged.
+- `createTranslator` selectors expose `.locale(hostLocale?)`, returning the dictionary actually
+  selected (exact registered locale, matched language parent, or canonical default).
+- Optional `documentLanguage` on `startSurfaceApp` sets `document.documentElement.lang` at boot and
+  on host locale changes. Pass `messages.locale`; omit the option to leave the document language
+  untouched. Independent of remount policy.
+
+### Fixed
+
+- `themeUpdates: "in-place"` compares non-theme host-context fields structurally, so a host that
+  resends a complete JSON snapshot with new object identities but the same values no longer remounts
+  (and no longer resets a CAD camera). Only `theme` is exempted; locale, dimensions, surface
+  selection, styles and other fields still remount when their values change. Default remount
+  behavior is unchanged.
+- Thrown tool-result and viewer-session projections keep an internal rejection-title key and
+  retranslate `Result rejected` / `Session rejected` when the host locale changes. Provider-supplied
+  titles, messages and codes stay literal.
 
 ## [0.8.0] - 2026-09-05
 

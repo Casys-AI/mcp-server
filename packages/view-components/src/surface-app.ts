@@ -66,20 +66,22 @@ export type SurfaceStatusTone = ComponentTone;
  * caller-owned presentation for domain states such as "recorded evidence
  * unresolved" that are neither an error nor an absence of data. `code` is a
  * caller-owned machine identifier, forwarded verbatim to the status.
+ * `error` and `notice` `title`/`message` accept `SurfaceLabel` callbacks,
+ * resolved on each visible status render; literal strings stay unchanged.
  */
 export type SurfaceDisplayState<TData> =
   | { readonly kind: "loading" }
   | { readonly kind: "empty" }
   | {
     readonly kind: "error";
-    readonly message: string;
-    readonly title?: string;
+    readonly message: SurfaceLabel;
+    readonly title?: SurfaceLabel;
     readonly code?: string;
   }
   | {
     readonly kind: "notice";
-    readonly message: string;
-    readonly title?: string;
+    readonly message: SurfaceLabel;
+    readonly title?: SurfaceLabel;
     readonly tone?: SurfaceStatusTone;
     readonly busy?: boolean;
     readonly code?: string;
@@ -90,6 +92,19 @@ type SurfaceStatusState<TData> = Exclude<
   SurfaceDisplayState<TData>,
   { readonly kind: "result" }
 >;
+
+type RejectionTitleKey = "resultRejectedTitle" | "sessionRejectedTitle";
+
+/** Status stored between renders. The extra error field is not part of the public contract. */
+type ActiveStatus<TData> =
+  | Exclude<SurfaceStatusState<TData>, { readonly kind: "error" }>
+  | {
+    readonly kind: "error";
+    readonly message: SurfaceLabel;
+    readonly title?: SurfaceLabel;
+    readonly code?: string;
+    readonly rejectionTitleKey?: RejectionTitleKey;
+  };
 
 export type SurfaceMessageKind =
   | "loading"
@@ -158,9 +173,18 @@ export interface SurfaceAppOptions<TData, TSession = never> {
   /** Translate interface wording only; domain messages and codes remain caller-owned. */
   readonly messages?: (locale?: string) => Translator<keyof McpViewMessages>;
   /**
+   * Sets `document.documentElement.lang` at boot and when the host locale
+   * changes. Pass `messages.locale` from `createTranslator` so the document
+   * language identifies the selected dictionary. Omit to leave `lang` as is.
+   * Independent of remount policy; not inferred from message callbacks.
+   */
+  readonly documentLanguage?: (hostLocale?: string) => string;
+  /**
    * Opt into in-place theme-only updates when components follow CSS tokens (or
    * observe them, e.g. a 3D scene). Other context changes still remount the surface.
    * Default `remount` preserves components that read the theme only at mount.
+   * In-place mode compares non-theme fields structurally so equal JSON snapshots
+   * with new object identities do not remount.
    */
   readonly themeUpdates?: "remount" | "in-place";
   /** Class of the element wrapping the mounted surface. Default `mcp-view-surface-shell`. */
@@ -260,7 +284,7 @@ export async function startSurfaceApp<TData, TSession = never>(
   let renderedHostContext: HostContext | undefined;
   let hostLocale: string | undefined;
   let renderedStatusLocale: string | undefined;
-  let activeStatus: SurfaceStatusState<TData> | undefined = { kind: "loading" };
+  let activeStatus: ActiveStatus<TData> | undefined = { kind: "loading" };
   let closed = false;
   let removeHostContextListener: (() => void) | undefined;
 
@@ -271,10 +295,12 @@ export async function startSurfaceApp<TData, TSession = never>(
 
   const message: Translator<keyof McpViewMessages> = (key, values) =>
     (options.messages ?? mcpViewMessages)(hostLocale)(key, values);
+  const resolveLabel = (value: SurfaceLabel): string =>
+    typeof value === "function" ? value(hostLocale) : value;
   const label = (override: SurfaceLabel | undefined, key: keyof McpViewMessages): string =>
-    typeof override === "function" ? override(hostLocale) : override ?? message(key);
+    override === undefined ? message(key) : resolveLabel(override);
 
-  const resolve = (display: SurfaceStatusState<TData>): SurfaceStatus => {
+  const resolve = (display: ActiveStatus<TData>): SurfaceStatus => {
     switch (display.kind) {
       case "loading":
         return {
@@ -295,8 +321,10 @@ export async function startSurfaceApp<TData, TSession = never>(
       case "error":
         return {
           kind: "error",
-          title: display.title ?? message("errorTitle"),
-          message: display.message,
+          title: display.title === undefined
+            ? message(display.rejectionTitleKey ?? "errorTitle")
+            : resolveLabel(display.title),
+          message: resolveLabel(display.message),
           tone: "danger",
           busy: false,
           ...(display.code === undefined ? {} : { code: display.code }),
@@ -304,8 +332,8 @@ export async function startSurfaceApp<TData, TSession = never>(
       case "notice":
         return {
           kind: "notice",
-          title: display.title,
-          message: display.message,
+          title: display.title === undefined ? undefined : resolveLabel(display.title),
+          message: resolveLabel(display.message),
           tone: display.tone ?? "neutral",
           busy: display.busy ?? false,
           ...(display.code === undefined ? {} : { code: display.code }),
@@ -335,7 +363,7 @@ export async function startSurfaceApp<TData, TSession = never>(
 
   const show = (
     navigate: AppHandle<State>["navigate"],
-    display: SurfaceDisplayState<TData>,
+    display: SurfaceDisplayState<TData> | ActiveStatus<TData>,
   ): Promise<void> =>
     enqueue(() => {
       activeStatus = display.kind === "result" ? undefined : display;
@@ -347,13 +375,13 @@ export async function startSurfaceApp<TData, TSession = never>(
   /** A projection that throws shows its failure; it never breaks the lifecycle. */
   const settle = async (
     compute: () => SurfaceDisplayState<TData> | Promise<SurfaceDisplayState<TData>>,
-    rejectedTitle: string,
-  ): Promise<SurfaceDisplayState<TData>> => {
+    rejectionTitleKey: RejectionTitleKey,
+  ): Promise<SurfaceDisplayState<TData> | ActiveStatus<TData>> => {
     try {
       return await compute();
     } catch (error) {
       reportError(error);
-      return { kind: "error", title: rejectedTitle, message: errorMessage(error) };
+      return { kind: "error", message: errorMessage(error), rejectionTitleKey };
     }
   };
 
@@ -469,7 +497,7 @@ export async function startSurfaceApp<TData, TSession = never>(
             hostLocale = app.ctx.hostContext.locale;
             const next = await settle(
               () => session.toState(value, hostAccess(app)),
-              message("sessionRejectedTitle"),
+              "sessionRejectedTitle",
             );
             await show(app.navigate, next);
           },
@@ -493,7 +521,7 @@ export async function startSurfaceApp<TData, TSession = never>(
       hostLocale = app.ctx.hostContext.locale;
       const next = await settle(
         () => project(result, hostAccess(app)),
-        message("resultRejectedTitle"),
+        "resultRejectedTitle",
       );
       await show(app.navigate, next);
     },
@@ -552,6 +580,9 @@ export async function startSurfaceApp<TData, TSession = never>(
 
   const onHostContextChanged = (): void => {
     hostLocale = handle.ctx.hostContext.locale;
+    if (options.documentLanguage) {
+      document.documentElement.lang = options.documentLanguage(hostLocale);
+    }
     applySurfaceContext(handle.ctx.hostContext, document.documentElement);
     remountIfStale().catch(reportError);
   };
@@ -566,13 +597,41 @@ export async function startSurfaceApp<TData, TSession = never>(
   return surfaceHandle;
 }
 
-/** Conservative: any other changed field retains the normal remount behavior. */
+/**
+ * Conservative: only `theme` is exempt. Any other field whose JSON-shaped value
+ * changed retains the normal remount behavior. Object key order is ignored;
+ * array order is kept. No stringify, no coercion.
+ */
 function onlyThemeChanged(
   previous: Record<string, unknown>,
   next: Record<string, unknown>,
 ): boolean {
   const keys = new Set([...Object.keys(previous), ...Object.keys(next)]);
-  return [...keys].every((key) => key === "theme" || previous[key] === next[key]);
+  return [...keys].every((key) => key === "theme" || jsonValueEqual(previous[key], next[key]));
+}
+
+function jsonValueEqual(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (left === null || right === null) return false;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+      return false;
+    }
+    return left.every((item, index) => jsonValueEqual(item, right[index]));
+  }
+  if (!isPlainJsonObject(left) || !isPlainJsonObject(right)) return false;
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  if (leftKeys.length !== rightKeys.length) return false;
+  return leftKeys.every((key) =>
+    Object.hasOwn(right, key) && jsonValueEqual(left[key], right[key])
+  );
+}
+
+function isPlainJsonObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null) return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
 }
 
 function defaultProjection<TData>(

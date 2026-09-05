@@ -68,4 +68,10 @@ export {
   MCP_VIEW_MESSAGES_FR,
   mcpViewMessages,
 } from "./src/i18n.ts";
-export type { McpViewMessages, MessageCatalog, MessageValues, Translator } from "./src/i18n.ts";
+export type {
+  McpViewMessages,
+  MessageCatalog,
+  MessageValues,
+  Translator,
+  TranslatorSelector,
+} from "./src/i18n.ts";

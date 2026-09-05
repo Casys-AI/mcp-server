@@ -6,6 +6,7 @@ import {
   defineComponentRegistry,
   defineViewComponent,
 } from "./components.ts";
+import { createTranslator } from "./i18n.ts";
 import { startSurfaceApp, SurfaceAppError, type SurfaceAppOptions } from "./surface-app.ts";
 import {
   type Data,
@@ -128,10 +129,20 @@ Deno.test({
   fn: () =>
     withDocument(async (root) => {
       const mounts: Mounts = { mounted: [], cleaned: [] };
-      const fake = fakeApp(root, { hostContext: { theme: "light" } });
+      const fake = fakeApp(root, {
+        hostContext: {
+          theme: "light",
+          locale: "en",
+          containerDimensions: { width: 800, height: 600 },
+        },
+      });
       const handle = await startSurfaceApp(options(root, registry(mounts)), fake.runtime);
       await fake.toolResult({ content: [], structuredContent: { title: "Boiler" } });
-      fake.hostContextChanged({ theme: "dark" });
+      fake.hostContextChanged({
+        theme: "dark",
+        locale: "en",
+        containerDimensions: { height: 600, width: 800 },
+      });
       await until(() => mounts.mounted.length === 2, "default theme remount");
       await handle.dispose();
     }),
@@ -330,6 +341,67 @@ const CAPTION_SURFACE = {
 function surfaceSelection(instanceId: string, surface: unknown) {
   return { [CASYS_SURFACE_CONTEXT_KEY]: { instanceId, status: "ready", surface } };
 }
+
+Deno.test({
+  name:
+    "in-place theme updates keep the mount across equal JSON snapshots and remount real context changes",
+  permissions: PERMISSIONS,
+  fn: () =>
+    withDocument(async (root) => {
+      const mounts: Mounts = { mounted: [], cleaned: [] };
+      const fake = fakeApp(root, {
+        hostContext: {
+          theme: "light",
+          locale: "en",
+          containerDimensions: { width: 800, height: 600 },
+          styles: { color: "navy", padding: "8px" },
+          availableDisplayModes: ["inline", ["pip", "fullscreen"]],
+          extra: { nested: ["a", "b"] },
+          ...surfaceSelection("i-1", CAPTION_SURFACE),
+        },
+      });
+      const handle = await startSurfaceApp(
+        options(root, registry(mounts), { themeUpdates: "in-place" }),
+        fake.runtime,
+      );
+      await fake.toolResult({ content: [], structuredContent: { title: "Boiler" } });
+      await until(() => mounts.mounted.length === 1, "the first mount");
+      const element = root.querySelector(".mcp-view-component");
+      assertEquals(mounts.mounted, ["caption:Boiler"]);
+
+      fake.hostContextChanged({
+        extra: { nested: ["a", "b"] },
+        availableDisplayModes: ["inline", ["pip", "fullscreen"]],
+        styles: { padding: "8px", color: "navy" },
+        locale: "en",
+        containerDimensions: { height: 600, width: 800 },
+        theme: "dark",
+        ...surfaceSelection("i-1", {
+          components: [{ component: "test.caption", id: "caption" }],
+          layout: { gap: "sm", type: "stack" },
+        }),
+      });
+      await fake.idle();
+      assertStrictEquals(root.querySelector(".mcp-view-component"), element);
+      assertEquals(mounts.mounted.length, 1);
+      assertEquals(mounts.cleaned.length, 0);
+
+      fake.hostContextChanged({ containerDimensions: { width: 420, height: 600 } });
+      await until(() => mounts.mounted.length === 2, "dimensions remount");
+      fake.hostContextChanged({ locale: "fr" });
+      await until(() => mounts.mounted.length === 3, "locale remount");
+      fake.hostContextChanged(surfaceSelection("i-2", {
+        layout: { type: "stack", gap: "sm" },
+        components: [{ id: "title", component: "test.title" }],
+      }));
+      await until(() => mounts.mounted.length === 4, "surface remount");
+      assertEquals(mounts.mounted.at(-1), "Boiler");
+      fake.hostContextChanged({ styles: { color: "navy", padding: "16px" } });
+      await until(() => mounts.mounted.length === 5, "styles remount");
+      await handle.dispose();
+      assertEquals(mounts.cleaned.length, 5);
+    }),
+});
 
 Deno.test({
   name: "a host context change remounts the host-selected surface only while a result is displayed",
@@ -774,6 +846,213 @@ Deno.test({
 
       await fake.session({ schema: "test/1.0", title: "Recorded" });
       assertEquals(mounts.mounted, ["Recorded"]);
+    }),
+});
+
+Deno.test({
+  name:
+    "notice and error label callbacks rerender on locale change without repeating projection I/O",
+  permissions: PERMISSIONS,
+  fn: () =>
+    withDocument(async (root) => {
+      let toolProjections = 0;
+      let sessionProjections = 0;
+      const fake = fakeApp(root, { hostContext: { locale: "fr" } });
+      const handle = await startSurfaceApp(
+        options(root, registry({ mounted: [], cleaned: [] }), {
+          fromToolResult: async (_result, host) => {
+            toolProjections += 1;
+            await host.readServerResource("casys://result/1");
+            return {
+              kind: "notice",
+              title: (locale) => locale === "fr" ? "Preuve ouverte" : "Open proof",
+              message: (locale) => locale === "fr" ? "Enregistrement en cours" : "Still recording",
+              code: "TRACE_GAP",
+              tone: "warning",
+            };
+          },
+          viewerSession: {
+            validate: (value): value is { schema: "test/1.0" } =>
+              (value as { schema?: unknown })?.schema === "test/1.0",
+            toState: async (_session, host) => {
+              sessionProjections += 1;
+              await host.readServerResource("casys://session/1");
+              return {
+                kind: "error",
+                title: (locale) => locale === "fr" ? "Session incomplète" : "Incomplete session",
+                message: (locale) => locale === "fr" ? "Preuve manquante" : "Proof missing",
+                code: "E_SESSION",
+              };
+            },
+          },
+        }),
+        fake.runtime,
+      );
+
+      await fake.toolResult({ content: [] });
+      assertEquals(statusOf(root).title, "Preuve ouverte");
+      assertEquals(statusOf(root).message, "Enregistrement en cours");
+      assertEquals(statusOf(root).code, "TRACE_GAP");
+      assertEquals(toolProjections, 1);
+      assertEquals(fake.reads, ["casys://result/1"]);
+
+      fake.hostContextChanged({ locale: "en" });
+      await until(() => statusOf(root).title === "Open proof", "translated notice title");
+      assertEquals(statusOf(root).message, "Still recording");
+      assertEquals(statusOf(root).code, "TRACE_GAP");
+      assertEquals(toolProjections, 1);
+      assertEquals(sessionProjections, 0);
+      assertEquals(fake.reads, ["casys://result/1"]);
+
+      await handle.show({
+        kind: "error",
+        title: "Fournisseur",
+        message: "RAW_DIAG",
+        code: "E_VENDOR",
+      });
+      fake.hostContextChanged({ locale: "fr" });
+      await fake.idle();
+      assertEquals(statusOf(root).title, "Fournisseur");
+      assertEquals(statusOf(root).message, "RAW_DIAG");
+      assertEquals(statusOf(root).code, "E_VENDOR");
+
+      await fake.session({ schema: "test/1.0" });
+      assertEquals(statusOf(root).title, "Session incomplète");
+      assertEquals(statusOf(root).message, "Preuve manquante");
+      assertEquals(statusOf(root).code, "E_SESSION");
+      assertEquals(sessionProjections, 1);
+      assertEquals(fake.reads, ["casys://result/1", "casys://session/1"]);
+
+      fake.hostContextChanged({ locale: "en" });
+      await until(() => statusOf(root).title === "Incomplete session", "translated error title");
+      assertEquals(statusOf(root).message, "Proof missing");
+      assertEquals(statusOf(root).code, "E_SESSION");
+      assertEquals(toolProjections, 1);
+      assertEquals(sessionProjections, 1);
+      assertEquals(fake.reads, ["casys://result/1", "casys://session/1"]);
+    }),
+});
+
+Deno.test({
+  name: "documentLanguage sets the document language at boot and on locale change",
+  permissions: PERMISSIONS,
+  fn: () =>
+    withDocument(async (root) => {
+      const messages = createTranslator({
+        defaultLocale: "en",
+        messages: { title: "Model" },
+        translations: {
+          fr: { title: "Modèle" },
+          "fr-CA": { title: "Modèle canadien" },
+        },
+      });
+      document.documentElement.lang = "de";
+      const fake = fakeApp(root, { hostContext: { locale: "fr-CA" } });
+      const handle = await startSurfaceApp(
+        options(root, registry({ mounted: [], cleaned: [] }), {
+          documentLanguage: messages.locale,
+          themeUpdates: "in-place",
+        }),
+        fake.runtime,
+      );
+      await fake.idle();
+      assertEquals(document.documentElement.lang, "fr-ca");
+      assertEquals(statusOf(root).title, "Chargement");
+
+      fake.hostContextChanged({ locale: "fr-FR" });
+      await fake.idle();
+      assertEquals(document.documentElement.lang, "fr");
+      assertEquals(statusOf(root).title, "Chargement");
+      fake.hostContextChanged({ theme: "dark" });
+      await fake.idle();
+      assertEquals(document.documentElement.lang, "fr");
+      fake.hostContextChanged({ locale: "not a locale" });
+      await until(() => statusOf(root).title === "Loading", "fallback dictionary loading");
+      assertEquals(document.documentElement.lang, "en");
+      await handle.dispose();
+    }),
+});
+
+Deno.test({
+  name: "without documentLanguage the document language is left unchanged",
+  permissions: PERMISSIONS,
+  fn: () =>
+    withDocument(async (root) => {
+      document.documentElement.lang = "de";
+      const fake = fakeApp(root, { hostContext: { locale: "fr" } });
+      const handle = await startSurfaceApp(
+        options(root, registry({ mounted: [], cleaned: [] })),
+        fake.runtime,
+      );
+      await until(() => statusOf(root).title === "Chargement", "french loading");
+      assertEquals(document.documentElement.lang, "de");
+      fake.hostContextChanged({ locale: "en" });
+      await until(() => statusOf(root).title === "Loading", "english loading");
+      assertEquals(document.documentElement.lang, "de");
+      await handle.dispose();
+    }),
+});
+
+Deno.test({
+  name:
+    "rejected projections retranslate their generic title after a locale change and keep caller titles literal",
+  permissions: PERMISSIONS,
+  fn: () =>
+    withDocument(async (root) => {
+      const errors: unknown[] = [];
+      const fake = fakeApp(root, { hostContext: { locale: "fr" } });
+      const handle = await startSurfaceApp(
+        options(root, registry({ mounted: [], cleaned: [] }), {
+          onError: (error) => errors.push(error),
+          fromToolResult: () => {
+            throw new Error("CAD_AXIS_LOCKED");
+          },
+          viewerSession: {
+            validate: (value): value is { schema: "test/1.0" } =>
+              (value as { schema?: unknown })?.schema === "test/1.0",
+            toState: () => {
+              throw new Error("SESSION_PROOF_MISSING");
+            },
+          },
+        }),
+        fake.runtime,
+      );
+
+      await fake.toolResult({ content: [] });
+      assertEquals(statusOf(root).title, "Résultat rejeté");
+      assertEquals(statusOf(root).message, "CAD_AXIS_LOCKED");
+      assertEquals(statusOf(root).code, undefined);
+      fake.hostContextChanged({ locale: "en" });
+      await until(() => statusOf(root).title === "Result rejected", "translated result rejection");
+      assertEquals(statusOf(root).message, "CAD_AXIS_LOCKED");
+      assertEquals(statusOf(root).code, undefined);
+
+      fake.hostContextChanged({ locale: "fr" });
+      await until(() => statusOf(root).title === "Résultat rejeté", "French result rejection");
+      await fake.session({ schema: "test/1.0" });
+      assertEquals(statusOf(root).title, "Session rejetée");
+      assertEquals(statusOf(root).message, "SESSION_PROOF_MISSING");
+      assertEquals(statusOf(root).code, undefined);
+      fake.hostContextChanged({ locale: "en" });
+      await until(
+        () => statusOf(root).title === "Session rejected",
+        "translated session rejection",
+      );
+      assertEquals(statusOf(root).message, "SESSION_PROOF_MISSING");
+      assertEquals(statusOf(root).code, undefined);
+
+      await handle.show({
+        kind: "error",
+        title: "Fournisseur",
+        message: "RAW_DIAG",
+        code: "E_VENDOR",
+      });
+      fake.hostContextChanged({ locale: "fr" });
+      await fake.idle();
+      assertEquals(statusOf(root).title, "Fournisseur");
+      assertEquals(statusOf(root).message, "RAW_DIAG");
+      assertEquals(statusOf(root).code, "E_VENDOR");
+      assertEquals(errors.length, 2);
     }),
 });
 

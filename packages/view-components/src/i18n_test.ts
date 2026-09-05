@@ -37,3 +37,26 @@ Deno.test("catalogs reject ambiguous locale keys and keep independent dictionari
   assertEquals(mcpViewMessages("fr-CA")("loadingTitle"), "Chargement");
   assertEquals(mcpViewMessages("en-US")("loadingTitle"), "Loading");
 });
+
+Deno.test("locale() names the selected dictionary: exact, parent, then canonical default", () => {
+  const messages = createTranslator({
+    defaultLocale: "en-US",
+    messages: { title: "Model", details: "Technical details" },
+    translations: {
+      fr: { title: "Modèle", details: "Détails techniques" },
+      "fr-CA": { title: "Modèle canadien" },
+    },
+  });
+  assertEquals(messages.locale("fr-CA"), "fr-ca");
+  assertEquals(messages("fr-CA")("title"), "Modèle canadien");
+  assertEquals(messages.locale("fr-FR"), "fr");
+  assertEquals(messages("fr-FR")("title"), "Modèle");
+  assertEquals(messages.locale("ja"), "en-us");
+  assertEquals(messages("ja")("title"), "Model");
+  assertEquals(messages.locale("not a locale"), "en-us");
+  assertEquals(messages("not a locale")("title"), "Model");
+  assertEquals(messages.locale(), "en-us");
+  assertEquals(messages()("title"), "Model");
+  assertEquals(mcpViewMessages.locale("fr-CA"), "fr");
+  assertEquals(mcpViewMessages.locale("en-GB"), "en");
+});

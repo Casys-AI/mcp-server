@@ -3,6 +3,13 @@ export type MessageValues = Readonly<Record<string, string | number>>;
 
 export type Translator<Key extends string> = (key: Key, values?: MessageValues) => string;
 
+/** Callable message selector plus the dictionary locale actually chosen for a host locale. */
+export interface TranslatorSelector<Key extends string> {
+  (locale?: string): Translator<Key>;
+  /** Exact registered locale, else the matched parent, else the canonical default. */
+  locale(hostLocale?: string): string;
+}
+
 export interface MessageCatalog<Key extends string> {
   readonly defaultLocale?: string;
   readonly messages: Readonly<Record<Key, string>>;
@@ -13,10 +20,11 @@ export interface MessageCatalog<Key extends string> {
  * Select messages by exact locale, then language parents, then the base dictionary.
  * Missing entries fall back independently. Invalid host locales use the base locale.
  * Interpolation is plain text; render the returned value as text, never as HTML.
+ * `.locale(hostLocale)` uses that same chain and names the dictionary actually selected.
  */
 export function createTranslator<Key extends string>(
   catalog: MessageCatalog<Key>,
-): (locale?: string) => Translator<Key> {
+): TranslatorSelector<Key> {
   const fallback = canonicalLocale(catalog.defaultLocale ?? "en");
   if (!fallback) throw new RangeError("Invalid default message locale");
   const base = { ...catalog.messages };
@@ -27,14 +35,11 @@ export function createTranslator<Key extends string>(
     if (translations.has(normalized)) throw new RangeError(`Duplicate message locale: ${locale}`);
     translations.set(normalized, { ...messages });
   }
-  return (locale) => {
+  const select: TranslatorSelector<Key> = (locale) => {
     const candidates: Partial<Readonly<Record<Key, string>>>[] = [];
-    let current = canonicalLocale(locale ?? "") ?? fallback;
-    while (current) {
+    for (const current of localeChain(locale, fallback)) {
       const messages = translations.get(current);
       if (messages) candidates.push(messages);
-      const separator = current.lastIndexOf("-");
-      current = separator < 0 ? "" : current.slice(0, separator);
     }
     return (key, values) => {
       if (!Object.hasOwn(base, key)) throw new RangeError(`Unknown message key: ${key}`);
@@ -49,6 +54,24 @@ export function createTranslator<Key extends string>(
       );
     };
   };
+  select.locale = (hostLocale) => {
+    for (const current of localeChain(hostLocale, fallback)) {
+      if (translations.has(current)) return current;
+    }
+    return fallback;
+  };
+  return select;
+}
+
+function localeChain(locale: string | undefined, fallback: string): string[] {
+  const chain: string[] = [];
+  let current = canonicalLocale(locale ?? "") ?? fallback;
+  while (current) {
+    chain.push(current);
+    const separator = current.lastIndexOf("-");
+    current = separator < 0 ? "" : current.slice(0, separator);
+  }
+  return chain;
 }
 
 function canonicalLocale(locale: string): string | undefined {
@@ -95,5 +118,7 @@ export const MCP_VIEW_MESSAGES_FR: McpViewMessages = {
 };
 
 /** Extend a locale dictionary through createTranslator; no global locale or mutable registry. */
-export const mcpViewMessages: (locale?: string) => Translator<keyof McpViewMessages> =
-  createTranslator({ messages: MCP_VIEW_MESSAGES_EN, translations: { fr: MCP_VIEW_MESSAGES_FR } });
+export const mcpViewMessages: TranslatorSelector<keyof McpViewMessages> = createTranslator({
+  messages: MCP_VIEW_MESSAGES_EN,
+  translations: { fr: MCP_VIEW_MESSAGES_FR },
+});

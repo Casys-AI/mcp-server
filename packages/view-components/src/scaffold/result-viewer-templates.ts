@@ -7,8 +7,8 @@ export const resultViewerTemplates: Readonly<Record<string, string>> = {
   },
   "imports": {
     "@casys/mcp-view": "jsr:@casys/mcp-view@0.9.3",
-    "@casys/mcp-view-components": "jsr:@casys/mcp-view-components@0.8.0",
-    "@casys/mcp-view-components/surface": "jsr:@casys/mcp-view-components@0.8.0/surface"
+    "@casys/mcp-view-components": "jsr:@casys/mcp-view-components@0.9.0",
+    "@casys/mcp-view-components/surface": "jsr:@casys/mcp-view-components@0.9.0/surface"
   },
   "minimumDependencyAge": {
     "age": "P1D",
@@ -50,7 +50,7 @@ export const resultViewerTemplates: Readonly<Record<string, string>> = {
 const here = dirname(fromFileUrl(import.meta.url));
 const mcpViewModule = moduleSpecifier(Deno.env.get("MCP_VIEW_MODULE") ?? "jsr:@casys/mcp-view@0.9.3");
 const mcpViewComponentsModule = moduleSpecifier(
-  Deno.env.get("MCP_VIEW_COMPONENTS_MODULE") ?? "jsr:@casys/mcp-view-components@0.8.0",
+  Deno.env.get("MCP_VIEW_COMPONENTS_MODULE") ?? "jsr:@casys/mcp-view-components@0.9.0",
 );
 const mcpViewSurfaceModule = moduleSpecifier(
   Deno.env.get("MCP_VIEW_COMPONENTS_SURFACE_MODULE") ?? subpathModule(mcpViewComponentsModule, "surface"),
@@ -319,6 +319,7 @@ body { font: 14px/1.5 var(--mcp-view-font-body, system-ui, sans-serif); }
 @media (prefers-reduced-motion: reduce) { .mcp-view-skeleton-line { animation: none; } }
 `,
   "src/main.ts": `import {
+  createTranslator,
   defineComponentRegistry,
   defineCustomComponent,
   defineKeyValueComponent,
@@ -335,6 +336,12 @@ import { formatMetricValue, formatNumber, isEmptyResult, parseStructuredResult, 
 import { escapeHtml, renderStatus } from "./render.ts";
 
 type ViewerContext = SurfaceAppContext<ViewerData>;
+
+const messages = createTranslator({
+  defaultLocale: "en",
+  messages: { refreshFailedTitle: "Refresh failed" },
+  translations: { fr: { refreshFailedTitle: "Échec de l’actualisation" } },
+});
 
 const components = defineComponentRegistry<ViewerData, ViewerContext>({
   components: {
@@ -459,7 +466,11 @@ const components = defineComponentRegistry<ViewerData, ViewerContext>({
 function resultProjection(): (result: SurfaceToolResult) => SurfaceDisplayState<ViewerData> {
   let kept: ViewerData | undefined;
   const failed = (message: string): SurfaceDisplayState<ViewerData> =>
-    kept ? { kind: "result", result: { ...kept, failure: message } } : { kind: "error", message };
+    kept ? { kind: "result", result: { ...kept, failure: message } } : {
+      kind: "error",
+      title: (locale) => messages(locale)("refreshFailedTitle"),
+      message,
+    };
   return (result) => {
     if (result.isError) return failed(toolErrorMessage(result));
     let parsed;
@@ -488,6 +499,7 @@ async function boot(): Promise<void> {
     info: { name: "Result Viewer", version: "0.1.0" },
     registry: components,
     fromToolResult: resultProjection(),
+    documentLanguage: messages.locale,
     renderStatus: statusNode,
     strict: true,
   });

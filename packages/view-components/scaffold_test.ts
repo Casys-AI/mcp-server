@@ -31,6 +31,8 @@ Deno.test("result-viewer scaffold creates a standalone component project", async
     assertStringIncludes(main, "fromToolResult");
     assertStringIncludes(main, "before connect()");
     assertStringIncludes(main, "strict: true");
+    assertStringIncludes(main, "documentLanguage: messages.locale");
+    assertStringIncludes(main, "createTranslator");
     assertStringIncludes(main, 'from "@casys/mcp-view-components/surface"');
     assert(!main.includes("createMcpApp"), "the scaffold must not hand-roll the App lifecycle");
     const styles = await Deno.readTextFile(join(target, "src/styles.css"));
@@ -42,7 +44,7 @@ Deno.test("result-viewer scaffold creates a standalone component project", async
     assertStringIncludes(generatedConfig, '"@casys/mcp-view": "jsr:@casys/mcp-view@0.9.3"');
     assertStringIncludes(
       generatedConfig,
-      '"@casys/mcp-view-components": "jsr:@casys/mcp-view-components@0.8.0"',
+      '"@casys/mcp-view-components": "jsr:@casys/mcp-view-components@0.9.0"',
     );
     assertStringIncludes(generatedConfig, '"minimumDependencyAge"');
     assertStringIncludes(generatedConfig, '"jsr:@casys/mcp-view-components"');
@@ -54,8 +56,8 @@ Deno.test("result-viewer scaffold creates a standalone component project", async
       configPath,
       generatedConfig
         .replace("jsr:@casys/mcp-view@0.9.3", coreModule)
-        .replace("jsr:@casys/mcp-view-components@0.8.0/surface", surfaceModule)
-        .replace("jsr:@casys/mcp-view-components@0.8.0", componentsModule),
+        .replace("jsr:@casys/mcp-view-components@0.9.0/surface", surfaceModule)
+        .replace("jsr:@casys/mcp-view-components@0.9.0", componentsModule),
     );
 
     // A bare path is accepted where the fleet passes file URLs; /surface is derived from it.

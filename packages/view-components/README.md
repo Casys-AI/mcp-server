@@ -298,18 +298,41 @@ A viewer supplies its registry, the projection and how a status is rendered; eve
 `strict`, `theme`, the status labels, `onError`, `viewerSession` — has a documented default.
 
 ```ts
+import { createTranslator } from "@casys/mcp-view-components";
 import { startSurfaceApp } from "@casys/mcp-view-components/surface";
+
+const messages = createTranslator({
+  defaultLocale: "en",
+  messages: {
+    solvingTitle: "Solving",
+    solvingMessage: "The run is still open.",
+  },
+  translations: {
+    fr: {
+      solvingTitle: "Résolution",
+      solvingMessage: "L’exécution est encore ouverte.",
+    },
+  },
+});
 
 const app = await startSurfaceApp<RunModel>({
   root,
   info: { name: "Run viewer", version: "1.0.0" },
   registry,
   strict: true,
+  documentLanguage: messages.locale,
   fromToolResult: async (result, host) => {
     if (result.isError) return { kind: "error", message: toolErrorMessage(result) };
     const model = parseRun(result.structuredContent);
     if (!model) return { kind: "empty" };
-    if (model.pending) return { kind: "notice", title: "Solving", message: "…", busy: true };
+    if (model.pending) {
+      return {
+        kind: "notice",
+        title: (locale) => messages(locale)("solvingTitle"),
+        message: (locale) => messages(locale)("solvingMessage"),
+        busy: true,
+      };
+    }
     return { kind: "result", result: model };
   },
   renderStatus: (status) => renderMyStatus(status),
@@ -356,14 +379,24 @@ and the context object actually moved — never while a status is shown or a tra
 
 For a renderer that already follows the CSS theme tokens, `themeUpdates: "in-place"` keeps that
 renderer mounted when only the host theme changes. This preserves local camera or interaction state.
-The default remains `"remount"`; do not opt in if a component reads theme colors only at mount.
-Locale, dimensions and component selection changes still remount normally in either mode.
+Hosts that resend a complete JSON snapshot with new object identities but the same non-theme values
+do not remount: comparison is structural (object key order ignored, array order kept). The default
+remains `"remount"`; do not opt in if a component reads theme colors only at mount. Locale,
+dimensions, styles, component selection and other value changes still remount normally in either
+mode.
 
-Generic loading, empty and failure headings follow the host locale. `loadingLabel`, `emptyLabel` and
-`surfaceRequiredLabel` also accept `(locale) => string`; the `messages` option accepts a
-`createTranslator` catalog for additional languages. Domain messages, literal states and codes
-remain unchanged. Tool-result and session projections receive `host.locale` for interface wording,
-never for interpreting or validating domain values.
+Generic loading, empty and failure headings follow the host locale, including `Result rejected` and
+`Session rejected` after a locale change while that status is visible. `loadingLabel`, `emptyLabel`
+and `surfaceRequiredLabel` also accept `(locale) => string`. `error` and `notice` `title`/`message`
+accept the same `SurfaceLabel` callbacks, resolved on each visible status render so a provider
+dictionary can follow the host locale without re-running `fromToolResult`, session projection or
+resource reads. Literal titles, messages and `code` stay unchanged.
+`documentLanguage: messages.locale` sets `document.documentElement.lang` to the selected dictionary
+at boot and on locale changes; omit it to leave the document language untouched. The `messages`
+option accepts a `createTranslator` catalog for additional languages. Domain values, contract
+states, raw provider messages, codes, identifiers, numbers and units remain literal. Tool-result and
+session projections receive `host.locale` for interface wording, never for interpreting or
+validating domain values.
 
 `startPreactSurfaceApp()` (`/preact`) is the same App with statuses rendered through
 `renderStatusMessage`, plus `statusClassName` for viewer-owned styling hooks; its shell keeps the
@@ -463,6 +496,9 @@ accepts any `ComponentChildren`, so a plain count string requires no extra compo
 
 ## Contributing interface translations
 
+English is the default and reference language. French is an optional existing translation;
+additional languages are contributions, not a prerequisite for building or improving a viewer.
+
 `createTranslator` is a small renderer-neutral dictionary helper from the package root. Keep stable
 keys in a complete base dictionary, and add language dictionaries as partial overrides. Select the
 translator from the current host locale when rendering, so the same recorded result can change its
@@ -483,13 +519,16 @@ const messages = createTranslator({ defaultLocale: "en", messages: en, translati
 const t = messages(context.hostContext.locale);
 t("technicalDetails");
 t("revisionLabel", { revision: 17 });
+messages.locale("fr-CA"); // "fr" — the dictionary actually selected
 ```
 
 Lookup falls back **per key** through the exact locale, its language parents, then the base
 dictionary: with an English base, `fr-CA` → `fr` → English. A missing entry in a partial dictionary
 does not hide the base text. An absent or invalid host locale uses the configured default locale;
-there is no global mutable locale. Keep interpolation names such as `{revision}` intact. Render
-returned messages as text, never as HTML.
+there is no global mutable locale. `messages.locale(hostLocale)` uses that same chain and returns
+the exact registered locale, the matched parent, or the canonical default — pass it as
+`documentLanguage` so `document.documentElement.lang` names the selected dictionary. Keep
+interpolation names such as `{revision}` intact. Render returned messages as text, never as HTML.
 
 Translate interface labels and helper text only. Preserve authored names, payload values, units,
 identifiers, digests, server messages and literal contract states such as `documentary`,
@@ -520,7 +559,7 @@ local checkout); the `/surface` entry is derived from the latter unless
 `MCP_VIEW_COMPONENTS_SURFACE_MODULE` names it. Run the generator from JSR:
 
 ```sh
-deno run -A jsr:@casys/mcp-view-components@0.8.0/scaffold result-viewer ./result-viewer
+deno run -A jsr:@casys/mcp-view-components@0.9.0/scaffold result-viewer ./result-viewer
 ```
 
 The npm package contains only the runtime and presentation entry points. It does not export or ship
